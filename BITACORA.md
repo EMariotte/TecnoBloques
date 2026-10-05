@@ -141,3 +141,31 @@ aprendiz no puede subir su programa sin el Arduino IDE.
 - **Vista inicial:** el nivel 1 abre en "Bloques" y el botón "Editar C++" solo está en el nivel 3. La primera vez se abre un proyecto vacío en el nivel 1, en vez del ejemplo del carro.
 - **Hallazgo:** el carro Bluetooth (proyecto estrella del nivel 2) necesita una variable de tipo carácter para los comandos. Se agregó "letra (para comandos)" a los tipos del nivel 2. El ejemplo "Carro Bluetooth" queda en nivel 3 porque usa un bloque propio con parámetros.
 - **Pruebas:** `npm test` revisa que todo bloque de la caja tenga nivel. `test/ui.py` captura los niveles 1 y 2.
+
+## 2026-10-05 — Fase 2: app de escritorio (Electron + arduino-cli)
+
+**Hecho:**
+
+- **Carpeta `escritorio/`:** Electron 44.5.1 abre el mismo `dist/TecnoBloques.html`. Un puente seguro (`window.tbEscritorio`) da acceso a arduino-cli, sin abrir Node a la página.
+- **Selector de puerto:** detecta las placas con `arduino-cli board list` cada 3 s, pone primero las USB y reconoce los clones CH340 por su VID.
+- **"Subir a la placa":**
+  1. avisa si la placa conectada no es la elegida;
+  2. cierra el monitor serial si estaba conectado;
+  3. compila con caché (≈7 s la primera vez, ≈3 s después) y sube;
+  4. muestra el % de memoria y vuelve a abrir el monitor.
+- **Errores explicados en español:** librería faltante, programa muy grande, error de C++ (con número de línea y el texto de esa línea), puerto ocupado o inexistente, y placa que no responde.
+- **Monitor serial en la app:** sigue usando Web Serial. La app elige sola el puerto del selector.
+- **Paquete de Arduino (`npm run preparar-arduino`):** arduino-cli 1.5.1, núcleo AVR 1.8.8 y las 6 librerías del aula, unos 310 MB. Se quitó el índice de librerías (57 MB), que no hace falta para compilar ni subir.
+- **Instalador NSIS** de un clic, por usuario y en español: `TecnoBloques-Setup-0.2.0.exe`, de 175 MB. Ofrece el driver CH340 en la primera instalación si se pone `CH341SER.EXE` en `escritorio/recursos/drivers`. Trae actualización automática con electron-updater desde GitHub Releases. La versión subió a 0.2.0.
+- **Versión web (casa):** "Subir a la placa" explica cómo seguir: guardar el proyecto para el aula o usar Arduino IDE.
+- **Pruebas:** `test/app.js` y `test/app-empaquetada.js` abren la app con Playwright, compilan y revisan los mensajes de error. Todo pasa.
+
+**Hallazgos:**
+
+- La extensión de VS Code deja puesta `ELECTRON_RUN_AS_NODE=1`, y con ella Electron arranca como Node sin ventana.
+- Dentro del proyecto, Windows bloquea el empaquetado (EPERM), así que el instalador se arma en `%LOCALAPPDATA%\TecnoBloques-build`.
+- El instalador no está firmado y SmartScreen avisa la primera vez.
+
+**Pendiente:** subir a placas reales, conseguir CH341SER.EXE, publicar el Release v0.2.0 y ligar los errores al bloque que los causa.
+
+**Nota (Efraín, mismo día):** ya está `CH341SER.EXE` en `escritorio/recursos/drivers/`. La prueba con placas reales pasa a la próxima sesión, en el ambiente donde están todas las placas. **No se publica el Release v0.2.0** hasta probarla.

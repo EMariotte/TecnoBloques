@@ -31,12 +31,18 @@ genera en vivo y ábrelo en tu placa. Funciona con **Arduino Uno R3, Nano y Mega
 
 ## Usarlo
 
-1. `npm install` y luego `npm run build`.
-2. Abre `dist/TecnoBloques.html` en **Chrome o Edge** de computador. Funciona sin internet.
-3. Para subir el programa, por ahora: **Copiar** o **Descargar .ino** y abrirlo en Arduino IDE.
-   La carga con un botón llega en la fase 2, con la app de escritorio para el aula.
+**En el aula: la app de escritorio (Windows).** Descarga `TecnoBloques-Setup-<versión>.exe` desde
+[Releases](https://github.com/EMariotte/TecnoBloques/releases) e instálalo. Trae el compilador de
+Arduino y las librerías, así que compila y **sube a la placa con un botón, sin internet**. Elige la
+placa y el puerto arriba, y pulsa **Subir a la placa**. Se actualiza sola cuando hay versión nueva.
 
-> Web Serial (monitor y, más adelante, la carga) no funciona en Firefox, Safari ni celulares.
+> El instalador aún no está firmado: si Windows muestra "Windows protegió su PC", elige
+> "Más información" → "Ejecutar de todas formas".
+
+**En casa: la versión web.** Abre `dist/TecnoBloques.html` en **Chrome o Edge** de computador.
+Programa, guarda tu proyecto (`.tbq.json`) para abrirlo en el aula, o descarga el `.ino` para Arduino IDE.
+
+> El monitor serial de la versión web usa Web Serial: no funciona en Firefox, Safari ni celulares.
 
 ## Desarrollo
 
@@ -47,6 +53,12 @@ pip install -r test/requirements.txt
 python -m playwright install chromium
 npm test               # genera el C++ de los ejemplos y de todos los bloques
 npm run compilar       # compila ese C++ con arduino-cli (ver test/instalar-librerias.ps1)
+
+# App de escritorio
+npm run preparar-arduino   # una vez: arduino-cli + núcleo AVR + librerías para el instalador
+npm run app                # abre la app
+npm run test:app           # prueba la app (puertos, compilar, mensajes de error)
+npm run instalador         # arma el instalador de Windows
 ```
 
 La documentación técnica completa está en [`CLAUDE.md`](CLAUDE.md): arquitectura, cómo agregar
@@ -55,7 +67,7 @@ bloques o placas, decisiones y hoja de ruta. El historial del proyecto está en 
 ## Hoja de ruta
 
 - [x] **Fase 1:** editor, generador C++, funciones, Mis bloques, C++ libre, monitor serial
-- [ ] **Fase 2:** app de escritorio (Electron + arduino-cli) que compila y sube con un botón, con instalador, drivers CH340 y actualización automática
+- [x] **Fase 2:** app de escritorio (Electron + arduino-cli) que compila y sube con un botón, con instalador y actualización automática (falta probar con placas reales)
 - [x] **Niveles 1 · 2 · 3** de bloques y nombres para los pines (`#define LedRojo 13`)
 - [ ] **Librerías nuevas:** MPU6050, PCA9685 (Adafruit_PWMServoDriver) e I2C
 - [ ] **Fase 3:** Arduino Uno R4

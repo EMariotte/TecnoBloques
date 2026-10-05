@@ -1,17 +1,91 @@
 {
   "name": "tecnobloques",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "description": "Editor web de bloques en español para programar Arduino Uno, Nano y Mega con las librerías de la TecnoAcademia Tolima (SENA).",
+  "description": "Editor de bloques en español para programar Arduino Uno, Nano y Mega con las librerías de la TecnoAcademia Tolima (SENA).",
+  "main": "escritorio/main.js",
   "scripts": {
     "build": "node build.js",
     "test": "python test/prueba.py && python test/prueba_todo.py",
     "test:ui": "python test/ui.py",
-    "compilar": "node test/compilar.js"
+    "compilar": "node test/compilar.js",
+    "app": "node build.js && electron .",
+    "preparar-arduino": "node escritorio/preparar-arduino.js",
+    "instalador": "node build.js && node escritorio/empaquetar.js",
+    "publicar": "node build.js && node escritorio/empaquetar.js --publicar",
+    "test:app": "node test/app.js"
   },
   "devDependencies": {
-    "blockly": "13.3.0"
+    "blockly": "13.3.0",
+    "electron": "^44.5.1",
+    "electron-builder": "^26.15.3",
+    "playwright-core": "^1.63.0"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
   },
   "license": "Apache-2.0",
-  "author": "Efraín Guillermo Mariotte Parra — TecnoAcademia Tolima (SENA)"
+  "author": "Efraín Guillermo Mariotte Parra — TecnoAcademia Tolima (SENA)",
+  "build": {
+    "appId": "co.edu.sena.tecnoacademia.tecnobloques",
+    "productName": "TecnoBloques",
+    "copyright": "© 2026 SENA – TecnoAcademia Tolima",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "escritorio/main.js",
+      "escritorio/preload.js",
+      "escritorio/arduino.js",
+      "escritorio/icono.png",
+      "dist/TecnoBloques.html",
+      "package.json",
+      "LICENSE",
+      "NOTICE"
+    ],
+    "extraResources": [
+      {
+        "from": "escritorio/recursos/arduino",
+        "to": "arduino"
+      },
+      {
+        "from": "escritorio/recursos/drivers",
+        "to": "drivers",
+        "filter": [
+          "*.EXE",
+          "*.exe"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "escritorio/icono.png"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "shortcutName": "TecnoBloques",
+      "installerLanguages": [
+        "es_ES"
+      ],
+      "language": "3082",
+      "include": "escritorio/instalador.nsh",
+      "artifactName": "TecnoBloques-Setup-${version}.${ext}"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "EMariotte",
+        "repo": "TecnoBloques"
+      }
+    ]
+  }
 }

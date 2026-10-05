@@ -18,3 +18,9 @@ __pycache__/
 # Sistema
 .DS_Store
 Thumbs.db
+
+# App de escritorio: paquete de Arduino (se arma con npm run preparar-arduino) e instaladores
+escritorio/recursos/arduino/
+escritorio/recursos/drivers/*.exe
+escritorio/recursos/drivers/*.EXE
+release/

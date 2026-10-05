@@ -1007,6 +1007,10 @@ async function conectarSerial() {
     notaSerial('<b>Este navegador no permite usar el puerto serie aquí.</b> Abre el editor como archivo local (<code>TecnoBloques.html</code>) en Chrome o Edge de computador. Firefox, Safari y los celulares no tienen Web Serial.');
     return;
   }
+  if (escritorio) {
+    if (!$('puerto').value) { notaSerial('<b>Elige el puerto de la placa</b> en la barra de arriba (Puerto). Si no aparece, conéctala por USB.'); return; }
+    await escritorio.preferirPuerto($('puerto').value);
+  }
   try {
     const p = await navigator.serial.requestPort();
     await p.open({ baudRate: parseInt($('baudios').value, 10) });
@@ -1066,21 +1070,147 @@ const NOMBRES_LIB = {
 function librerias() {
   return [...(ultimo.codigo.matchAll(/#include <([^>.]+)\.h>/g))].map(m => NOMBRES_LIB[m[1]] || m[1]);
 }
+/** Versión web (casa): no hay compilador; se explica cómo seguir. */
 function modalSubir() {
+  if (escritorio) return subirPlaca();
   const p = placa();
   const libs = librerias();
   modal({
-    titulo: 'Subir desde el navegador llega en la fase 2',
+    titulo: 'Para subir el programa',
     cuerpo: [
-      el('p', null, 'Falta el servidor de compilación (arduino-cli con las librerías de la TecnoAcademia) y el cargador por puerto serie. Mientras tanto:'),
+      el('p', null, 'En el aula, la app TecnoBloques sube el programa con un botón. Desde aquí puedes:'),
       el('ul', null,
-        el('li', null, 'Copia o descarga el código.'),
-        el('li', null, `En Arduino IDE elige la placa ${p.nombre} y su puerto COM, pega el código y súbelo.`),
-        libs.length ? el('li', null, 'Librerías que necesita este programa: ', libs.join('; '), '.') : el('li', null, 'Este programa no necesita librerías extra.')),
-      el('p', { class: 'muted' }, `Datos para la fase 2 — FQBN: `, el('code', null, p.fqbn), ` · carga: ${p.carga}.`)
+        el('li', null, el('b', null, 'Guardar tu proyecto'), ' y abrirlo en la app del aula.'),
+        el('li', null, el('b', null, 'Usar Arduino IDE:'), ` copia el código, elige la placa ${p.nombre} y su puerto COM, y súbelo.`),
+        libs.length ? el('li', null, 'Librerías que necesita este programa en Arduino IDE: ', libs.join('; '), '.') : el('li', null, 'Este programa no necesita librerías extra.'))
     ],
     botones: [{ texto: 'Copiar código', accion: async () => { await copiarTexto(codigoActual()); return false; } }, { texto: 'Cerrar', primario: true }]
   });
+}
+
+/* ---------- App de escritorio: puerto y subir ---------- */
+const escritorio = window.tbEscritorio || null;
+const CLAVE_PUERTO = 'tecnobloques.puerto.v1';
+const puertos = { lista: [], firma: '', ocupado: false };
+async function refrescarPuertos() {
+  if (!escritorio || puertos.ocupado || document.hidden) return;
+  let r;
+  try { r = await escritorio.puertos(); } catch (e) { return; }
+  const lista = (r.puertos || []).slice().sort((a, b) => (b.usb - a.usb) || a.direccion.localeCompare(b.direccion, undefined, { numeric: true }));
+  const firma = JSON.stringify(lista);
+  if (firma === puertos.firma) return;
+  puertos.firma = firma; puertos.lista = lista;
+  const sel = $('puerto');
+  const previo = sel.value || leerLocal(CLAVE_PUERTO);
+  sel.innerHTML = '';
+  if (!lista.length) sel.append(el('option', { value: '' }, 'Conecta la placa por USB'));
+  lista.forEach(p => sel.append(el('option', { value: p.direccion }, `${p.direccion} · ${p.nombre}`)));
+  const usb = lista.find(p => p.usb);
+  sel.value = lista.some(p => p.direccion === previo) ? previo : ((usb || lista[0] || {}).direccion || '');
+  escritorio.preferirPuerto(sel.value);
+}
+/** Clave de PLACAS que corresponde a lo que detectó arduino-cli (si lo sabe). */
+function placaDetectada(puerto) {
+  const p = puertos.lista.find(x => x.direccion === puerto);
+  if (!p || !p.fqbn) return null;
+  return Object.keys(PLACAS).find(k => PLACAS[k].fqbn.startsWith(p.fqbn)) || null;
+}
+async function subirPlaca(forzar) {
+  const puerto = $('puerto').value;
+  if (!puerto) {
+    modal({ titulo: 'No encuentro la placa', cuerpo: [el('ul', null,
+      el('li', null, 'Conecta la placa con el cable USB y espera unos segundos: el puerto aparece solo arriba, en "Puerto".'),
+      el('li', null, 'Si no aparece, prueba otro cable (algunos solo cargan y no pasan datos) u otro puerto USB.'),
+      el('li', null, 'Las placas con chip CH340 (clones) necesitan su driver; el instalador de TecnoBloques lo ofrece.'))] });
+    return;
+  }
+  const detectada = placaDetectada(puerto);
+  if (!forzar && detectada && !PLACAS[detectada].fqbn.startsWith(placa().fqbn.split(':').slice(0, 3).join(':'))) {
+    modal({
+      titulo: 'La placa no coincide',
+      cuerpo: [el('p', null, `En ${puerto} hay un ${PLACAS[detectada].nombre}, pero arriba elegiste ${placa().nombre}.`)],
+      botones: [
+        { texto: 'Subir igual', accion: () => { setTimeout(() => subirPlaca(true), 50); } },
+        { texto: `Cambiar a ${PLACAS[detectada].nombre}`, primario: true, accion: () => {
+          placaActual = detectada; $('placa').value = detectada; refrescarPines(); actualizar(); setTimeout(() => subirPlaca(true), 50);
+        } }
+      ]
+    });
+    return;
+  }
+  if (!estado.texto) actualizar(); // el código más reciente de los bloques
+  const reconectar = serial.conectado;
+  if (reconectar) await desconectarSerial(); // el puerto no se puede compartir con la carga
+  puertos.ocupado = true;
+  const etapa = el('p', { class: 'subir-etapa' }, 'Preparando tu programa…');
+  modal({ titulo: `Subir a ${placa().nombre}`, cuerpo: [etapa, el('div', { class: 'subir-barra' }, el('span')),
+    el('p', { class: 'muted' }, 'No desconectes la placa hasta que termine.')], botones: [] });
+  const quitar = escritorio.alProgreso((m) => {
+    if (m.etapa === 'compilar') etapa.textContent = 'Preparando tu programa…';
+    if (m.etapa === 'subir') etapa.textContent = `Subiendo a ${puerto}…`;
+  });
+  let r;
+  try { r = await escritorio.subir({ codigo: codigoActual(), fqbn: placa().fqbn, puerto }); }
+  catch (e) { r = { ok: false, etapa: 'app', salida: e.message }; }
+  finally { quitar(); puertos.ocupado = false; }
+  if (r.ok) {
+    const m = r.memoria || {};
+    const cuerpo = [el('p', null, 'Tu programa ya está en la placa.')];
+    if (m.flash !== null && m.flash !== undefined) cuerpo.push(el('p', { class: 'subir-memoria' }, `Usa el ${m.flash} % de la memoria de programa y el ${m.ram} % de la memoria de variables.`));
+    if (m.ram >= 75) cuerpo.push(el('p', null, el('b', null, 'Ojo: '), 'la memoria de variables está casi llena y la placa puede comportarse raro. Usa menos textos largos o variables.'));
+    modal({ titulo: '¡Listo!', cuerpo, botones: [
+      { texto: 'Abrir monitor serial', accion: () => { seleccionarPestana('serial'); setTimeout(conectarSerial, 300); } },
+      { texto: 'Cerrar', primario: true }] });
+    if (reconectar) setTimeout(conectarSerial, 1500);
+  } else {
+    const ex = explicarError(r, puerto);
+    modal({ titulo: ex.titulo, cuerpo: ex.cuerpo.concat([el('details', { class: 'subir-detalle' }, el('summary', null, 'Ver el mensaje completo'), el('pre', null, r.salida || ''))]) });
+  }
+}
+/** Traduce lo que dicen el compilador y avrdude a algo que un aprendiz pueda arreglar. */
+function explicarError(r, puerto) {
+  const s = r.salida || '';
+  if (r.etapa === 'sin-arduino') return { titulo: 'Falta el compilador', cuerpo: [el('p', null, 'Esta instalación no tiene el compilador de Arduino. Reinstala TecnoBloques.')] };
+  if (r.etapa === 'ocupado') return { titulo: 'Espera un momento', cuerpo: [el('p', null, 'Ya se está subiendo un programa.')] };
+  if (r.etapa === 'compilar') {
+    const lib = /fatal error: ([\w]+)\.h: No such file/.exec(s);
+    if (lib) return { titulo: 'Falta una librería', cuerpo: [el('p', null, `Este computador no tiene la librería ${NOMBRES_LIB[lib[1]] || lib[1]}. Pídele al instructor que actualice TecnoBloques.`)] };
+    if (/Sketch too big|text section exceeds/.test(s)) return { titulo: 'El programa no cabe', cuerpo: [el('p', null, `Es muy grande para la memoria del ${placa().nombre}. Quita bloques que no uses o textos largos, o usa un Arduino Mega.`)] };
+    if (/data section exceeds|not enough memory/i.test(s)) return { titulo: 'No alcanza la memoria', cuerpo: [el('p', null, 'El programa usa más memoria de variables de la que tiene la placa. Usa menos textos largos o variables.')] };
+    const lineas = codigoActual().split('\n');
+    const errores = [...s.matchAll(/TecnoBloques\.ino:(\d+):\d+: error: (.*)/g)].slice(0, 5).map(m => {
+      const n = Number(m[1]);
+      return el('li', null, `Línea ${n}: ${traducirErrorCpp(m[2])}`, el('code', null, (lineas[n - 1] || '').trim()));
+    });
+    return { titulo: 'El programa tiene un error', cuerpo: [
+      el('p', null, estado.texto || /cpp_/.test(JSON.stringify(Blockly.serialization.workspaces.save(espacio)))
+        ? 'Revisa el C++ que escribiste a mano o en los bloques "C++ libre":' : 'El compilador encontró esto:'),
+      errores.length ? el('ul', { class: 'subir-errores' }, errores) : el('p', null, 'Mira el mensaje completo abajo.')] };
+  }
+  if (/can't open device|cannot open port|unable to open port|Access is denied|Acceso denegado|ser_open/i.test(s)) {
+    return { titulo: `No se pudo abrir ${puerto}`, cuerpo: [el('ul', null,
+      el('li', null, 'Revisa que la placa siga conectada.'),
+      el('li', null, 'Cierra el Arduino IDE u otro programa que esté usando el puerto.'),
+      el('li', null, 'Si cambiaste la placa de USB, elige otra vez el puerto arriba.'))] };
+  }
+  if (/not in sync|not responding|stk500|getsync|timeout|protocol error/i.test(s)) {
+    return { titulo: 'La placa no responde', cuerpo: [el('ul', null,
+      el('li', null, `Revisa que la placa elegida arriba sea la correcta. Si es un Nano clon, prueba "${(PLACAS.nano_old || {}).nombre || 'Nano (bootloader antiguo)'}".`),
+      el('li', null, 'Prueba otro cable USB: algunos solo cargan y no pasan datos.'),
+      el('li', null, 'Desconecta lo que esté en los pines 0 y 1 (por ejemplo un Bluetooth) mientras subes.'))] };
+  }
+  return { titulo: 'No se pudo subir el programa', cuerpo: [el('p', null, 'Mira el mensaje completo abajo. Si se repite, desconecta y vuelve a conectar la placa.')] };
+}
+function traducirErrorCpp(m) {
+  let x;
+  if ((x = /'([^']+)' was not declared in this scope/.exec(m))) return `"${x[1]}" no existe. Revisa que esté creado (variable, bloque o pin con nombre) y bien escrito.`;
+  if ((x = /expected '(.+?)' before/.exec(m))) return `falta un "${x[1]}".`;
+  if (/expected primary-expression/.test(m)) return 'hay algo incompleto o un símbolo de más.';
+  if (/redefinition of|previously declared|conflicting declaration/.test(m)) return 'algo está definido dos veces.';
+  if (/too few arguments/.test(m)) return 'a un bloque o función le faltan datos.';
+  if (/too many arguments/.test(m)) return 'un bloque o función recibe más datos de los que necesita.';
+  if (/stray '\\/.test(m)) return 'hay un carácter raro (quizá una comilla “curva”). Escríbelo de nuevo.';
+  return m;
 }
 
 /* ---------- Arranque ---------- */
@@ -1157,7 +1287,14 @@ function iniciar() {
   $('btnVolverBloques').addEventListener('click', () => salirModoTexto());
   $('btnIno').addEventListener('click', () => modalExportar('Descargar programa', nombreArchivoBase() + '.ino', codigoActual(), 'text/plain',
     `Arduino IDE pide que el archivo esté en una carpeta con su mismo nombre (${nombreArchivoBase()}/${nombreArchivoBase()}.ino); el IDE te ofrece crearla al abrirlo.`));
-  $('btnSubir').addEventListener('click', modalSubir);
+  $('btnSubir').addEventListener('click', () => modalSubir());
+  if (escritorio) {
+    $('campoPuerto').hidden = false;
+    $('puerto').addEventListener('change', () => { guardarLocal(CLAVE_PUERTO, $('puerto').value); escritorio.preferirPuerto($('puerto').value); });
+    $('puerto').addEventListener('focus', refrescarPuertos);
+    refrescarPuertos();
+    setInterval(refrescarPuertos, 3000);
+  }
   $('btnGuardar').addEventListener('click', () => modalExportar('Guardar proyecto', nombreArchivoBase() + '.tbq.json', JSON.stringify(proyectoActual(), null, 1), 'application/json',
     'El proyecto lleva los bloques, la placa y una copia de tus bloques propios que usa.'));
   $('btnAbrir').addEventListener('click', () => modalAbrirTexto({

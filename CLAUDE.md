@@ -1,17 +1,20 @@
 # CLAUDE.md — TecnoBloques
 
 > Memoria técnica del proyecto para Claude Code / Claude en Cowork.
-> Actualizado: 5 de octubre de 2026 · Estado: **v0.1 — prototipo del editor funcionando (Fase 1 completa). Fase 2 (app de escritorio que compila y sube) pendiente.**
+> Actualizado: 5 de octubre de 2026 · Estado: **v0.2 — app de escritorio que compila y sube (Fase 2), instalador armado. Falta probar la carga con una placa real y publicar la primera versión en GitHub Releases.**
 
 ---
 
 ## Qué es este proyecto
 
-Editor web de **programación por bloques en español para Arduino**, al estilo de
+Editor de **programación por bloques en español para Arduino**, al estilo de
 MakeCode, Ottoblockly o Visualino, hecho para la **TecnoAcademia Tolima (SENA,
 Ibagué)**. Los aprendices arman el programa con bloques, ven el C++ que se
-genera y, en la fase 2, lo suben a la placa eligiendo el puerto COM desde el
-navegador.
+genera y lo suben a la placa con un botón.
+
+Se entrega de **dos formas desde el mismo código** (`src/` → `dist/TecnoBloques.html`):
+- **App de escritorio (aula):** Electron + arduino-cli embebido. Compila y sube sin internet. Instalador para Windows con actualización automática desde GitHub Releases.
+- **Página web (casa):** el mismo HTML sin compilador. Sirve para programar, guardar el proyecto y descargar el `.ino`.
 
 - **Sin simulador** (nada tipo Tinkercad o Wokwi). Solo el editor de bloques como motor para crear programas y subirlos.
 - Lo construye Efraín (instructor) junto con Claude. Los **usuarios finales son aprendices**, así que los textos de la interfaz son en español, cortos y sin jerga.
@@ -105,8 +108,17 @@ TecnoBloques/
 ├── ABOUTME.md                ← autor (remite a Tecnohonguera)
 ├── README.md                 ← presentación para GitHub
 ├── LICENSE / NOTICE          ← Apache 2.0 · © SENA – TecnoAcademia Tolima, autor Efraín
-├── package.json              ← blockly 13.3.0 (versión fija) + scripts
+├── package.json              ← blockly 13.3.0 (versión fija), Electron, scripts y config de electron-builder
 ├── build.js                  ← arma dist/TecnoBloques.html y dist/artefacto.html
+├── escritorio/               ← APP DE ESCRITORIO (Electron)
+│   ├── main.js               ← ventana, IPC, Web Serial (elige el puerto), actualización automática
+│   ├── preload.js            ← puente seguro: window.tbEscritorio (info, puertos, subir, alProgreso…)
+│   ├── arduino.js            ← arduino-cli: board list, compile, upload (módulo Node sin Electron)
+│   ├── preparar-arduino.js   ← arma recursos/arduino (cli + núcleo AVR + librerías) para el instalador
+│   ├── empaquetar.js         ← corre electron-builder (salida en %LOCALAPPDATA%\TecnoBloques-build)
+│   ├── instalador.nsh        ← paso NSIS: ofrece el driver CH340 en la primera instalación
+│   ├── icono.png             ← ícono de la app (512 px)
+│   └── recursos/             ← arduino/ (≈310 MB, ignorado por git) · drivers/ (CH341SER.EXE, ignorado)
 ├── src/
 │   ├── nucleo.js             ← perfiles de placa, campos, generador C++, revisión de pines
 │   ├── bloques.js            ← definición de TODOS los bloques + su traducción a C++
@@ -119,6 +131,8 @@ TecnoBloques/
 │   ├── prueba_todo.py        ← todos los bloques en un programa + flujo de Mis bloques
 │   ├── ui.py                 ← clics reales en la interfaz + capturas (claro, oscuro, celular)
 │   ├── compilar.js           ← compila con arduino-cli los .ino generados
+│   ├── app.js                ← abre la app Electron: puertos, compilar, errores en español (capturas)
+│   ├── app-empaquetada.js    ← lo mismo con la app ya empaquetada (win-unpacked)
 │   ├── instalar-librerias.ps1← núcleo AVR + librerías para arduino-cli (Windows)
 │   └── requirements.txt      ← playwright
 ├── docs/capturas/            ← imágenes para el README
@@ -142,9 +156,15 @@ start dist\TecnoBloques.html     # abrir en Chrome o Edge
 npm test                         # genera test/salida/<caso>/<caso>.ino
 npm run test:ui                  # capturas en test/salida/*.png
 
-# Compilación real (opcional, necesita arduino-cli en el PATH)
-.\test\instalar-librerias.ps1
+# Compilación real (usa ARDUINO_CLI, el arduino-cli del Arduino IDE 2 o el del PATH)
 npm run compilar
+
+# App de escritorio
+npm run preparar-arduino         # una vez (con internet): baja arduino-cli + núcleo AVR + librerías (≈310 MB)
+npm run app                      # abre la app en modo desarrollo
+npm run test:app                 # prueba la app con Playwright (puertos, compilar, errores)
+npm run instalador               # arma %LOCALAPPDATA%\TecnoBloques-build\TecnoBloques-Setup-<versión>.exe
+npm run publicar                 # arma y sube el Release a GitHub (necesita GH_TOKEN; ver "Publicar una versión")
 ```
 
 - **Después de cada cambio en `src/` hay que correr `npm run build`.** El HTML de `dist/` no se actualiza solo.
@@ -252,6 +272,25 @@ Los bloques propios son `var_set`, `var_get`, `var_cambiar` y `bucle_para`; no s
 - **Tema:** tokens CSS claro/oscuro, que respetan `prefers-color-scheme` y `data-theme`, y dos temas de Blockly (`TEMA_CLARO` y `TEMA_OSCURO`) que se cambian solos.
 - **Descargas:** siempre pasan por un modal con "Copiar" y "Descargar", porque en el visor de Claude las descargas no funcionan.
 
+### App de escritorio (`escritorio/`)
+
+- **Mismo editor:** la ventana carga `dist/TecnoBloques.html`. El editor detecta la app con `window.tbEscritorio` (lo expone `preload.js` con `contextIsolation`, sin Node en la página). Si no está, es la versión web.
+- **Puerto:** en la app aparece el selector **Puerto** (`#campoPuerto`). `refrescarPuertos()` llama a `arduino-cli board list` cada 3 s y al enfocar el selector, y se detiene mientras se sube. Ordena primero los USB y nombra los clones por VID (1a86 = CH340).
+- **Subir** (`subirPlaca`): avisa si la placa detectada no coincide con la elegida (y ofrece cambiarla), cierra el monitor serial si estaba conectado, compila (`compile --build-path` por placa, con caché en userData) y sube (`upload --input-dir`). Al terminar reconecta el monitor. Muestra el % de memoria y avisa si la RAM pasa del 75 %.
+- **Errores en español** (`explicarError` y `traducirErrorCpp` en app.js): librería faltante, programa muy grande o sin RAM, errores de C++ con número de línea y el texto de esa línea, puerto ocupado o inexistente, y placa que no responde (sugiere "Nano bootloader antiguo", otro cable y desconectar los pines 0 y 1). Siempre se puede abrir "Ver el mensaje completo". arduino-cli corre con `ARDUINO_LOCALE=en` para que los mensajes sean predecibles.
+- **Monitor serial en la app:** sigue siendo Web Serial. `main.js` atiende `select-serial-port` y elige el puerto del selector (`preferirPuerto`), sin ventana del sistema.
+- **arduino-cli:** `ubicarArduino()` busca primero `resources/arduino` (empaquetada) o `escritorio/recursos/arduino` (desarrollo), luego `ARDUINO_CLI` y luego el del Arduino IDE 2. Los datos se apuntan con `ARDUINO_DIRECTORIES_DATA` y `ARDUINO_DIRECTORIES_USER`. La instalación es por usuario (`%LOCALAPPDATA%\Programs\TecnoBloques`), así que esas carpetas se pueden escribir.
+- **Actualización automática:** `electron-updater` revisa GitHub Releases (EMariotte/TecnoBloques) 5 s después de abrir, descarga sola y pregunta "Reiniciar ahora / Más tarde". Sin internet o sin versiones publicadas no muestra nada. El `.blockmap` permite bajar solo lo que cambió.
+- **Instalador:** NSIS de un clic, por usuario, con acceso directo en el escritorio y en español. Ofrece el driver CH340 solo en la primera instalación y solo si `escritorio/recursos/drivers/CH341SER.EXE` existe (ver el LEEME de esa carpeta). Pesa unos 175 MB, casi todo avr-gcc.
+- **Versión web (casa):** el botón "Subir a la placa" explica cómo seguir: guardar el proyecto para abrirlo en el aula o usar Arduino IDE.
+
+### Publicar una versión
+
+1. Sube `version` en `package.json` (por ejemplo 0.2.0 → 0.2.1). Las apps instaladas solo se actualizan si la versión es mayor.
+2. `npm test`, `npm run compilar` y `npm run test:app`.
+3. `npm run instalador` y prueba el `.exe`.
+4. Crea el Release `v<versión>` en GitHub con estos 3 archivos: `TecnoBloques-Setup-<versión>.exe`, `TecnoBloques-Setup-<versión>.exe.blockmap` y `latest.yml`. Se puede hacer con `gh release create v<versión> <archivos> --title … --notes …`, o con `npm run publicar` y `GH_TOKEN`.
+
 ### Receta: agregar un bloque
 
 1. En `src/bloques.js`: `bloque('mi_tipo', COL.categoria, function () { …campos… }, (b) => { …G.incluir/G.global/G.setup/G.pin…; return código; });`
@@ -331,6 +370,18 @@ Serial             → Si se usa algún bloque serial sin "iniciar monitor seria
 
 Bloques sueltos    → Blockly.Events.disableOrphans los desactiva (grises) y se avisa.
 
+ELECTRON_RUN_AS_NODE → La extensión de VS Code deja esta variable puesta en algunas terminales.
+                     Con ella, Electron arranca como Node sin ventana. test/app.js y
+                     escritorio/empaquetar.js la quitan.
+
+EPERM al empaquetar → Dentro de la carpeta del proyecto, Windows (VS Code o el antivirus)
+                     bloquea el renombrado de release/win-unpacked.tmp. Por eso el
+                     instalador se arma en %LOCALAPPDATA%\TecnoBloques-build.
+
+Sin firma digital  → El instalador no está firmado: Windows SmartScreen muestra "Windows
+                     protegió su PC" → "Más información" → "Ejecutar de todas formas".
+                     Firmarlo requiere un certificado de firma de código (decisión abierta).
+
 Prototipos         → Siempre se emiten prototipos de funciones y helpers (no se depende
                      de que arduino-cli los genere con ctags).
 
@@ -359,6 +410,9 @@ Ojo: el ultrasonido trae 8/9 por defecto (pensado para Otto); **con la shield el
 | Bloques nuevos de la LCD (20x4, 2 símbolos, cursor, borrar fila, desplazar) | ✅ compilan en uno y mega2560 sin warnings propios; guardar/abrir conserva los dibujos; editor probado con clics reales (claro y oscuro) |
 | Nombres de pines: 5 nombres usados en LED, botón, servo, PWM, DHT y un bloque propio, mezclando `13` y `LedRojo` | ✅ compila en uno; renombrar actualiza los bloques y deshacer lo revierte; avisos probados |
 | Niveles: 31 / 65 / 85 bloques (contando repetidos en dos categorías), clic real en el selector, tipos de variable y "definir bloque" en el nivel 2, proyecto de nivel 3 abierto en nivel 1 (no pierde nada y avisa), ejemplos, 400 px | ✅ sin errores de JavaScript |
+| App de escritorio (Electron 44.5.1, arduino-cli 1.5.1, núcleo AVR 1.8.8): abre, lista puertos, compila el carro (≈7 s; ≈3 s con caché) y Otto, error de puerto inexistente y error de C++ con línea, todo en español | ✅ en desarrollo y empaquetada (`win-unpacked`), sin errores de JavaScript |
+| Instalador `TecnoBloques-Setup-0.2.0.exe` (175 MB) | ✅ se arma; ⬜ falta ejecutarlo en un PC del aula |
+| **Subir a una placa real** desde la app | ⬜ **no probado** (en este PC solo hay puertos COM3/COM4 sin USB) |
 | `instalar-librerias.ps1` | ⬜ no probado (en este PC las librerías se instalaron una por una con el arduino-cli del IDE) |
 
 Versiones con las que se compiló (Linux, 26 sep): núcleo AVR 1.8.6, AFMotor-Shield-R4-Compatible 1.0.1,
@@ -371,7 +425,8 @@ Uso de memoria: carro en Uno usa 36 % de flash y 29 % de RAM. El programa con to
 
 ### Pendiente de validar con hardware (Efraín)
 
-1. Monitor serial: conectar, recibir y **enviar** con el ejemplo "Eco serial y LED" (Chrome/Edge + `dist/TecnoBloques.html`).
+0. **App de escritorio:** instalar `TecnoBloques-Setup-0.2.0.exe`, conectar un Uno y un Nano clon, y pulsar "Subir a la placa". Revisar los mensajes si el Nano necesita "bootloader antiguo".
+1. Monitor serial: conectar, recibir y **enviar** con el ejemplo "Eco serial y LED" (en la app o en Chrome/Edge con `dist/TecnoBloques.html`).
 2. Otto humanoide: pines y ángulos de los brazos, dirección de giro y velocidades.
 3. Carro: sentido de los motores M1/M2 y comandos 'A'/'S' desde una app Bluetooth.
 4. LCD: dirección 0x27 vs 0x3F de los módulos del aula.
@@ -385,14 +440,14 @@ Uso de memoria: carro en Uno usa 36 % de flash y 29 % de RAM. El programa con to
 Fase 1 ✅ Editor (esta versión v0.1): bloques, generador, avisos de pines, funciones,
           Mis bloques local, C++ libre, modo texto, monitor serial, proyectos, ejemplos.
 
-Fase 2 ⬜ App de escritorio para el aula (reemplaza al servidor de compilación, 5 oct 2026):
-          - Envolver el mismo HTML en Electron (electron-updater + GitHub Releases). Botón "Subir" → arduino-cli
-            compile + upload (avrdude) con el puerto elegido. Sin cargador STK500 en JS.
-          - Instalador Windows: arduino-cli + núcleo arduino:avr + librerías + drivers CH340.
-          - Actualización automática desde GitHub Releases.
-          - El monitor serial debe cerrar el puerto antes de cargar.
-          - Mostrar errores del compilador en español y ligarlos al bloque si se puede.
-          - build.js genera también la versión web para casa (sin "Subir").
+Fase 2 ◐ App de escritorio para el aula (5 oct 2026):
+          ✅ Electron + arduino-cli embebido, selector de puerto, Subir con avance,
+             errores en español, monitor serial con el puerto elegido, instalador NSIS,
+             actualización automática (electron-updater), versión web con explicación.
+          ⬜ Probar la carga con placas reales (Uno, Nano clon CH340, Mega).
+          ⬜ Poner CH341SER.EXE en escritorio/recursos/drivers y publicar el Release v0.2.0.
+          ⬜ Ligar los errores del compilador al bloque que los causa.
+          ⬜ Publicar la versión web (GitHub Pages).
 
 Fase 2b ✅ Base del sistema de bloques: nombres de pines (#define) y niveles 1·2·3.
 
@@ -417,7 +472,8 @@ exportar a PDF una ficha del programa para la evidencia del aprendiz.
 ## Decisiones abiertas
 
 - **Titularidad:** confirmar con la coordinación SENNOVA que el titular es «SENA – TecnoAcademia Tolima» (así está en `NOTICE`) y Efraín figura como autor.
-- **Web para casa:** dónde se publica (GitHub Pages es lo natural). La actualización automática desde GitHub Releases necesita un repositorio público o un token.
+- **Web para casa:** publicarla en GitHub Pages (lo natural, HTTPS) u otro sitio.
+- **Firma del instalador:** sin certificado, SmartScreen avisa en la primera instalación. Un certificado de firma de código cuesta dinero cada año; también se puede pedir a SENA si tiene uno.
 - **Librería del MPU6050:** cuál usar (propuesta: MPU6050_light, porque da ángulos directos y es liviana para el Uno).
 
 ---
