@@ -1,0 +1,17 @@
+{
+  "name": "tecnobloques",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Editor web de bloques en español para programar Arduino Uno, Nano y Mega con las librerías de la TecnoAcademia Tolima (SENA).",
+  "scripts": {
+    "build": "node build.js",
+    "test": "python test/prueba.py && python test/prueba_todo.py",
+    "test:ui": "python test/ui.py",
+    "compilar": "node test/compilar.js"
+  },
+  "devDependencies": {
+    "blockly": "13.3.0"
+  },
+  "license": "Apache-2.0",
+  "author": "Efraín Guillermo Mariotte Parra — TecnoAcademia Tolima (SENA)"
+}

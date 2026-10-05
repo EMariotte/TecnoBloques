@@ -1,0 +1,20 @@
+# Dependencias y compilados (se regeneran con npm install / npm run build)
+node_modules/
+dist/
+
+# Salidas de las pruebas (.ino generados y capturas)
+test/salida/
+
+# Credenciales — nunca commitear (fase 2: servidor de compilación)
+.env
+.env.*
+.mcp.json
+
+# Herramientas locales
+.vscode/
+.playwright-mcp/
+__pycache__/
+
+# Sistema
+.DS_Store
+Thumbs.db

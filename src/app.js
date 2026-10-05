@@ -1,0 +1,1100 @@
+/* =====================================================================
+   TecnoBloques — interfaz: espacio de bloques, código, Mis bloques,
+   proyectos y monitor serial
+   ===================================================================== */
+'use strict';
+
+let espacio = null;
+let embebidos = {};
+let ultimo = { codigo: '', avisos: [], externos: [] };
+const estado = { texto: null, vista: 'dividido', baudiosManual: false };
+const $ = (id) => document.getElementById(id);
+
+/* ---------- Almacenamiento local seguro ---------- */
+const CLAVE_LIB = 'tecnobloques.misBloques.v1';
+const CLAVE_AUTO = 'tecnobloques.autoguardado.v1';
+const CLAVE_PREF = 'tecnobloques.preferencias.v1';
+let libCache = null;
+function leerLibreria() {
+  if (libCache) return libCache;
+  try {
+    const t = localStorage.getItem(CLAVE_LIB);
+    libCache = t ? (JSON.parse(t).bloques || {}) : {};
+  } catch (e) { libCache = {}; }
+  return libCache;
+}
+function escribirLibreria(lib) {
+  libCache = lib;
+  try { localStorage.setItem(CLAVE_LIB, JSON.stringify({ app: 'TecnoBloques', version: 1, bloques: lib })); return true; }
+  catch (e) { mostrarToast('No se pudo guardar en este navegador. Exporta tu librería para no perderla.'); return false; }
+}
+function guardarLocal(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* sin almacenamiento */ } }
+function leerLocal(k) { try { const t = localStorage.getItem(k); return t ? JSON.parse(t) : null; } catch (e) { return null; } }
+
+/* ---------- Utilidades de interfaz ---------- */
+function el(tag, props, ...hijos) {
+  const e = document.createElement(tag);
+  if (props) for (const [k, v] of Object.entries(props)) {
+    if (k === 'class') e.className = v;
+    else if (k.startsWith('on')) e.addEventListener(k.slice(2), v);
+    else if (v !== undefined && v !== null) e.setAttribute(k, v);
+  }
+  for (const h of hijos.flat()) if (h !== null && h !== undefined) e.append(h.nodeType ? h : document.createTextNode(String(h)));
+  return e;
+}
+let toastTimer = null;
+function mostrarToast(msg) {
+  const t = $('toast'); t.textContent = msg; t.hidden = false;
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, 3200);
+}
+let modalCancelar = null;
+function modal({ titulo, cuerpo, botones, cancelar, alAbrir }) {
+  $('modalTitulo').textContent = titulo;
+  const c = $('modalCuerpo'); c.innerHTML = '';
+  (Array.isArray(cuerpo) ? cuerpo : [cuerpo]).forEach(n => c.append(typeof n === 'string' ? el('p', null, n) : n));
+  const a = $('modalAcciones'); a.innerHTML = '';
+  modalCancelar = cancelar || null;
+  (botones || [{ texto: 'Cerrar', primario: true }]).forEach(b => {
+    a.append(el('button', {
+      type: 'button', class: 'btn' + (b.primario ? ' primario' : ''),
+      onclick: async () => { const r = b.accion ? await b.accion() : undefined; if (r !== false) cerrarModal(false); }
+    }, b.texto));
+  });
+  $('modal').hidden = false;
+  setTimeout(() => {
+    const f = c.querySelector('input, textarea, select') || a.querySelector('.primario') || a.querySelector('button');
+    if (f) f.focus();
+    if (alAbrir) alAbrir();
+  }, 20);
+}
+function cerrarModal(porCancelar) {
+  $('modal').hidden = true;
+  const cb = modalCancelar; modalCancelar = null;
+  if (porCancelar && cb) cb();
+}
+$('modal').addEventListener('keydown', (e) => { if (e.key === 'Escape') cerrarModal(true); });
+$('modal').addEventListener('mousedown', (e) => { if (e.target === $('modal')) cerrarModal(true); });
+
+async function copiarTexto(t) {
+  try { await navigator.clipboard.writeText(t); mostrarToast('Copiado al portapapeles'); return true; }
+  catch (e) { return false; }
+}
+function descargar(nombre, contenido, tipo) {
+  try {
+    const url = URL.createObjectURL(new Blob([contenido], { type: tipo || 'text/plain' }));
+    const a = el('a', { href: url, download: nombre });
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  } catch (e) { /* el visor puede bloquear descargas */ }
+}
+function modalExportar(titulo, nombreArchivo, contenido, tipo, explicacion) {
+  const ta = el('textarea', { readonly: 'readonly', 'aria-label': 'Contenido' }); ta.value = contenido;
+  modal({
+    titulo,
+    cuerpo: [explicacion ? el('p', null, explicacion) : null, el('p', { class: 'muted' }, 'Archivo: ', el('code', null, nombreArchivo)), ta,
+      el('p', { class: 'muted' }, 'Si la descarga no inicia (por ejemplo en la vista previa de Claude), usa Copiar y pégalo donde lo necesites.')].filter(Boolean),
+    botones: [
+      { texto: 'Copiar', accion: async () => { if (!(await copiarTexto(contenido))) { ta.focus(); ta.select(); mostrarToast('Selecciona y copia con Ctrl+C'); } return false; } },
+      { texto: 'Descargar', primario: true, accion: () => { descargar(nombreArchivo, contenido, tipo); return false; } },
+      { texto: 'Cerrar' }
+    ]
+  });
+}
+function nombreArchivoBase() {
+  return (nombreC($('nombreProyecto').value || 'proyecto').replace(/_+/g, '_').replace(/^_|_$/g, '') || 'proyecto');
+}
+
+/* ---------- Diálogos de Blockly (prompt/confirm del navegador no funcionan en todos lados) ---------- */
+Blockly.dialog.setAlert((msg, cb) => modal({ titulo: 'Aviso', cuerpo: msg, botones: [{ texto: 'Entendido', primario: true, accion: () => { cb && cb(); } }], cancelar: cb }));
+Blockly.dialog.setConfirm((msg, cb) => modal({
+  titulo: 'Confirmar', cuerpo: msg,
+  botones: [{ texto: 'Cancelar', accion: () => cb(false) }, { texto: 'Aceptar', primario: true, accion: () => cb(true) }],
+  cancelar: () => cb(false)
+}));
+Blockly.dialog.setPrompt((msg, def, cb) => {
+  const inp = el('input', { class: 'entrada', value: def || '', 'aria-label': msg });
+  inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); cerrarModal(false); cb(inp.value); } });
+  modal({
+    titulo: msg, cuerpo: inp,
+    botones: [{ texto: 'Cancelar', accion: () => cb(null) }, { texto: 'Aceptar', primario: true, accion: () => cb(inp.value) }],
+    cancelar: () => cb(null)
+  });
+});
+
+/* ---------- Tema de Blockly ---------- */
+const ESTILOS_BLOQUES = {
+  logic_blocks: { colourPrimary: COL.logica }, loop_blocks: { colourPrimary: COL.bucles },
+  math_blocks: { colourPrimary: COL.mate }, text_blocks: { colourPrimary: COL.texto },
+  variable_blocks: { colourPrimary: COL.variables }, procedure_blocks: { colourPrimary: COL.funciones }
+};
+const FUENTE = { family: '"Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif', weight: 'bold', size: 11 };
+const TEMA_CLARO = Blockly.Theme.defineTheme('tecno_claro', {
+  base: Blockly.Themes.Classic, blockStyles: ESTILOS_BLOQUES, fontStyle: FUENTE, startHats: false,
+  componentStyles: {
+    workspaceBackgroundColour: '#f6f8f4', toolboxBackgroundColour: '#fbfcfa', toolboxForegroundColour: '#15211a',
+    flyoutBackgroundColour: '#eef2ec', flyoutForegroundColour: '#56655c', flyoutOpacity: 0.97,
+    scrollbarColour: '#98a69d', insertionMarkerColour: '#2c8a1c', insertionMarkerOpacity: 0.35, cursorColour: '#2c8a1c'
+  }
+});
+const TEMA_OSCURO = Blockly.Theme.defineTheme('tecno_oscuro', {
+  base: Blockly.Themes.Classic, blockStyles: ESTILOS_BLOQUES, fontStyle: FUENTE, startHats: false,
+  componentStyles: {
+    workspaceBackgroundColour: '#101813', toolboxBackgroundColour: '#131c16', toolboxForegroundColour: '#e3ebe5',
+    flyoutBackgroundColour: '#18231c', flyoutForegroundColour: '#93a399', flyoutOpacity: 0.97,
+    scrollbarColour: '#4a5a50', insertionMarkerColour: '#5cc94a', insertionMarkerOpacity: 0.35, cursorColour: '#5cc94a'
+  }
+});
+function esOscuro() {
+  const t = document.documentElement.getAttribute('data-theme');
+  if (t === 'dark') return true;
+  if (t === 'light') return false;
+  return window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches;
+}
+function aplicarTema() { if (espacio) espacio.setTheme(esOscuro() ? TEMA_OSCURO : TEMA_CLARO); }
+
+/* ---------- Imágenes internas de Blockly (sin servidores externos) ---------- */
+const PREFIJO_MEDIA = 'tbmedia/';
+function reemplazarMedia(raiz) {
+  const media = window.TB_MEDIA || {};
+  raiz.querySelectorAll('image').forEach(img => {
+    const h = img.getAttribute('href') || img.getAttributeNS('http://www.w3.org/1999/xlink', 'href') || '';
+    if (h.startsWith(PREFIJO_MEDIA)) {
+      const d = media[h.slice(PREFIJO_MEDIA.length)];
+      if (d) { img.setAttribute('href', d); img.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', d); }
+    }
+  });
+}
+new MutationObserver((muts) => {
+  for (const m of muts) {
+    if (m.type === 'attributes') { if (m.target.tagName === 'image') reemplazarMedia(m.target.parentNode || document); }
+    else m.addedNodes.forEach(n => { if (n.nodeType === 1) { if (n.tagName === 'image') reemplazarMedia(n.parentNode); else reemplazarMedia(n); } });
+  }
+}).observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['href', 'xlink:href'] });
+
+/* ---------- Caja de herramientas ---------- */
+const num = (v) => ({ shadow: { type: 'math_number', fields: { NUM: v } } });
+const txt = (v) => ({ shadow: { type: 'text', fields: { TEXT: v } } });
+const B = (type, extra) => Object.assign({ kind: 'block', type }, extra || {});
+const TOOLBOX = {
+  kind: 'categoryToolbox',
+  contents: [
+    { kind: 'category', name: 'Lógica', colour: COL.logica, contents: [
+      B('controls_if'), B('controls_if', { extraState: { hasElse: true } }),
+      B('logic_compare', { inputs: { A: num(0), B: num(0) } }), B('logic_operation'), B('logic_negate'), B('logic_boolean')
+    ] },
+    { kind: 'category', name: 'Bucles', colour: COL.bucles, contents: [
+      B('controls_repeat_ext', { inputs: { TIMES: num(10) } }), B('controls_whileUntil'),
+      B('bucle_para', { inputs: { DESDE: num(1), HASTA: num(10), PASO: num(1) } }), B('controls_flow_statements')
+    ] },
+    { kind: 'category', name: 'Matemáticas', colour: COL.mate, contents: [
+      B('math_number'), B('math_arithmetic', { inputs: { A: num(1), B: num(1) } }), B('math_single', { inputs: { NUM: num(9) } }),
+      B('math_modulo', { inputs: { DIVIDEND: num(10), DIVISOR: num(3) } }),
+      B('mapear', { inputs: { A: num(0), B: num(1023), C: num(0), D: num(255) } }),
+      B('math_constrain', { inputs: { VALUE: num(50), LOW: num(0), HIGH: num(100) } }),
+      B('math_random_int', { inputs: { FROM: num(1), TO: num(6) } }), B('math_round', { inputs: { NUM: num(3.1) } }), B('es_valido')
+    ] },
+    { kind: 'category', name: 'Texto', colour: COL.texto, contents: [
+      B('text'), B('texto_unir', { inputs: { A: txt('Temp: '), B: num(0) } }), B('caracter'), B('text_length', { inputs: { VALUE: txt('hola') } }),
+      B('texto_a_numero', { inputs: { V: txt('42') } })
+    ] },
+    { kind: 'category', name: 'Variables', colour: COL.variables, custom: 'VARIABLES_TB' },
+    { kind: 'category', name: 'Funciones', colour: COL.funciones, custom: 'FUNCIONES_TB' },
+    { kind: 'category', name: 'Mis bloques', colour: COL.mis, custom: 'MIS_BLOQUES_TB' },
+    { kind: 'sep' },
+    { kind: 'category', name: 'Entradas y salidas', colour: COL.es, contents: [
+      B('escribir_digital'), B('leer_digital'), B('pin_modo'), B('escribir_pwm', { inputs: { V: num(128) } }), B('leer_analogo'),
+      B('escribir_digital_valor', { inputs: { V: { shadow: { type: 'logic_boolean' } } } }),
+      B('tono', { inputs: { F: num(440), D: num(200) } }), B('sin_tono')
+    ] },
+    { kind: 'category', name: 'Tiempo', colour: COL.tiempo, contents: [
+      B('esperar', { inputs: { MS: num(1000) } }), B('esperar_seg', { inputs: { S: num(1) } }), B('millis'),
+      B('cada_ms', { inputs: { MS: num(500) } })
+    ] },
+    { kind: 'category', name: 'Monitor serial', colour: COL.serial, contents: [
+      B('serial_iniciar'), B('serial_imprimir', { inputs: { V: txt('Hola') } }), B('serial_disponible'), B('serial_leer_texto'),
+      B('serial_leer_caracter'), B('serial_leer_numero')
+    ] },
+    { kind: 'category', name: 'Bluetooth', colour: COL.bt, contents: [
+      B('bt_iniciar'), B('bt_enviar', { inputs: { V: txt('Hola') } }), B('bt_disponible'), B('bt_leer_caracter'), B('bt_leer_texto')
+    ] },
+    { kind: 'sep' },
+    { kind: 'category', name: 'Motores (shield)', colour: COL.motores, contents: [
+      B('motor_dc', { inputs: { VEL: num(200) } }), B('motor_detener'), B('motores_detener_todos'),
+      B('motor_paso', { inputs: { RPM: num(10), N: num(100) } })
+    ] },
+    { kind: 'category', name: 'Servos', colour: COL.servos, contents: [B('servo_mover', { inputs: { A: num(90) } })] },
+    { kind: 'category', name: 'Sensores', colour: COL.sensores, contents: [
+      B('dht_leer'), B('ultrasonido'), B('es_valido')
+    ] },
+    { kind: 'category', name: 'Pantalla LCD', colour: COL.lcd, contents: [
+      B('lcd_iniciar'), B('lcd_escribir', { inputs: { V: txt('Hola'), C: num(0), F: num(0) } }), B('lcd_limpiar'), B('lcd_luz')
+    ] },
+    { kind: 'category', name: 'Otto humanoide', colour: COL.otto, contents: [
+      B('otto_iniciar'), B('otto_brazos_iniciar'), { kind: 'label', text: 'Moverse' },
+      B('otto_caminar', { inputs: { N: num(2) } }), B('otto_girar', { inputs: { N: num(2) } }), B('otto_pierna'),
+      B('otto_baile', { inputs: { N: num(2) } }), B('otto_saltar'), B('otto_reposo'), { kind: 'label', text: 'Brazos' }, B('otto_brazos'),
+      { kind: 'label', text: 'Sonidos y gestos' }, B('otto_sonido'), B('otto_gesto'), B('otto_tono', { inputs: { F: num(440), D: num(200) } }),
+      { kind: 'label', text: 'Sensor de distancia' }, B('ultrasonido')
+    ] },
+    { kind: 'sep' },
+    { kind: 'category', name: 'C++ libre', colour: COL.cpp, contents: [B('cpp_linea'), B('cpp_expresion'), B('cpp_global')] }
+  ]
+};
+
+/* ---------- Categorías dinámicas ---------- */
+function sombraPara(tipo) {
+  if (tipo === 'String') return txt('');
+  if (tipo === 'bool') return { shadow: { type: 'logic_boolean' } };
+  if (tipo === 'char') return { shadow: { type: 'caracter', fields: { C: 'A' } } };
+  return num(0);
+}
+function itemLlamada(f) {
+  const inputs = {};
+  (f.params || []).forEach((p, i) => { inputs['ARG' + i] = sombraPara(p.tipo); });
+  return { kind: 'block', type: f.tipo === 'void' ? 'fn_call' : 'fn_call_val', extraState: { nombre: f.nombre, tipo: f.tipo, params: f.params || [] }, inputs };
+}
+function flyoutVariables(ws) {
+  const items = [{ kind: 'button', text: 'Crear variable…', callbackkey: 'CREAR_VAR' }];
+  const vars = ws.getVariableMap().getAllVariables();
+  if (!vars.length) {
+    items.push({ kind: 'label', text: 'Cada variable tiene un tipo: entero, decimal, texto…' });
+    return items;
+  }
+  const v0 = vars[vars.length - 1];
+  items.push(B('var_set', { fields: { VAR: { id: v0.getId() } }, inputs: { V: sombraPara(v0.getType()) } }));
+  const numerica = vars.slice().reverse().find(v => ['int', 'long', 'float', 'char'].includes(v.getType()));
+  if (numerica) items.push(B('var_cambiar', { fields: { VAR: { id: numerica.getId() } }, inputs: { V: num(1) } }));
+  items.push({ kind: 'label', text: 'Tus variables' });
+  vars.slice().sort((a, b) => a.getName().localeCompare(b.getName())).forEach(v => {
+    items.push(B('var_get', { fields: { VAR: { id: v.getId() } } }));
+  });
+  return items;
+}
+function flyoutFunciones(ws) {
+  const items = [
+    B('fn_def', { fields: { NAME: 'mi_bloque' } }), B('fn_param'),
+    { kind: 'button', text: '¿Cómo funcionan?', callbackkey: 'AYUDA_MIS' }
+  ];
+  const defs = ws.getBlocksByType('fn_def', false);
+  if (defs.length) {
+    items.push({ kind: 'label', text: 'Bloques de este programa' });
+    defs.map(firmaDeBloque).sort((a, b) => a.nombre.localeCompare(b.nombre)).forEach(f => items.push(itemLlamada(f)));
+  }
+  return items;
+}
+function flyoutMisBloques(ws) {
+  const items = [
+    { kind: 'button', text: 'Importar librería…', callbackkey: 'IMPORTAR_LIB' },
+    { kind: 'button', text: 'Exportar librería…', callbackkey: 'EXPORTAR_LIB' },
+    { kind: 'button', text: 'Administrar…', callbackkey: 'ADMIN_LIB' }
+  ];
+  const lib = leerLibreria();
+  const nombres = Object.keys(lib).sort((a, b) => a.localeCompare(b));
+  if (!nombres.length) {
+    items.push({ kind: 'label', text: 'Aún no hay bloques guardados.' });
+    items.push({ kind: 'label', text: 'Crea uno en Funciones y usa clic derecho → Guardar en Mis bloques.' });
+  } else {
+    items.push({ kind: 'label', text: 'Guardados en este navegador' });
+    nombres.forEach(n => items.push(itemLlamada(firmaDeDef(lib[n]))));
+  }
+  const soloProyecto = Object.keys(embebidos).filter(n => !lib[n]);
+  if (soloProyecto.length) {
+    items.push({ kind: 'label', text: 'Venían dentro de este proyecto' });
+    soloProyecto.forEach(n => items.push(itemLlamada(firmaDeDef(embebidos[n]))));
+  }
+  return items;
+}
+
+/* ---------- Variables ---------- */
+function dialogoCrearVariable() {
+  const nombre = el('input', { class: 'entrada', id: 'nuevaVarNombre', placeholder: 'por ejemplo: velocidad', autocomplete: 'off' });
+  const tipo = el('select', { id: 'nuevaVarTipo', class: 'entrada' }, TIPOS_VAR.map(t => el('option', { value: t[1] }, t[0])));
+  const error = el('p', { class: 'error' });
+  const crear = () => {
+    const n = nombre.value.trim();
+    if (!n) { error.textContent = 'Escribe un nombre.'; return false; }
+    if (espacio.getVariableMap().getVariable(n)) { error.textContent = 'Ya existe una variable con ese nombre.'; return false; }
+    espacio.getVariableMap().createVariable(n, tipo.value);
+    espacio.getToolbox() && espacio.getToolbox().refreshSelection();
+    mostrarToast(`Variable "${n}" creada (${NOMBRE_TIPO[tipo.value]})`);
+    return true;
+  };
+  nombre.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); if (crear()) cerrarModal(false); } });
+  modal({
+    titulo: 'Crear variable',
+    cuerpo: [el('label', { for: 'nuevaVarNombre' }, 'Nombre', nombre), el('label', { for: 'nuevaVarTipo' }, 'Tipo', tipo),
+      el('p', { class: 'muted' }, 'Entero para contar, decimal para medidas como la temperatura, carácter para los comandos de Bluetooth, texto para mensajes.'), error],
+    botones: [{ texto: 'Cancelar' }, { texto: 'Crear', primario: true, accion: crear }]
+  });
+}
+
+/* ---------- Mis bloques ---------- */
+function quitarIds(o) {
+  if (Array.isArray(o)) return o.map(quitarIds);
+  if (o && typeof o === 'object') { const r = {}; for (const k of Object.keys(o)) if (k !== 'id' && k !== 'x' && k !== 'y') r[k] = quitarIds(o[k]); return r; }
+  return o;
+}
+function mismaDef(a, b) { return JSON.stringify(quitarIds(a.cuerpo)) === JSON.stringify(quitarIds(b.cuerpo)); }
+function defDeBloque(b) {
+  const f = firmaDeBloque(b);
+  return {
+    nombre: f.nombre, tipo: f.tipo, params: f.params,
+    cuerpo: Blockly.serialization.blocks.save(b, { addCoordinates: false, addNextBlocks: false }),
+    descripcion: (b.getCommentText && b.getCommentText()) || '', actualizado: Date.now()
+  };
+}
+function llamadasDentro(b) {
+  return b.getDescendants(false).filter(x => x.type === 'fn_call' || x.type === 'fn_call_val').map(x => x.firma_.nombre);
+}
+function recolectarParaGuardar(b, lista, vistos) {
+  const n = b.getFieldValue('NAME');
+  if (vistos.has(n)) return;
+  vistos.add(n);
+  lista.push(defDeBloque(b));
+  for (const nombre of llamadasDentro(b)) {
+    const def = espacio.getBlocksByType('fn_def', false).find(x => x.getFieldValue('NAME') === nombre);
+    if (def) recolectarParaGuardar(def, lista, vistos);
+    else if (embebidos[nombre] && !leerLibreria()[nombre] && !vistos.has(nombre)) { vistos.add(nombre); lista.push(embebidos[nombre]); }
+  }
+}
+function guardarEnMisBloques(b) {
+  const lista = []; recolectarParaGuardar(b, lista, new Set());
+  const lib = Object.assign({}, leerLibreria());
+  const choques = lista.filter(d => lib[d.nombre] && !mismaDef(lib[d.nombre], d));
+  const hacer = () => {
+    lista.forEach(d => { lib[d.nombre] = d; });
+    if (escribirLibreria(lib)) {
+      const extra = lista.length > 1 ? ` (y ${lista.length - 1} bloque(s) que usa)` : '';
+      mostrarToast(`"${lista[0].nombre}" quedó en Mis bloques${extra}`);
+    }
+    espacio.getToolbox() && espacio.getToolbox().refreshSelection();
+    programarActualizacion();
+  };
+  if (!choques.length) return hacer();
+  modal({
+    titulo: 'Ya existe en Mis bloques',
+    cuerpo: [el('p', null, 'Estos bloques ya estaban guardados con otra versión:'), el('ul', null, choques.map(d => el('li', null, d.nombre))),
+      el('p', { class: 'muted' }, 'Si los reemplazas, los programas que los usen tomarán la versión nueva la próxima vez que los abras.')],
+    botones: [{ texto: 'Cancelar' }, { texto: 'Reemplazar', primario: true, accion: hacer }]
+  });
+}
+function traerDefinicion(nombre) {
+  const r = buscarDefinicion(nombre);
+  if (!r || !r.def) return;
+  const nuevo = Blockly.serialization.blocks.append(r.def.cuerpo, espacio);
+  const m = espacio.getMetricsManager().getViewMetrics(true);
+  nuevo.moveTo(new Blockly.utils.Coordinate(m.left + 40, m.top + 40));
+  nuevo.select && nuevo.select();
+  mostrarToast(`Ya puedes editar "${nombre}". Cuando termines, clic derecho → Guardar en Mis bloques.`);
+}
+function exportarLibreria() {
+  const lib = leerLibreria();
+  if (!Object.keys(lib).length) return modal({ titulo: 'Tu librería está vacía', cuerpo: 'Guarda primero algún bloque: en Funciones crea "definir bloque" y usa clic derecho → Guardar en Mis bloques.' });
+  modalExportar('Exportar Mis bloques', 'mis_bloques.tblib.json',
+    JSON.stringify({ app: 'TecnoBloques-libreria', version: 1, exportado: new Date().toISOString(), bloques: lib }, null, 1), 'application/json',
+    `Guarda este archivo en tu USB o carpeta. En otro computador usa Mis bloques → Importar. Contiene ${Object.keys(lib).length} bloque(s).`);
+}
+function leerArchivoTexto(archivo) {
+  return new Promise((ok, mal) => { const r = new FileReader(); r.onload = () => ok(String(r.result)); r.onerror = () => mal(r.error); r.readAsText(archivo); });
+}
+function modalAbrirTexto({ titulo, explicacion, alLeer }) {
+  const inputArchivo = el('input', { type: 'file', accept: '.json,application/json', id: 'archivoModal', class: 'entrada' });
+  const ta = el('textarea', { placeholder: '…o pega aquí el contenido del archivo', 'aria-label': 'Contenido del archivo' });
+  const error = el('p', { class: 'error' });
+  inputArchivo.addEventListener('change', async () => {
+    const f = inputArchivo.files && inputArchivo.files[0];
+    if (f) ta.value = await leerArchivoTexto(f);
+  });
+  modal({
+    titulo,
+    cuerpo: [el('p', null, explicacion), el('label', { for: 'archivoModal' }, 'Archivo', inputArchivo), ta, error],
+    botones: [{ texto: 'Cancelar' }, {
+      texto: 'Abrir', primario: true, accion: () => {
+        let datos;
+        try { datos = JSON.parse(ta.value); } catch (e) { error.textContent = 'El contenido no es un archivo válido de TecnoBloques.'; return false; }
+        const r = alLeer(datos);
+        if (typeof r === 'string') { error.textContent = r; return false; }
+        return r;
+      }
+    }]
+  });
+}
+function importarLibreria() {
+  modalAbrirTexto({
+    titulo: 'Importar librería de bloques', explicacion: 'Elige un archivo .tblib.json exportado desde TecnoBloques.',
+    alLeer: (d) => {
+      if (!d || !d.bloques || typeof d.bloques !== 'object') return 'Ese archivo no es una librería de bloques.';
+      const lib = Object.assign({}, leerLibreria());
+      const nuevos = Object.values(d.bloques).filter(x => x && x.nombre && x.cuerpo);
+      const choques = nuevos.filter(x => lib[x.nombre] && !mismaDef(lib[x.nombre], x));
+      const aplicar = (reemplazar) => {
+        let n = 0;
+        nuevos.forEach(x => { if (!lib[x.nombre] || reemplazar) { lib[x.nombre] = x; n++; } });
+        escribirLibreria(lib);
+        espacio.getToolbox() && espacio.getToolbox().refreshSelection();
+        programarActualizacion();
+        mostrarToast(`${n} bloque(s) importado(s)`);
+      };
+      if (!choques.length) { aplicar(true); return true; }
+      setTimeout(() => modal({
+        titulo: 'Algunos bloques ya existen',
+        cuerpo: [el('p', null, 'Estos nombres ya están en tu librería con otra versión:'), el('ul', null, choques.map(x => el('li', null, x.nombre)))],
+        botones: [{ texto: 'Conservar los míos', accion: () => aplicar(false) }, { texto: 'Reemplazar', primario: true, accion: () => aplicar(true) }]
+      }), 30);
+      return true;
+    }
+  });
+}
+function administrarLibreria() {
+  const lib = leerLibreria();
+  const nombres = Object.keys(lib).sort((a, b) => a.localeCompare(b));
+  const lista = el('div');
+  const pintar = () => {
+    lista.innerHTML = '';
+    const actual = leerLibreria();
+    const ns = Object.keys(actual).sort((a, b) => a.localeCompare(b));
+    if (!ns.length) lista.append(el('p', { class: 'muted' }, 'No hay bloques guardados.'));
+    ns.forEach(n => {
+      const d = actual[n];
+      const firma = `${n}(${(d.params || []).map(p => p.nombre + ': ' + NOMBRE_TIPO[p.tipo]).join(', ')})` + (d.tipo !== 'void' ? ' → ' + NOMBRE_TIPO[d.tipo] : '');
+      lista.append(el('div', { class: 'fila-lib' }, el('span', null, el('code', null, firma)),
+        el('button', { type: 'button', class: 'btn chico', onclick: () => {
+          const copia = Object.assign({}, leerLibreria()); delete copia[n]; escribirLibreria(copia); pintar();
+          espacio.getToolbox() && espacio.getToolbox().refreshSelection(); programarActualizacion();
+        } }, 'Borrar')));
+    });
+  };
+  pintar();
+  modal({
+    titulo: 'Mis bloques', cuerpo: [el('p', { class: 'muted' }, `Guardados en este navegador (${nombres.length}). Si borras los datos del navegador se pierden: exporta una copia.`), lista],
+    botones: [{ texto: 'Exportar…', accion: () => { setTimeout(exportarLibreria, 30); } }, { texto: 'Cerrar', primario: true }]
+  });
+}
+function ayudaMisBloques() {
+  modal({
+    titulo: 'Bloques propios en 3 pasos',
+    cuerpo: [el('ul', null,
+      el('li', null, 'En Funciones arrastra "definir bloque", ponle nombre (por ejemplo ', el('code', null, 'avanzar'), ') y, si quieres, parámetros con su tipo.'),
+      el('li', null, 'Arma adentro lo que debe hacer. Úsalo en tu programa desde Funciones.'),
+      el('li', null, 'Clic derecho sobre "definir bloque" → Guardar en Mis bloques. Desde ese momento aparece en Mis bloques en cualquier programa de este navegador.')),
+      el('p', { class: 'muted' }, 'Las variables que uses dentro de un bloque guardado son propias de ese bloque. Al guardar un proyecto, se lleva una copia de los bloques propios que usa, así funciona en otro computador. Para llevar toda tu librería, usa Exportar.')]
+  });
+}
+
+/* ---------- Actualización del código ---------- */
+let temporizador = null;
+function programarActualizacion() { clearTimeout(temporizador); temporizador = setTimeout(actualizar, 120); }
+let avisados = [];
+function actualizar() {
+  if (!espacio) return;
+  Blockly.Events.setGroup(true);
+  try {
+    espacio.getAllBlocks(false).forEach(b => { if (b.refrescar_ && !b.isInFlyout) b.refrescar_(); });
+  } finally { Blockly.Events.setGroup(false); }
+  ultimo = generarPrograma(espacio);
+  pintarCodigo();
+  pintarAvisos();
+  sugerirBaudios();
+  autoguardar();
+}
+function pintarAvisos() {
+  avisados.forEach(id => { const b = espacio.getBlockById(id); if (b) b.setWarningText(null, 'tb'); });
+  avisados = [];
+  const cont = $('avisos'); cont.innerHTML = '';
+  const vistos = new Set();
+  ultimo.avisos.forEach(a => {
+    if (vistos.has(a.msg)) return; vistos.add(a.msg);
+    if (a.id) { const b = espacio.getBlockById(a.id); if (b) { b.setWarningText(a.msg, 'tb'); avisados.push(a.id); } }
+    cont.append(el('button', {
+      type: 'button', class: 'aviso' + (a.tipo === 'info' ? ' info' : ''),
+      onclick: () => { if (a.id) { const b = espacio.getBlockById(a.id); if (b) { espacio.centerOnBlock(a.id); b.select && b.select(); } } }
+    }, el('b', null, a.tipo === 'info' ? 'Nota' : 'Revisa'), el('span', null, a.msg)));
+  });
+}
+
+/* ---------- Resaltado de C++ ---------- */
+const PAL_KW = new Set('if else for while do switch case default break continue return static const volatile true false new delete sizeof struct class public private'.split(' '));
+const PAL_TIPO = new Set('int long float double bool boolean char byte String void unsigned signed short uint8_t int16_t uint16_t uint32_t int32_t word size_t Servo DHT SoftwareSerial LiquidCrystal_I2C AF_DCMotor AF_Stepper Otto'.split(' '));
+const PAL_CONST = new Set('HIGH LOW INPUT OUTPUT INPUT_PULLUP FORWARD BACKWARD RELEASE LEFT RIGHT SMALL MEDIUM BIG SINGLE DOUBLE INTERLEAVE MICROSTEP DHT11 DHT22 NAN'.split(' '));
+function escaparHTML(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+function resaltarLinea(linea) {
+  if (/^\s*#/.test(linea)) {
+    const i = linea.indexOf('//');
+    return i >= 0 ? `<span class="tk-pre">${escaparHTML(linea.slice(0, i))}</span><span class="tk-com">${escaparHTML(linea.slice(i))}</span>` : `<span class="tk-pre">${escaparHTML(linea)}</span>`;
+  }
+  const re = /(\/\/.*$)|("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')|(\b0x[0-9A-Fa-f]+\b|\b\d+(?:\.\d+)?(?:UL|L|U|f)?\b)|([A-Za-z_]\w*)(\s*\()?/g;
+  let out = '', ultimoI = 0, m;
+  while ((m = re.exec(linea))) {
+    out += escaparHTML(linea.slice(ultimoI, m.index));
+    ultimoI = re.lastIndex;
+    if (m[1]) out += `<span class="tk-com">${escaparHTML(m[1])}</span>`;
+    else if (m[2]) out += `<span class="tk-str">${escaparHTML(m[2])}</span>`;
+    else if (m[3]) out += `<span class="tk-num">${m[3]}</span>`;
+    else if (m[4]) {
+      const w = m[4];
+      let cls = PAL_KW.has(w) ? 'tk-kw' : PAL_TIPO.has(w) ? 'tk-type' : PAL_CONST.has(w) ? 'tk-num' : m[5] ? 'tk-fn' : '';
+      out += cls ? `<span class="${cls}">${w}</span>` : w;
+      if (m[5]) out += escaparHTML(m[5]);
+    }
+  }
+  return out + escaparHTML(linea.slice(ultimoI));
+}
+function pintarCodigo() {
+  const codigo = ultimo.codigo;
+  const pre = $('codigo');
+  const arriba = pre.scrollTop;
+  pre.innerHTML = codigo.replace(/\n$/, '').split('\n').map((l, i) => `<span class="ln">${i + 1}</span>${resaltarLinea(l)}`).join('\n');
+  pre.scrollTop = arriba;
+}
+function codigoActual() { return estado.texto ? $('editor').value : ultimo.codigo; }
+
+/* ---------- Modo texto (editar C++) ---------- */
+function entrarModoTexto(codigo, base) {
+  estado.texto = { base: base !== undefined ? base : ultimo.codigo };
+  const ed = $('editor'); ed.value = codigo !== undefined ? codigo : ultimo.codigo;
+  ed.hidden = false; $('codigo').hidden = true;
+  $('avisoTexto').hidden = false;
+  $('btnEditar').textContent = 'Volver a bloques';
+  $('estadoCodigo').textContent = 'Editando el C++ a mano';
+  $('estadoCodigo').classList.add('editando');
+  if (estado.vista === 'bloques') cambiarVista('dividido');
+  seleccionarPestana('codigo');
+  ed.focus();
+  autoguardar();
+}
+function salirModoTexto(forzar) {
+  if (!estado.texto) return;
+  const cambiado = $('editor').value !== estado.texto.base;
+  const salir = () => {
+    estado.texto = null;
+    $('editor').hidden = true; $('codigo').hidden = false;
+    $('avisoTexto').hidden = true;
+    $('btnEditar').textContent = 'Editar C++';
+    $('estadoCodigo').textContent = 'Se actualiza con cada bloque';
+    $('estadoCodigo').classList.remove('editando');
+    programarActualizacion();
+  };
+  if (!cambiado || forzar) return salir();
+  modal({
+    titulo: 'Cambiaste el código a mano',
+    cuerpo: [el('p', null, 'Los bloques no pueden leer C++ escrito a mano, así que al volver se muestra otra vez el código de los bloques.'),
+      el('p', { class: 'muted' }, 'Para no perder tu versión, cópiala o descárgala antes. Si quieres conservar solo una parte, pégala en un bloque "C++ libre".')],
+    botones: [
+      { texto: 'Seguir editando' },
+      { texto: 'Copiar mi código y volver', accion: async () => { await copiarTexto($('editor').value); salir(); } },
+      { texto: 'Descartar y volver', primario: true, accion: salir }
+    ]
+  });
+}
+$('editor').addEventListener('keydown', (e) => {
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    const t = e.target, s = t.selectionStart, f = t.selectionEnd;
+    t.value = t.value.slice(0, s) + '  ' + t.value.slice(f);
+    t.selectionStart = t.selectionEnd = s + 2;
+  }
+});
+$('editor').addEventListener('input', () => autoguardar());
+
+/* ---------- Vistas y pestañas ---------- */
+function cambiarVista(v) {
+  estado.vista = v;
+  $('principal').dataset.vista = v;
+  document.querySelectorAll('.segmentado button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.vista === v)));
+  setTimeout(() => { if (espacio) Blockly.svgResize(espacio); }, 30);
+  guardarLocal(CLAVE_PREF, { vista: v });
+}
+function seleccionarPestana(p) {
+  $('tCodigo').setAttribute('aria-selected', String(p === 'codigo'));
+  $('tSerial').setAttribute('aria-selected', String(p === 'serial'));
+  $('pCodigo').hidden = p !== 'codigo';
+  $('pSerial').hidden = p !== 'serial';
+  if (p === 'serial' && estado.vista === 'bloques') cambiarVista('dividido');
+}
+
+/* ---------- Proyectos ---------- */
+function proyectoActual() {
+  const lib = leerLibreria();
+  const usados = {};
+  (ultimo.externos || []).forEach(n => { const d = embebidos[n] || lib[n]; if (d) usados[n] = d; });
+  return {
+    app: 'TecnoBloques', version: 1, nombre: $('nombreProyecto').value, placa: placaActual,
+    bloques: Blockly.serialization.workspaces.save(espacio), embebidos: usados,
+    texto: estado.texto ? $('editor').value : null, guardado: new Date().toISOString()
+  };
+}
+let autoTimer = null;
+function autoguardar() { clearTimeout(autoTimer); autoTimer = setTimeout(() => { if (espacio) guardarLocal(CLAVE_AUTO, proyectoActual()); }, 600); }
+function cargarProyecto(p, silencioso) {
+  if (!p || p.app !== 'TecnoBloques' || !p.bloques) return 'Ese archivo no es un proyecto de TecnoBloques.';
+  if (estado.texto) salirModoTexto(true);
+  embebidos = p.embebidos || {};
+  if (p.placa && PLACAS[p.placa]) { placaActual = p.placa; $('placa').value = p.placa; }
+  $('nombreProyecto').value = p.nombre || 'Mi proyecto';
+  Blockly.Events.disable();
+  try { espacio.clear(); } finally { Blockly.Events.enable(); }
+  try { Blockly.serialization.workspaces.load(p.bloques, espacio); }
+  catch (e) { return 'No se pudo abrir el proyecto: ' + e.message; }
+  asegurarPrograma();
+  encuadrar();
+  if (p.texto) setTimeout(() => entrarModoTexto(p.texto, ''), 200);
+  if (!silencioso) revisarVersiones();
+  programarActualizacion();
+  return true;
+}
+/** Si Mis bloques tiene una versión distinta de un bloque que trae el proyecto, pregunta cuál usar. */
+function revisarVersiones() {
+  const lib = leerLibreria();
+  const distintos = Object.keys(embebidos).filter(n => lib[n] && !mismaDef(lib[n], embebidos[n]));
+  if (!distintos.length) return;
+  setTimeout(() => modal({
+    titulo: 'Hay otra versión de tus bloques',
+    cuerpo: [el('p', null, 'Este proyecto trae una copia de estos bloques, y en Mis bloques tienes una versión distinta:'),
+      el('ul', null, distintos.map(n => el('li', null, n, el('span', { class: 'muted' }, (lib[n].actualizado || 0) > (embebidos[n].actualizado || 0) ? ' (la de Mis bloques es más nueva)' : ' (la del proyecto es más nueva)'))))],
+    botones: [
+      { texto: 'Usar la del proyecto' },
+      { texto: 'Usar la de Mis bloques', primario: true, accion: () => { distintos.forEach(n => delete embebidos[n]); programarActualizacion(); } }
+    ]
+  }), 60);
+}
+function asegurarPrograma() {
+  if (!espacio.getBlocksByType('programa', false).length) {
+    const b = espacio.newBlock('programa'); b.initSvg(); b.render(); b.moveBy(40, 40);
+  }
+}
+function nuevoProyecto() {
+  if (estado.texto) salirModoTexto(true);
+  embebidos = {};
+  espacio.clear();
+  asegurarPrograma();
+  $('nombreProyecto').value = 'Mi proyecto';
+  programarActualizacion();
+}
+function cargarXML(xml) {
+  Blockly.Events.disable();
+  try { espacio.clear(); } finally { Blockly.Events.enable(); }
+  Blockly.Xml.domToWorkspace(Blockly.utils.xml.textToDom(xml), espacio);
+  asegurarPrograma();
+  encuadrar();
+}
+/** Lleva la esquina superior izquierda de los bloques a la vista. */
+function encuadrar() {
+  setTimeout(() => {
+    const bb = espacio.getBlocksBoundingBox();
+    const s = espacio.scale;
+    espacio.scroll(24 - bb.left * s, 24 - bb.top * s);
+  }, 30);
+}
+
+/* ---------- Ejemplos ---------- */
+const LLAMADA = (f) => `<mutation firma='${JSON.stringify(f)}'></mutation>`;
+const N = (v) => `<shadow type="math_number"><field name="NUM">${v}</field></shadow>`;
+const EJEMPLOS = [
+  {
+    id: 'carro', nombre: 'Carro Bluetooth', placa: 'uno',
+    desc: 'Shield L293D, DHT11, LCD 16x2 y comandos por Bluetooth. Incluye un bloque propio.',
+    xml: `<xml xmlns="https://developers.google.com/blockly/xml">
+<variables><variable type="char" id="v_cmd">comando</variable><variable type="float" id="v_temp">temperatura</variable></variables>
+<block type="programa" x="40" y="40">
+ <statement name="SETUP">
+  <block type="serial_iniciar"><field name="B">9600</field>
+   <next><block type="bt_iniciar"><field name="RX">A1</field><field name="TX">A2</field><field name="B">9600</field>
+    <next><block type="lcd_iniciar"><field name="DIR">0x27</field><field name="T">16x2</field></block></next>
+   </block></next>
+  </block>
+ </statement>
+ <statement name="LOOP">
+  <block type="var_set"><field name="VAR" id="v_temp" variabletype="float">temperatura</field>
+   <value name="V"><block type="dht_leer"><field name="T">DHT11</field><field name="PIN">A0</field><field name="M">C</field></block></value>
+   <next><block type="lcd_escribir">
+    <value name="V"><block type="texto_unir"><value name="A"><shadow type="text"><field name="TEXT">Temp: </field></shadow></value><value name="B"><block type="var_get"><field name="VAR" id="v_temp" variabletype="float">temperatura</field></block></value></block></value>
+    <value name="C">${N(0)}</value><value name="F">${N(0)}</value>
+    <next><block type="controls_if">
+     <value name="IF0"><block type="bt_disponible"></block></value>
+     <statement name="DO0">
+      <block type="var_set"><field name="VAR" id="v_cmd" variabletype="char">comando</field><value name="V"><block type="bt_leer_caracter"></block></value>
+       <next><block type="controls_if"><mutation elseif="1"></mutation>
+        <value name="IF0"><block type="logic_compare"><field name="OP">EQ</field><value name="A"><block type="var_get"><field name="VAR" id="v_cmd" variabletype="char">comando</field></block></value><value name="B"><block type="caracter"><field name="C">A</field></block></value></block></value>
+        <statement name="DO0"><block type="fn_call">${LLAMADA({ nombre: 'avanzar', tipo: 'void', params: [{ nombre: 'velocidad', tipo: 'int' }] })}<value name="ARG0">${N(200)}</value></block></statement>
+        <value name="IF1"><block type="logic_compare"><field name="OP">EQ</field><value name="A"><block type="var_get"><field name="VAR" id="v_cmd" variabletype="char">comando</field></block></value><value name="B"><block type="caracter"><field name="C">S</field></block></value></block></value>
+        <statement name="DO1"><block type="motores_detener_todos"></block></statement>
+       </block></next>
+      </block>
+     </statement>
+     <next><block type="serial_imprimir"><field name="NL">TRUE</field><value name="V"><block type="var_get"><field name="VAR" id="v_temp" variabletype="float">temperatura</field></block></value>
+      <next><block type="esperar"><value name="MS">${N(500)}</value></block></next>
+     </block></next>
+    </block></next>
+   </block></next>
+  </block>
+ </statement>
+</block>
+<block type="fn_def" x="660" y="40">
+ <field name="NAME">avanzar</field><field name="TIPO">void</field><field name="NPARAM">1</field><field name="P0N">velocidad</field><field name="P0T">int</field>
+ <statement name="BODY">
+  <block type="motor_dc"><field name="M">1</field><field name="DIR">FORWARD</field><value name="VEL"><block type="fn_param"><field name="P">velocidad</field></block></value>
+   <next><block type="motor_dc"><field name="M">2</field><field name="DIR">FORWARD</field><value name="VEL"><block type="fn_param"><field name="P">velocidad</field></block></value></block></next>
+  </block>
+ </statement>
+</block>
+</xml>`
+  },
+  {
+    id: 'otto', nombre: 'Otto humanoide esquiva', placa: 'nano',
+    desc: 'Camina, saluda con los brazos y esquiva obstáculos con el ultrasonido.',
+    xml: `<xml xmlns="https://developers.google.com/blockly/xml">
+<block type="programa" x="40" y="40">
+ <statement name="SETUP">
+  <block type="otto_iniciar"><field name="YL">2</field><field name="YR">3</field><field name="RL">4</field><field name="RR">5</field><field name="BUZ">13</field>
+   <next><block type="otto_brazos_iniciar"><field name="IZQ">6</field><field name="DER">7</field>
+    <next><block type="otto_sonido"><field name="S">S_connection</field>
+     <next><block type="otto_brazos"><field name="A">SAL_IZQ</field>
+      <next><block type="fn_call">${LLAMADA({ nombre: 'bailar', tipo: 'void', params: [] })}</block></next>
+     </block></next>
+    </block></next>
+   </block></next>
+  </block>
+ </statement>
+ <statement name="LOOP">
+  <block type="controls_if"><mutation else="1"></mutation>
+   <value name="IF0"><block type="logic_compare"><field name="OP">LT</field>
+    <value name="A"><block type="ultrasonido"><field name="TRIG">8</field><field name="ECHO">9</field></block></value>
+    <value name="B">${N(15)}</value></block></value>
+   <statement name="DO0">
+    <block type="otto_sonido"><field name="S">S_surprise</field>
+     <next><block type="otto_brazos"><field name="A">ARRIBA</field>
+      <next><block type="otto_caminar"><field name="DIR">BACKWARD</field><field name="T">1000</field><value name="N">${N(2)}</value>
+       <next><block type="otto_girar"><field name="DIR">LEFT</field><field name="T">1000</field><value name="N">${N(3)}</value>
+        <next><block type="otto_brazos"><field name="A">FRENTE</field></block></next>
+       </block></next>
+      </block></next>
+     </block></next>
+    </block>
+   </statement>
+   <statement name="ELSE">
+    <block type="otto_caminar"><field name="DIR">FORWARD</field><field name="T">1000</field><value name="N">${N(1)}</value></block>
+   </statement>
+  </block>
+ </statement>
+</block>
+<block type="fn_def" x="660" y="40">
+ <field name="NAME">bailar</field><field name="TIPO">void</field><field name="NPARAM">0</field>
+ <statement name="BODY">
+  <block type="otto_baile"><field name="MOV">moonwalker|LEFT</field><field name="H">MEDIUM</field><field name="T">1000</field><value name="N">${N(2)}</value>
+   <next><block type="otto_baile"><field name="MOV">crusaito|FORWARD</field><field name="H">MEDIUM</field><field name="T">1000</field><value name="N">${N(2)}</value>
+    <next><block type="otto_brazos"><field name="A">ALETEAR</field>
+     <next><block type="otto_gesto"><field name="G">OttoHappy</field></block></next>
+    </block></next>
+   </block></next>
+  </block>
+ </statement>
+</block>
+</xml>`
+  },
+  {
+    id: 'eco', nombre: 'Eco serial y LED', placa: 'uno',
+    desc: 'Escribe "on" u "off" en el monitor serial para prender el LED del pin 13.',
+    xml: `<xml xmlns="https://developers.google.com/blockly/xml">
+<variables><variable type="String" id="v_msg">mensaje</variable></variables>
+<block type="programa" x="40" y="40">
+ <statement name="SETUP">
+  <block type="serial_iniciar"><field name="B">9600</field>
+   <next><block type="serial_imprimir"><field name="NL">TRUE</field><value name="V"><shadow type="text"><field name="TEXT">Escribe on u off</field></shadow></value></block></next>
+  </block>
+ </statement>
+ <statement name="LOOP">
+  <block type="controls_if">
+   <value name="IF0"><block type="serial_disponible"></block></value>
+   <statement name="DO0">
+    <block type="var_set"><field name="VAR" id="v_msg" variabletype="String">mensaje</field><value name="V"><block type="serial_leer_texto"></block></value>
+     <next><block type="serial_imprimir"><field name="NL">TRUE</field>
+      <value name="V"><block type="texto_unir"><value name="A"><shadow type="text"><field name="TEXT">Recibí: </field></shadow></value><value name="B"><block type="var_get"><field name="VAR" id="v_msg" variabletype="String">mensaje</field></block></value></block></value>
+      <next><block type="controls_if"><mutation elseif="1"></mutation>
+       <value name="IF0"><block type="logic_compare"><field name="OP">EQ</field><value name="A"><block type="var_get"><field name="VAR" id="v_msg" variabletype="String">mensaje</field></block></value><value name="B"><block type="text"><field name="TEXT">on</field></block></value></block></value>
+       <statement name="DO0"><block type="escribir_digital"><field name="PIN">13</field><field name="EST">HIGH</field></block></statement>
+       <value name="IF1"><block type="logic_compare"><field name="OP">EQ</field><value name="A"><block type="var_get"><field name="VAR" id="v_msg" variabletype="String">mensaje</field></block></value><value name="B"><block type="text"><field name="TEXT">off</field></block></value></block></value>
+       <statement name="DO1"><block type="escribir_digital"><field name="PIN">13</field><field name="EST">LOW</field></block></statement>
+      </block></next>
+     </block></next>
+    </block>
+   </statement>
+  </block>
+ </statement>
+</block>
+</xml>`
+  }
+];
+function cargarEjemplo(ej) {
+  if (estado.texto) salirModoTexto(true);
+  embebidos = {};
+  placaActual = ej.placa; $('placa').value = ej.placa;
+  $('nombreProyecto').value = ej.nombre;
+  cargarXML(ej.xml);
+  refrescarPines();
+  programarActualizacion();
+}
+
+/* ---------- Placa ---------- */
+function refrescarPines() {
+  if (!espacio) return;
+  espacio.getAllBlocks(false).forEach(b => b.inputList.forEach(inp => inp.fieldRow.forEach(f => {
+    if (f instanceof CampoPin) { f.doValueUpdate_(f.getValue()); f.forceRerender(); }
+  })));
+}
+
+/* ---------- Monitor serial (Web Serial) ---------- */
+const serial = { puerto: null, lector: null, bucle: null, conectado: false, inicioLinea: true, historial: [], posHist: -1 };
+const FINES = { '': '', '\\n': '\n', '\\r': '\r', '\\r\\n': '\r\n' };
+function notaSerial(html) { const n = $('notaSerial'); n.innerHTML = html; n.hidden = !html; }
+function uiSerial() {
+  const on = serial.conectado;
+  $('estadoSerial').textContent = on ? `Conectado a ${$('baudios').value}` : 'Desconectado';
+  $('estadoSerial').classList.toggle('on', on);
+  $('btnConectar').textContent = on ? 'Desconectar' : 'Conectar';
+  $('baudios').disabled = on;
+  $('puntoSerial').classList.toggle('on', on);
+}
+function hora() { const d = new Date(); return d.toTimeString().slice(0, 8) + '.' + String(d.getMilliseconds()).padStart(3, '0'); }
+function recortarSalida() {
+  const s = $('salidaSerial');
+  while (s.childNodes.length > 4000) s.removeChild(s.firstChild);
+}
+function agregarSalida(texto) {
+  const s = $('salidaSerial');
+  const conHora = $('chkHora').checked;
+  let buf = '';
+  for (const ch of texto) {
+    if (serial.inicioLinea && conHora && ch !== '\n') { if (buf) s.append(buf); buf = ''; s.append(el('span', { class: 'ts' }, hora() + ' → ')); }
+    serial.inicioLinea = false;
+    buf += ch;
+    if (ch === '\n') serial.inicioLinea = true;
+  }
+  if (buf) s.append(buf.replace(/\r(?!\n)/g, '\n').replace(/\r\n/g, '\n'));
+  recortarSalida();
+  if ($('chkAuto').checked) s.scrollTop = s.scrollHeight;
+}
+function lineaEspecial(texto, clase) {
+  const s = $('salidaSerial');
+  if (!serial.inicioLinea) { s.append('\n'); serial.inicioLinea = true; }
+  s.append(el('span', { class: clase }, texto + '\n'));
+  recortarSalida();
+  if ($('chkAuto').checked) s.scrollTop = s.scrollHeight;
+}
+async function leerBucle() {
+  const dec = new TextDecoder();
+  while (serial.conectado && serial.puerto && serial.puerto.readable) {
+    serial.lector = serial.puerto.readable.getReader();
+    try {
+      while (true) {
+        const { value, done } = await serial.lector.read();
+        if (done) break;
+        if (value) agregarSalida(dec.decode(value, { stream: true }));
+      }
+    } catch (e) {
+      if (serial.conectado) lineaEspecial('Error de lectura: ' + e.message, 'sistema');
+    } finally {
+      try { serial.lector.releaseLock(); } catch (e) { /* ya liberado */ }
+      serial.lector = null;
+    }
+    if (!serial.conectado) break;
+    await new Promise(r => setTimeout(r, 50));
+    if (!serial.puerto || !serial.puerto.readable) break;
+  }
+  if (serial.conectado) {
+    serial.conectado = false;
+    try { await serial.puerto.close(); } catch (e) { /* ya cerrado */ }
+    serial.puerto = null;
+    uiSerial();
+    lineaEspecial('La placa se desconectó.', 'sistema');
+  }
+}
+async function conectarSerial() {
+  if (!('serial' in navigator)) {
+    notaSerial('<b>Este navegador no permite usar el puerto serie aquí.</b> Abre el editor como archivo local (<code>TecnoBloques.html</code>) en Chrome o Edge de computador. Firefox, Safari y los celulares no tienen Web Serial.');
+    return;
+  }
+  try {
+    const p = await navigator.serial.requestPort();
+    await p.open({ baudRate: parseInt($('baudios').value, 10) });
+    serial.puerto = p; serial.conectado = true; serial.inicioLinea = true;
+    notaSerial('');
+    uiSerial();
+    const info = p.getInfo ? p.getInfo() : {};
+    lineaEspecial(`Conectado a ${$('baudios').value} baudios${info.usbVendorId ? ` (USB ${info.usbVendorId.toString(16)}:${(info.usbProductId || 0).toString(16)})` : ''}. La placa se reinicia al conectar.`, 'sistema');
+    serial.bucle = leerBucle();
+  } catch (e) {
+    if (e.name === 'NotFoundError') return; // la persona cerró la ventana sin elegir
+    if (e.name === 'SecurityError' || e.name === 'NotAllowedError') {
+      notaSerial('<b>Esta vista no deja abrir puertos serie.</b> Abre el editor como archivo local (<code>TecnoBloques.html</code>) en Chrome o Edge para usar el monitor.');
+    } else if (e.name === 'InvalidStateError' || /open|busy|Failed/i.test(e.message)) {
+      notaSerial('<b>No se pudo abrir el puerto.</b> Probablemente otro programa lo tiene abierto (Arduino IDE, otro monitor o pestaña). Ciérralo y vuelve a intentar.');
+    } else {
+      notaSerial('<b>No se pudo conectar:</b> ' + escaparHTML(e.message));
+    }
+  }
+}
+async function desconectarSerial() {
+  if (!serial.puerto) return;
+  serial.conectado = false;
+  try { if (serial.lector) await serial.lector.cancel(); } catch (e) { /* nada */ }
+  try { await serial.bucle; } catch (e) { /* nada */ }
+  try { await serial.puerto.close(); } catch (e) { /* nada */ }
+  serial.puerto = null;
+  uiSerial();
+  lineaEspecial('Desconectado.', 'sistema');
+}
+async function enviarSerial(texto) {
+  if (!serial.conectado || !serial.puerto || !serial.puerto.writable) { lineaEspecial('Conecta la placa para enviar mensajes.', 'sistema'); return; }
+  const fin = FINES[$('finLinea').value] || '';
+  const w = serial.puerto.writable.getWriter();
+  try {
+    await w.write(new TextEncoder().encode(texto + fin));
+    lineaEspecial('→ ' + texto, 'enviado');
+  } catch (e) {
+    lineaEspecial('No se pudo enviar: ' + e.message, 'sistema');
+  } finally { w.releaseLock(); }
+}
+function sugerirBaudios() {
+  if (serial.conectado || estado.baudiosManual) return;
+  const m = /Serial\.begin\((\d+)\)/.exec(ultimo.codigo);
+  if (m) $('baudios').value = m[1];
+}
+if ('serial' in navigator) {
+  navigator.serial.addEventListener('disconnect', (e) => { if (serial.puerto && e.target === serial.puerto) { /* leerBucle lo maneja */ } });
+}
+
+/* ---------- Subir (fase 2) ---------- */
+const NOMBRES_LIB = {
+  AFMotor_R4: 'AFMotor R4 Compatible (búscala como "AFMotor R4")', DHT: 'DHT sensor library (Adafruit) + Adafruit Unified Sensor',
+  LiquidCrystal_I2C: 'LiquidCrystal I2C (Frank de Brabander)', Otto: 'OttoDIYLib', Servo: 'Servo (ya viene con el IDE)',
+  SoftwareSerial: 'SoftwareSerial (ya viene con el IDE)', Wire: 'Wire (ya viene con el IDE)'
+};
+function librerias() {
+  return [...(ultimo.codigo.matchAll(/#include <([^>.]+)\.h>/g))].map(m => NOMBRES_LIB[m[1]] || m[1]);
+}
+function modalSubir() {
+  const p = placa();
+  const libs = librerias();
+  modal({
+    titulo: 'Subir desde el navegador llega en la fase 2',
+    cuerpo: [
+      el('p', null, 'Falta el servidor de compilación (arduino-cli con las librerías de la TecnoAcademia) y el cargador por puerto serie. Mientras tanto:'),
+      el('ul', null,
+        el('li', null, 'Copia o descarga el código.'),
+        el('li', null, `En Arduino IDE elige la placa ${p.nombre} y su puerto COM, pega el código y súbelo.`),
+        libs.length ? el('li', null, 'Librerías que necesita este programa: ', libs.join('; '), '.') : el('li', null, 'Este programa no necesita librerías extra.')),
+      el('p', { class: 'muted' }, `Datos para la fase 2 — FQBN: `, el('code', null, p.fqbn), ` · carga: ${p.carga}.`)
+    ],
+    botones: [{ texto: 'Copiar código', accion: async () => { await copiarTexto(codigoActual()); return false; } }, { texto: 'Cerrar', primario: true }]
+  });
+}
+
+/* ---------- Arranque ---------- */
+function iniciar() {
+  const sel = $('placa');
+  Object.entries(PLACAS).forEach(([k, v]) => sel.append(el('option', { value: k }, v.nombre)));
+  sel.value = placaActual;
+
+  espacio = Blockly.inject('blockly', {
+    toolbox: TOOLBOX, renderer: 'zelos', theme: esOscuro() ? TEMA_OSCURO : TEMA_CLARO, media: PREFIJO_MEDIA, sounds: false,
+    trashcan: true, zoom: { controls: true, wheel: true, startScale: 0.72, maxScale: 2, minScale: 0.35, scaleSpeed: 1.15 },
+    move: { scrollbars: true, drag: true, wheel: false }, grid: { spacing: 24, length: 2, colour: '#dde4de', snap: true }
+  });
+  reemplazarMedia(document.body);
+  espacio.registerToolboxCategoryCallback('VARIABLES_TB', flyoutVariables);
+  espacio.registerToolboxCategoryCallback('FUNCIONES_TB', flyoutFunciones);
+  espacio.registerToolboxCategoryCallback('MIS_BLOQUES_TB', flyoutMisBloques);
+  espacio.registerButtonCallback('CREAR_VAR', dialogoCrearVariable);
+  espacio.registerButtonCallback('AYUDA_MIS', ayudaMisBloques);
+  espacio.registerButtonCallback('IMPORTAR_LIB', importarLibreria);
+  espacio.registerButtonCallback('EXPORTAR_LIB', exportarLibreria);
+  espacio.registerButtonCallback('ADMIN_LIB', administrarLibreria);
+  espacio.addChangeListener(Blockly.Events.disableOrphans);
+  espacio.addChangeListener((e) => {
+    if (e.isUiEvent) return;
+    if (e.type === Blockly.Events.BLOCK_CHANGE && e.element === 'field' && e.name === 'NAME') {
+      const b = espacio.getBlockById(e.blockId);
+      if (b && b.type === 'fn_def' && e.oldValue) {
+        espacio.getAllBlocks(false).forEach(c => {
+          if ((c.type === 'fn_call' || c.type === 'fn_call_val') && c.firma_.nombre === e.oldValue && !buscarDefinicion(e.oldValue)) {
+            c.firma_.nombre = e.newValue; c.actualizarForma_();
+          }
+        });
+      }
+    }
+    programarActualizacion();
+  });
+
+  window.matchMedia && matchMedia('(prefers-color-scheme: dark)').addEventListener('change', aplicarTema);
+  new MutationObserver(aplicarTema).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+  // Estado inicial: autoguardado o el primer ejemplo
+  const auto = leerLocal(CLAVE_AUTO);
+  let ok = false;
+  if (auto) ok = cargarProyecto(auto, true) === true;
+  if (!ok) cargarEjemplo(EJEMPLOS[0]);
+  const pref = leerLocal(CLAVE_PREF);
+  cambiarVista(pref && pref.vista ? pref.vista : (window.innerWidth < 760 ? 'bloques' : 'dividido'));
+  refrescarPines();
+  actualizar();
+
+  // ---- Controles ----
+  sel.addEventListener('change', () => { placaActual = sel.value; refrescarPines(); programarActualizacion(); mostrarToast('Placa: ' + placa().nombre); });
+  $('nombreProyecto').addEventListener('input', programarActualizacion);
+  document.querySelectorAll('.segmentado button').forEach(b => b.addEventListener('click', () => cambiarVista(b.dataset.vista)));
+  $('tCodigo').addEventListener('click', () => seleccionarPestana('codigo'));
+  $('tSerial').addEventListener('click', () => seleccionarPestana('serial'));
+  $('btnCopiar').addEventListener('click', async () => { if (!(await copiarTexto(codigoActual()))) modalExportar('Copiar código', nombreArchivoBase() + '.ino', codigoActual(), 'text/plain'); });
+  $('btnEditar').addEventListener('click', () => (estado.texto ? salirModoTexto() : entrarModoTexto()));
+  $('btnVolverBloques').addEventListener('click', () => salirModoTexto());
+  $('btnIno').addEventListener('click', () => modalExportar('Descargar programa', nombreArchivoBase() + '.ino', codigoActual(), 'text/plain',
+    `Arduino IDE pide que el archivo esté en una carpeta con su mismo nombre (${nombreArchivoBase()}/${nombreArchivoBase()}.ino); el IDE te ofrece crearla al abrirlo.`));
+  $('btnSubir').addEventListener('click', modalSubir);
+  $('btnGuardar').addEventListener('click', () => modalExportar('Guardar proyecto', nombreArchivoBase() + '.tbq.json', JSON.stringify(proyectoActual(), null, 1), 'application/json',
+    'El proyecto lleva los bloques, la placa y una copia de tus bloques propios que usa.'));
+  $('btnAbrir').addEventListener('click', () => modalAbrirTexto({
+    titulo: 'Abrir proyecto', explicacion: 'Elige un archivo .tbq.json guardado con TecnoBloques. El programa actual se reemplaza.',
+    alLeer: (d) => cargarProyecto(d)
+  }));
+  $('btnNuevo').addEventListener('click', () => modal({
+    titulo: '¿Empezar un programa nuevo?', cuerpo: 'Se borra el programa actual. Tus bloques de Mis bloques se conservan.',
+    botones: [{ texto: 'Cancelar' }, { texto: 'Empezar de cero', primario: true, accion: nuevoProyecto }]
+  }));
+  const lista = $('listaEjemplos');
+  EJEMPLOS.forEach(ej => lista.append(el('button', {
+    type: 'button', onclick: () => {
+      lista.hidden = true; $('btnEjemplos').setAttribute('aria-expanded', 'false');
+      modal({ titulo: `Abrir "${ej.nombre}"`, cuerpo: 'Se reemplaza el programa actual.', botones: [{ texto: 'Cancelar' }, { texto: 'Abrir ejemplo', primario: true, accion: () => cargarEjemplo(ej) }] });
+    }
+  }, el('b', null, ej.nombre), el('small', null, `${PLACAS[ej.placa].nombre} · ${ej.desc}`))));
+  $('btnEjemplos').addEventListener('click', (e) => {
+    e.stopPropagation();
+    lista.hidden = !lista.hidden; $('btnEjemplos').setAttribute('aria-expanded', String(!lista.hidden));
+  });
+  document.addEventListener('click', (e) => { if (!lista.hidden && !lista.contains(e.target)) { lista.hidden = true; $('btnEjemplos').setAttribute('aria-expanded', 'false'); } });
+
+  // Monitor serial
+  $('btnConectar').addEventListener('click', () => (serial.conectado ? desconectarSerial() : conectarSerial()));
+  $('baudios').addEventListener('change', () => { estado.baudiosManual = true; });
+  $('btnLimpiar').addEventListener('click', () => { $('salidaSerial').innerHTML = ''; serial.inicioLinea = true; });
+  $('formEnvio').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const t = $('txtEnviar').value;
+    if (t === '' && $('finLinea').value === '') return;
+    enviarSerial(t);
+    if (t) { serial.historial.push(t); serial.posHist = serial.historial.length; }
+    $('txtEnviar').value = '';
+  });
+  $('txtEnviar').addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowUp' && serial.historial.length) { serial.posHist = Math.max(0, serial.posHist - 1); e.target.value = serial.historial[serial.posHist]; e.preventDefault(); }
+    if (e.key === 'ArrowDown' && serial.historial.length) { serial.posHist = Math.min(serial.historial.length, serial.posHist + 1); e.target.value = serial.historial[serial.posHist] || ''; e.preventDefault(); }
+  });
+  if (!('serial' in navigator)) notaSerial('<b>El monitor serial necesita Chrome o Edge de computador</b> y abrir el editor como archivo local (<code>TecnoBloques.html</code>). Aquí puedes armar y revisar el código.');
+  else lineaEspecial('Elige la velocidad y pulsa Conectar para ver lo que envía la placa.', 'sistema');
+
+  document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); $('btnGuardar').click(); }
+  });
+  window.addEventListener('resize', () => Blockly.svgResize(espacio));
+}
+iniciar();

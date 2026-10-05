@@ -1,0 +1,102 @@
+<div id="app">
+  <header class="barra">
+    <div class="marca">
+      <svg viewBox="0 0 32 32" aria-hidden="true">
+        <path d="M4 7a3 3 0 0 1 3-3h5v2.2a2.3 2.3 0 0 0 4.6 0V4H25a3 3 0 0 1 3 3v6h-2.2a2.3 2.3 0 0 0 0 4.6H28V25a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3z" fill="var(--accent)"/>
+        <path d="M10 13l-3 3 3 3M22 13l3 3-3 3M17.5 11.5l-3 9" stroke="var(--accent-ink)" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span>TecnoBloques</span>
+    </div>
+    <input id="nombreProyecto" value="Carro Bluetooth" aria-label="Nombre del proyecto" autocomplete="off">
+    <label class="campo-placa" for="placa">Placa
+      <select id="placa"></select>
+    </label>
+    <div class="segmentado" role="group" aria-label="Vista">
+      <button type="button" id="vBloques" data-vista="bloques" aria-pressed="false">Bloques</button>
+      <button type="button" id="vDividido" data-vista="dividido" aria-pressed="true">Dividido</button>
+      <button type="button" id="vCodigo" data-vista="codigo" aria-pressed="false">C++</button>
+    </div>
+    <div class="acciones">
+      <div class="menu">
+        <button type="button" class="btn" id="btnEjemplos" aria-haspopup="true" aria-expanded="false">Ejemplos</button>
+        <div class="menu-lista" id="listaEjemplos" hidden></div>
+      </div>
+      <button type="button" class="btn" id="btnNuevo">Nuevo</button>
+      <button type="button" class="btn" id="btnAbrir">Abrir</button>
+      <button type="button" class="btn" id="btnGuardar">Guardar</button>
+      <button type="button" class="btn" id="btnIno">Descargar .ino</button>
+      <button type="button" class="btn primario" id="btnSubir">Subir a la placa</button>
+    </div>
+  </header>
+
+  <main id="principal" data-vista="dividido">
+    <section id="zonaBloques" aria-label="Área de bloques">
+      <div id="blockly"></div>
+      <div id="avisoTexto" hidden>
+        <div class="caja">
+          <h3>Estás editando el C++ a mano</h3>
+          <p>Mientras estés en modo texto, los bloques no cambian el programa. Cuando termines, vuelve a los bloques o descarga tu código.</p>
+          <div><button type="button" class="btn primario" id="btnVolverBloques">Volver a los bloques</button></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="panel" aria-label="Código y monitor serial">
+      <div class="pestanas" role="tablist">
+        <button type="button" role="tab" id="tCodigo" aria-selected="true" aria-controls="pCodigo">Código C++</button>
+        <button type="button" role="tab" id="tSerial" aria-selected="false" aria-controls="pSerial">Monitor serial<span class="punto" id="puntoSerial"></span></button>
+      </div>
+
+      <div class="vista-panel" id="pCodigo" role="tabpanel">
+        <div class="herr">
+          <span class="estado" id="estadoCodigo">Se actualiza con cada bloque</span>
+          <button type="button" class="btn chico" id="btnCopiar">Copiar</button>
+          <button type="button" class="btn chico" id="btnEditar">Editar C++</button>
+        </div>
+        <div class="codigo-wrap">
+          <pre id="codigo" aria-label="Código generado"></pre>
+          <textarea id="editor" hidden spellcheck="false" aria-label="Editor de C++"></textarea>
+        </div>
+        <div id="avisos" aria-live="polite"></div>
+      </div>
+
+      <div class="vista-panel" id="pSerial" role="tabpanel" hidden>
+        <div>
+          <div class="herr">
+            <span class="estado-serial" id="estadoSerial">Desconectado</span>
+            <select id="baudios" aria-label="Velocidad en baudios">
+              <option>300</option><option>1200</option><option>2400</option><option>4800</option>
+              <option selected>9600</option><option>19200</option><option>38400</option><option>57600</option><option>115200</option>
+            </select>
+            <button type="button" class="btn chico primario" id="btnConectar">Conectar</button>
+            <label class="check"><input type="checkbox" id="chkHora"> Hora</label>
+            <label class="check"><input type="checkbox" id="chkAuto" checked> Autodesplazar</label>
+            <button type="button" class="btn chico" id="btnLimpiar">Limpiar</button>
+          </div>
+          <div class="nota-serial" id="notaSerial" hidden></div>
+        </div>
+        <pre id="salidaSerial" aria-live="polite"></pre>
+        <form class="envio" id="formEnvio">
+          <input class="entrada" id="txtEnviar" placeholder="Mensaje para la placa (Enter envía)" autocomplete="off" aria-label="Mensaje a enviar">
+          <select id="finLinea" aria-label="Fin de línea">
+            <option value="">Sin fin de línea</option>
+            <option value="\n" selected>Nueva línea (\n)</option>
+            <option value="\r">Retorno (\r)</option>
+            <option value="\r\n">Ambos (\r\n)</option>
+          </select>
+          <button type="submit" class="btn chico" id="btnEnviar">Enviar</button>
+        </form>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div id="modal" hidden>
+  <div class="modal-caja" role="dialog" aria-modal="true" aria-labelledby="modalTitulo">
+    <h2 id="modalTitulo"></h2>
+    <div id="modalCuerpo"></div>
+    <div id="modalAcciones"></div>
+  </div>
+</div>
+<div id="toast" role="status" hidden></div>
+<input type="file" id="archivo" accept=".json,.tbq,application/json" hidden>
