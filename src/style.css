@@ -120,6 +120,9 @@ select, .entrada {
 .segmentado { display: inline-flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; background: var(--panel-2); }
 .segmentado button { border: 0; background: transparent; padding: 5px 11px; cursor: pointer; color: var(--muted); }
 .segmentado button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); font-weight: 700; }
+.niveles { align-items: center; }
+.etiqueta-nivel { padding: 0 4px 0 10px; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.niveles button { min-width: 2.2em; }
 .acciones { display: flex; flex-wrap: wrap; gap: 6px; margin-left: auto; align-items: center; }
 .btn {
   border: 1px solid var(--line); background: var(--panel-2); border-radius: 6px; padding: 5px 11px; cursor: pointer;

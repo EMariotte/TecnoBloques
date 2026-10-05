@@ -34,6 +34,8 @@ const PLACAS = {
   }
 };
 let placaActual = 'uno';
+/** Nivel del aprendiz: 1 Explorador, 2 Constructor, 3 Inventor. Solo cambia lo que se ofrece, nunca lo que se genera. */
+let nivelActual = 3;
 const placa = () => PLACAS[placaActual];
 
 function opcionesPin(tipo) {
@@ -99,6 +101,25 @@ class CampoPin extends Blockly.FieldDropdown {
   }
 }
 
+/**
+ * Menú cuyas opciones dependen del nivel. Acepta siempre cualquier valor de la lista completa,
+ * para que un proyecto hecho en un nivel más alto se abra sin perder nada.
+ */
+class MenuNivel extends Blockly.FieldDropdown {
+  constructor(completas, permitida, validador) {
+    super(completas, validador);
+    this.completas_ = completas;
+    this.permitida_ = permitida;
+  }
+  getOptions(useCache) {
+    if (!this.completas_) return super.getOptions(useCache);  // aún dentro del constructor de Blockly
+    const v = this.getValue();
+    const opts = this.completas_.filter(o => this.permitida_(o[1]) || o[1] === v);
+    return opts.length ? opts : this.completas_;
+  }
+  doClassValidation_(v) { return (this.completas_ || this.getOptions()).some(o => o[1] === v) ? v : null; }
+}
+
 /** Menú con los parámetros de la función que contiene al bloque. */
 class CampoParam extends Blockly.FieldDropdown {
   constructor() { super(function () { return [['param', 'param']]; }); }
@@ -121,6 +142,8 @@ const TIPOS_VAR = [
   ['lógico (bool)', 'bool'], ['carácter (char)', 'char'], ['texto (String)', 'String']
 ];
 const TIPOS_RET = [['nada', 'void']].concat(TIPOS_VAR);
+/** Tipos que se ofrecen en el nivel 2, con nombres de aprendiz. */
+const TIPOS_VAR_N2 = [['número entero', 'int'], ['número decimal', 'float'], ['texto', 'String'], ['letra (para comandos)', 'char'], ['sí / no', 'bool']];
 const NOMBRE_TIPO = { void: 'nada', int: 'entero', long: 'entero largo', float: 'decimal', bool: 'lógico', char: 'carácter', String: 'texto' };
 function valorInicial(t) {
   return { int: '0', long: '0', float: '0.0', bool: 'false', char: "'\\0'", String: '""' }[t] || '0';

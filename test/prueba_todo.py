@@ -112,6 +112,8 @@ with sync_playwright() as p:
     pag.goto((RAIZ / 'dist' / 'TecnoBloques.html').as_uri())
     pag.wait_for_timeout(1000)
     pag.evaluate("""() => { window.itemLlamadaBloque = (n) => { const f = firmaDeDef(leerLibreria()[n]); const it = itemLlamada(f); delete it.kind; return it; }; }""")
+    sin_nivel = pag.evaluate("() => { const t = []; TOOLBOX.contents.forEach(c => (c.contents || []).forEach(i => i.kind === 'block' && !(i.type in NIVEL_BLOQUE) && t.push(i.type))); return t; }")
+    print('Bloques sin nivel asignado (debe estar vacío):', sin_nivel)
     for placa in ['uno', 'mega']:
         r = pag.evaluate(JS_TODO, placa)
         d = SALIDA / f'todo_{placa}'; d.mkdir(exist_ok=True)

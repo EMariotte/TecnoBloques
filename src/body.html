@@ -11,7 +11,13 @@
     <label class="campo-placa" for="placa">Placa
       <select id="placa"></select>
     </label>
-    <div class="segmentado" role="group" aria-label="Vista">
+    <div class="segmentado niveles" id="niveles" role="group" aria-label="Nivel">
+      <span class="etiqueta-nivel">Nivel</span>
+      <button type="button" data-nivel="1" aria-pressed="false" title="Nivel 1 · Explorador: secuencias, repetir y decidir con un sensor">1</button>
+      <button type="button" data-nivel="2" aria-pressed="false" title="Nivel 2 · Constructor: variables, sensores, Bluetooth y tus propios bloques">2</button>
+      <button type="button" data-nivel="3" aria-pressed="false" title="Nivel 3 · Inventor: funciones con parámetros, tiempo sin esperar y C++">3</button>
+    </div>
+    <div class="segmentado" id="vistas" role="group" aria-label="Vista">
       <button type="button" id="vBloques" data-vista="bloques" aria-pressed="false">Bloques</button>
       <button type="button" id="vDividido" data-vista="dividido" aria-pressed="true">Dividido</button>
       <button type="button" id="vCodigo" data-vista="codigo" aria-pressed="false">C++</button>

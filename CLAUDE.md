@@ -76,9 +76,12 @@ Distribución      → (decidido 5 oct 2026) DOS entregas desde el mismo src/:
                         aula, o descargar el .ino. Más adelante se enlazan los retos.
                     Se descarta el servidor de compilación en la red local.
 
-Niveles           → (decidido) Selector 1 · 2 · 3 en la barra superior. Cada usuario elige
-                    su nivel; en clase el instructor indica el nivel de cada reto.
-                    El nivel 1 muestra la paleta más simple. Principiante = bloques del robot ("carro: avanzar"),
+Niveles           → ✅ HECHO (5 oct). Selector 1 · 2 · 3 en la barra superior:
+                    1 Explorador · 2 Constructor · 3 Inventor. Cada usuario elige su
+                    nivel; el proyecto guarda el suyo y al abrirlo se cambia solo
+                    (así el instructor fija el nivel de cada reto). Nivel 1: sin
+                    variables; del monitor serial solo "imprimir". Ver "Niveles"
+                    en Arquitectura. Principiante = bloques del robot ("carro: avanzar"),
                     sin pines PWM, baudios ni tipos C++. Avanzado = paleta actual.
 
 Nombres de pines  → ✅ HECHO (5 oct). "el pin 13 se llama LedRojo" → #define LedRojo 13.
@@ -195,6 +198,16 @@ Cada perfil define `fqbn`, pines digitales y analógicos, `soloAnalog` (A6 y A7 
 
 Los bloques propios son `var_set`, `var_get`, `var_cambiar` y `bucle_para`; no se usan los de variables de Blockly. Cada variable tiene un tipo de Blockly que es directamente el tipo C++: `int`, `long`, `float`, `bool`, `char` o `String`. Se crean con el botón "Crear variable…" (modal propio) y se declaran como globales con su valor inicial.
 
+### Niveles (1 Explorador · 2 Constructor · 3 Inventor)
+
+- `NIVEL_BLOQUE` (app.js) asigna cada tipo de bloque a un nivel, y los niveles se suman. `NIVEL_CATEGORIA` cubre las categorías dinámicas: Variables y Funciones desde el 2, Mis bloques desde el 1 (solo para usar los bloques que entregue el instructor). **Todo bloque nuevo debe agregarse a `NIVEL_BLOQUE`**: `npm test` imprime "Bloques sin nivel asignado" y la lista debe salir vacía. Un tipo sin nivel cae en el 3.
+- `toolboxNivel(n)` filtra `TOOLBOX` y quita las categorías vacías y los separadores sobrantes. `ponerNivel(n, {vista, aviso})` actualiza la caja con `updateToolbox` y guarda el nivel en `tecnobloques.nivel.v1`. Con `vista`, el nivel 1 abre en Bloques y los niveles 2 y 3 en Dividido.
+- El botón **Editar C++** solo se ve en el nivel 3, o mientras ya se está en modo texto.
+- **Un nivel solo filtra lo que se ofrece; nunca borra ni desactiva bloques ni cambia el C++.** Si el programa usa bloques de un nivel más alto (`nivelNecesario()`), aparece una nota informativa.
+- Dentro de los bloques, `MenuNivel` (nucleo.js) es un menú cuyas opciones dependen de `nivelActual`, pero que acepta cualquier valor de la lista completa para abrir proyectos de otro nivel. En el nivel 2, "definir bloque" solo ofrece 0 parámetros y retorno "nada", y `fn_param` no aparece. Las variables del nivel 2 usan `TIPOS_VAR_N2`: número entero, número decimal, texto, letra (char, para comandos de Bluetooth) y sí/no. `long` y los nombres C++ llegan en el nivel 3.
+- El proyecto guarda `nivel`. `cargarProyecto` lo aplica y los ejemplos abren en el nivel que necesitan. La primera vez (sin autoguardado) se abre un proyecto vacío en el nivel guardado, que por defecto es el 1.
+- Bloques "iniciar" que se ocultan en el nivel 1 (Otto, brazos, Bluetooth, serial): el generador ya pone solos los valores por defecto del kit.
+
 ### Nombres de pines (`#define`)
 
 - `pin_nombre`: "el pin [PIN] se llama [NOMBRE]". Es un bloque suelto sin conexiones, como `cpp_global`, porque un `#define` es global. No se desactiva por estar suelto. Su `CampoPin('fisico')` lista solo pines reales, sin nombres.
@@ -242,8 +255,9 @@ Los bloques propios son `var_set`, `var_get`, `var_cambiar` y `bucle_para`; no s
 ### Receta: agregar un bloque
 
 1. En `src/bloques.js`: `bloque('mi_tipo', COL.categoria, function () { …campos… }, (b) => { …G.incluir/G.global/G.setup/G.pin…; return código; });`
-2. Agrégalo a `TOOLBOX` en `src/app.js`, con sombras `num()` o `txt()` si tiene entradas.
-3. `npm run build` → `npm test` → `npm run compilar`, para confirmar que compila con la librería real.
+2. Agrégalo a `TOOLBOX` en `src/app.js`, con sombras `num()` o `txt()` si tiene entradas, **y a `NIVEL_BLOQUE` con su nivel (1, 2 o 3)**.
+3. Si el bloque hace lógica con el número de un pin, usa `pinReal(v)`. El código que emite usa el valor tal cual (puede ser un nombre de pin).
+4. `npm run build` → `npm test` → `npm run compilar`, para confirmar que compila con la librería real.
 
 ---
 
@@ -344,6 +358,7 @@ Ojo: el ultrasonido trae 8/9 por defecto (pensado para Otto); **con la shield el
 | `npm test` + `npm run compilar` en Windows 11 | ✅ los 8 programas compilan. `compilar.js` usa `ARDUINO_CLI`, o el arduino-cli que trae el Arduino IDE 2, o el del PATH |
 | Bloques nuevos de la LCD (20x4, 2 símbolos, cursor, borrar fila, desplazar) | ✅ compilan en uno y mega2560 sin warnings propios; guardar/abrir conserva los dibujos; editor probado con clics reales (claro y oscuro) |
 | Nombres de pines: 5 nombres usados en LED, botón, servo, PWM, DHT y un bloque propio, mezclando `13` y `LedRojo` | ✅ compila en uno; renombrar actualiza los bloques y deshacer lo revierte; avisos probados |
+| Niveles: 31 / 65 / 85 bloques (contando repetidos en dos categorías), clic real en el selector, tipos de variable y "definir bloque" en el nivel 2, proyecto de nivel 3 abierto en nivel 1 (no pierde nada y avisa), ejemplos, 400 px | ✅ sin errores de JavaScript |
 | `instalar-librerias.ps1` | ⬜ no probado (en este PC las librerías se instalaron una por una con el arduino-cli del IDE) |
 
 Versiones con las que se compiló (Linux, 26 sep): núcleo AVR 1.8.6, AFMotor-Shield-R4-Compatible 1.0.1,
@@ -379,8 +394,7 @@ Fase 2 ⬜ App de escritorio para el aula (reemplaza al servidor de compilación
           - Mostrar errores del compilador en español y ligarlos al bloque si se puede.
           - build.js genera también la versión web para casa (sin "Subir").
 
-Fase 2b ◐ Base del sistema de bloques, ANTES de sumar librerías nuevas:
-          ✅ nombres de pines (#define) · ⬜ niveles 1·2·3 en la barra superior.
+Fase 2b ✅ Base del sistema de bloques: nombres de pines (#define) y niveles 1·2·3.
 
 Fase 3 ⬜ Uno R4 (cuando lleguen): perfil de placa + núcleo arduino:renesas_uno en el
           instalador. arduino-cli ya sabe cargar el R4 (DFU / toque a 1200 baudios).

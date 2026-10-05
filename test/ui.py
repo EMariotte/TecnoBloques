@@ -10,6 +10,15 @@ with sync_playwright() as p:
     pag = nav.new_page(viewport={'width': 1366, 'height': 800})
     pag.on('pageerror', lambda e: errores.append(str(e)))
     pag.goto(URL); pag.wait_for_timeout(1200)
+    pag.screenshot(path=str(S / 'ui_0_primera_vez.png'))  # proyecto vacío en el nivel 1
+    # Niveles: la caja de bloques del nivel 1 y del 2
+    pag.locator('.blocklyToolboxCategory', has_text='Pantalla LCD').first.click(); pag.wait_for_timeout(400)
+    pag.screenshot(path=str(S / 'ui_nivel1_lcd.png')); pag.keyboard.press('Escape')
+    pag.click('#niveles button[data-nivel="2"]'); pag.wait_for_timeout(400)
+    pag.screenshot(path=str(S / 'ui_nivel2.png'))
+    # El resto del recorrido usa el nivel 3 y el ejemplo del carro
+    pag.click('#niveles button[data-nivel="3"]'); pag.wait_for_timeout(300)
+    pag.evaluate("() => cargarEjemplo(EJEMPLOS[0])"); pag.wait_for_timeout(500)
     pag.screenshot(path=str(S / 'ui_1_inicio.png'))
     # Categoría Otto
     pag.locator('.blocklyToolboxCategory', has_text='Otto humanoide').first.click(); pag.wait_for_timeout(400)

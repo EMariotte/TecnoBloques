@@ -8,6 +8,7 @@ let espacio = null;
 let embebidos = {};
 let ultimo = { codigo: '', avisos: [], externos: [] };
 const estado = { texto: null, vista: 'dividido', baudiosManual: false };
+const CLAVE_NIVEL = 'tecnobloques.nivel.v1';
 const $ = (id) => document.getElementById(id);
 
 /* ---------- Almacenamiento local seguro ---------- */
@@ -245,6 +246,81 @@ const TOOLBOX = {
   ]
 };
 
+/* ---------- Niveles ---------- */
+const NOMBRE_NIVEL = { 1: 'Explorador', 2: 'Constructor', 3: 'Inventor' };
+/** Nivel en que aparece cada bloque. Los niveles se suman: el 2 trae todo lo del 1. */
+const NIVEL_BLOQUE = {
+  // 1 · Explorador: secuencia, esperar, repetir, decidir con un sensor, el robot
+  controls_if: 1, logic_compare: 1, controls_repeat_ext: 1, math_number: 1, math_random_int: 1, text: 1,
+  escribir_digital: 1, leer_digital: 1, tono: 1, sin_tono: 1, esperar_seg: 1, serial_imprimir: 1,
+  motor_dc: 1, motores_detener_todos: 1, servo_mover: 1, ultrasonido: 1,
+  lcd_iniciar: 1, lcd_escribir: 1, lcd_limpiar: 1, lcd_simbolo_crear: 1, lcd_simbolo_mostrar: 1,
+  otto_caminar: 1, otto_girar: 1, otto_saltar: 1, otto_baile: 1, otto_gesto: 1, otto_sonido: 1, otto_brazos: 1, otto_reposo: 1,
+  fn_call: 1, fn_call_val: 1, programa: 1,
+  // 2 · Constructor: variables, operadores, sensores analógicos, comunicación, bloques propios simples
+  logic_operation: 2, logic_negate: 2, logic_boolean: 2, controls_whileUntil: 2, bucle_para: 2,
+  math_arithmetic: 2, mapear: 2, texto_unir: 2, caracter: 2, var_set: 2, var_get: 2, var_cambiar: 2, fn_def: 2,
+  pin_nombre: 2, leer_analogo: 2, escribir_pwm: 2, esperar: 2,
+  serial_iniciar: 2, serial_disponible: 2, serial_leer_texto: 2, serial_leer_caracter: 2,
+  bt_iniciar: 2, bt_enviar: 2, bt_disponible: 2, bt_leer_caracter: 2, bt_leer_texto: 2,
+  motor_detener: 2, dht_leer: 2,
+  lcd_escribir_aqui: 2, lcd_cursor_mover: 2, lcd_borrar_fila: 2, lcd_desplazar: 2, lcd_pantalla: 2, lcd_luz: 2,
+  otto_iniciar: 2, otto_brazos_iniciar: 2, otto_pierna: 2, otto_tono: 2,
+  // 3 · Inventor: funciones con parámetros, tipos, tiempo sin delay, C++
+  controls_flow_statements: 3, math_single: 3, math_modulo: 3, math_constrain: 3, math_round: 3, es_valido: 3,
+  text_length: 3, texto_a_numero: 3, fn_param: 3, pin_modo: 3, escribir_digital_valor: 3, pin_valor: 3,
+  millis: 3, cada_ms: 3, serial_leer_numero: 3, motor_paso: 3, lcd_cursor: 3,
+  cpp_linea: 3, cpp_expresion: 3, cpp_global: 3
+};
+const NIVEL_CATEGORIA = { VARIABLES_TB: 2, FUNCIONES_TB: 2, MIS_BLOQUES_TB: 1 };
+const nivelDe = (tipo) => NIVEL_BLOQUE[tipo] || 3;
+
+/** Caja de herramientas con solo los bloques del nivel (sin categorías vacías ni separadores sobrantes). */
+function toolboxNivel(n) {
+  const items = [];
+  for (const c of TOOLBOX.contents) {
+    if (c.kind !== 'category') { items.push(c); continue; }
+    if (c.custom) { if ((NIVEL_CATEGORIA[c.custom] || 1) <= n) items.push(c); continue; }
+    const contents = c.contents.filter(i => i.kind !== 'block' || nivelDe(i.type) <= n);
+    if (contents.some(i => i.kind === 'block')) items.push(Object.assign({}, c, { contents }));
+  }
+  const limpio = items.filter((c, i, a) => c.kind !== 'sep' || (i > 0 && i < a.length - 1 && a[i - 1].kind !== 'sep'));
+  return { kind: 'categoryToolbox', contents: limpio };
+}
+/** Nivel más alto que usa el programa (para avisar si está por encima del nivel elegido). */
+function nivelNecesario() {
+  let n = 1;
+  for (const b of espacio.getAllBlocks(false)) {
+    if (b.isShadow()) continue;
+    n = Math.max(n, nivelDe(b.type));
+    if (b.type === 'fn_def' && (b.getFieldValue('TIPO') !== 'void' || b.getFieldValue('NPARAM') !== '0')) n = 3;
+  }
+  if (espacio.getVariableMap().getAllVariables().some(v => !TIPOS_VAR_N2.some(t => t[1] === v.getType()))) n = 3;
+  return n;
+}
+/** Cambia el nivel. Con `cambiarVistaInicial`, el nivel 1 abre en Bloques y los demás en Dividido. */
+function ponerNivel(n, opciones) {
+  n = [1, 2, 3].includes(Number(n)) ? Number(n) : 3;
+  const o = opciones || {};
+  const cambio = n !== nivelActual;
+  nivelActual = n;
+  document.querySelectorAll('#niveles button').forEach(b => {
+    const activo = Number(b.dataset.nivel) === n;
+    b.setAttribute('aria-pressed', String(activo));
+    b.textContent = activo ? `${n} · ${NOMBRE_NIVEL[n]}` : b.dataset.nivel;
+  });
+  $('btnEditar').hidden = n < 3 && !estado.texto;
+  try { localStorage.setItem(CLAVE_NIVEL, String(n)); } catch (e) { /* sin almacenamiento */ }
+  if (!espacio) return;
+  espacio.updateToolbox(toolboxNivel(n));
+  if (cambio && o.vista) cambiarVista(n === 1 ? 'bloques' : 'dividido');
+  if (cambio && o.aviso) mostrarToast(`Nivel ${n} · ${NOMBRE_NIVEL[n]}`);
+  if (cambio) programarActualizacion();
+}
+function nivelGuardado() {
+  try { return Number(localStorage.getItem(CLAVE_NIVEL)) || 1; } catch (e) { return 1; }
+}
+
 /* ---------- Categorías dinámicas ---------- */
 function sombraPara(tipo) {
   if (tipo === 'String') return txt('');
@@ -275,10 +351,9 @@ function flyoutVariables(ws) {
   return items;
 }
 function flyoutFunciones(ws) {
-  const items = [
-    B('fn_def', { fields: { NAME: 'mi_bloque' } }), B('fn_param'),
-    { kind: 'button', text: '¿Cómo funcionan?', callbackkey: 'AYUDA_MIS' }
-  ];
+  const items = [B('fn_def', { fields: { NAME: 'mi_bloque' } })];
+  if (nivelActual >= 3) items.push(B('fn_param'));
+  items.push({ kind: 'button', text: '¿Cómo funcionan?', callbackkey: 'AYUDA_MIS' });
   const defs = ws.getBlocksByType('fn_def', false);
   if (defs.length) {
     items.push({ kind: 'label', text: 'Bloques de este programa' });
@@ -312,7 +387,8 @@ function flyoutMisBloques(ws) {
 /* ---------- Variables ---------- */
 function dialogoCrearVariable() {
   const nombre = el('input', { class: 'entrada', id: 'nuevaVarNombre', placeholder: 'por ejemplo: velocidad', autocomplete: 'off' });
-  const tipo = el('select', { id: 'nuevaVarTipo', class: 'entrada' }, TIPOS_VAR.map(t => el('option', { value: t[1] }, t[0])));
+  const tipos = nivelActual >= 3 ? TIPOS_VAR : TIPOS_VAR_N2;
+  const tipo = el('select', { id: 'nuevaVarTipo', class: 'entrada' }, tipos.map(t => el('option', { value: t[1] }, t[0])));
   const error = el('p', { class: 'error' });
   const crear = () => {
     const n = nombre.value.trim();
@@ -327,7 +403,9 @@ function dialogoCrearVariable() {
   modal({
     titulo: 'Crear variable',
     cuerpo: [el('label', { for: 'nuevaVarNombre' }, 'Nombre', nombre), el('label', { for: 'nuevaVarTipo' }, 'Tipo', tipo),
-      el('p', { class: 'muted' }, 'Entero para contar, decimal para medidas como la temperatura, carácter para los comandos de Bluetooth, texto para mensajes.'), error],
+      el('p', { class: 'muted' }, nivelActual >= 3
+        ? 'Entero para contar, decimal para medidas como la temperatura, carácter para los comandos de Bluetooth, texto para mensajes.'
+        : 'Número entero para contar, número decimal para medidas como la temperatura, texto para mensajes, letra para los comandos de Bluetooth (\'A\', \'S\'…) y sí / no para recordar si algo pasó.'), error],
     botones: [{ texto: 'Cancelar' }, { texto: 'Crear', primario: true, accion: crear }]
   });
 }
@@ -500,6 +578,10 @@ function actualizar() {
     espacio.getAllBlocks(false).forEach(b => { if (b.refrescar_ && !b.isInFlyout) b.refrescar_(); });
   } finally { Blockly.Events.setGroup(false); }
   ultimo = generarPrograma(espacio);
+  const necesario = nivelNecesario();
+  if (necesario > nivelActual) {
+    ultimo.avisos.push({ msg: `Este programa usa bloques del nivel ${necesario} (${NOMBRE_NIVEL[necesario]}). Funcionan igual; para verlos en la caja de bloques, cambia al nivel ${necesario}.`, id: null, tipo: 'info' });
+  }
   pintarCodigo();
   pintarAvisos();
   sugerirBaudios();
@@ -563,6 +645,7 @@ function entrarModoTexto(codigo, base) {
   ed.hidden = false; $('codigo').hidden = true;
   $('avisoTexto').hidden = false;
   $('btnEditar').textContent = 'Volver a bloques';
+  $('btnEditar').hidden = false;
   $('estadoCodigo').textContent = 'Editando el C++ a mano';
   $('estadoCodigo').classList.add('editando');
   if (estado.vista === 'bloques') cambiarVista('dividido');
@@ -578,6 +661,7 @@ function salirModoTexto(forzar) {
     $('editor').hidden = true; $('codigo').hidden = false;
     $('avisoTexto').hidden = true;
     $('btnEditar').textContent = 'Editar C++';
+    $('btnEditar').hidden = nivelActual < 3;  // editar C++ a mano es del nivel 3
     $('estadoCodigo').textContent = 'Se actualiza con cada bloque';
     $('estadoCodigo').classList.remove('editando');
     programarActualizacion();
@@ -608,7 +692,7 @@ $('editor').addEventListener('input', () => autoguardar());
 function cambiarVista(v) {
   estado.vista = v;
   $('principal').dataset.vista = v;
-  document.querySelectorAll('.segmentado button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.vista === v)));
+  document.querySelectorAll('#vistas button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.vista === v)));
   setTimeout(() => { if (espacio) Blockly.svgResize(espacio); }, 30);
   guardarLocal(CLAVE_PREF, { vista: v });
 }
@@ -626,7 +710,7 @@ function proyectoActual() {
   const usados = {};
   (ultimo.externos || []).forEach(n => { const d = embebidos[n] || lib[n]; if (d) usados[n] = d; });
   return {
-    app: 'TecnoBloques', version: 1, nombre: $('nombreProyecto').value, placa: placaActual,
+    app: 'TecnoBloques', version: 1, nombre: $('nombreProyecto').value, placa: placaActual, nivel: nivelActual,
     bloques: Blockly.serialization.workspaces.save(espacio), embebidos: usados,
     texto: estado.texto ? $('editor').value : null, guardado: new Date().toISOString()
   };
@@ -638,6 +722,7 @@ function cargarProyecto(p, silencioso) {
   if (estado.texto) salirModoTexto(true);
   embebidos = p.embebidos || {};
   if (p.placa && PLACAS[p.placa]) { placaActual = p.placa; $('placa').value = p.placa; }
+  if ([1, 2, 3].includes(p.nivel)) ponerNivel(p.nivel, { vista: !silencioso, aviso: !silencioso });
   $('nombreProyecto').value = p.nombre || 'Mi proyecto';
   Blockly.Events.disable();
   try { espacio.clear(); } finally { Blockly.Events.enable(); }
@@ -838,6 +923,7 @@ function cargarEjemplo(ej) {
   placaActual = ej.placa; $('placa').value = ej.placa;
   $('nombreProyecto').value = ej.nombre;
   cargarXML(ej.xml);
+  ponerNivel(nivelNecesario(), { vista: true, aviso: true });
   refrescarPines();
   programarActualizacion();
 }
@@ -1004,7 +1090,7 @@ function iniciar() {
   sel.value = placaActual;
 
   espacio = Blockly.inject('blockly', {
-    toolbox: TOOLBOX, renderer: 'zelos', theme: esOscuro() ? TEMA_OSCURO : TEMA_CLARO, media: PREFIJO_MEDIA, sounds: false,
+    toolbox: toolboxNivel(nivelActual = nivelGuardado()), renderer: 'zelos', theme: esOscuro() ? TEMA_OSCURO : TEMA_CLARO, media: PREFIJO_MEDIA, sounds: false,
     trashcan: true, zoom: { controls: true, wheel: true, startScale: 0.72, maxScale: 2, minScale: 0.35, scaleSpeed: 1.15 },
     move: { scrollbars: true, drag: true, wheel: false }, grid: { spacing: 24, length: 2, colour: '#dde4de', snap: true }
   });
@@ -1048,20 +1134,22 @@ function iniciar() {
   window.matchMedia && matchMedia('(prefers-color-scheme: dark)').addEventListener('change', aplicarTema);
   new MutationObserver(aplicarTema).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
-  // Estado inicial: autoguardado o el primer ejemplo
+  // Estado inicial: el autoguardado o, la primera vez, un proyecto vacío en el nivel del aprendiz (1 por defecto)
   const auto = leerLocal(CLAVE_AUTO);
   let ok = false;
   if (auto) ok = cargarProyecto(auto, true) === true;
-  if (!ok) cargarEjemplo(EJEMPLOS[0]);
+  if (!ok) nuevoProyecto();
   const pref = leerLocal(CLAVE_PREF);
-  cambiarVista(pref && pref.vista ? pref.vista : (window.innerWidth < 760 ? 'bloques' : 'dividido'));
+  cambiarVista(pref && pref.vista ? pref.vista : (window.innerWidth < 760 || nivelActual === 1 ? 'bloques' : 'dividido'));
+  ponerNivel(nivelActual);
   refrescarPines();
   actualizar();
 
   // ---- Controles ----
   sel.addEventListener('change', () => { placaActual = sel.value; refrescarPines(); programarActualizacion(); mostrarToast('Placa: ' + placa().nombre); });
   $('nombreProyecto').addEventListener('input', programarActualizacion);
-  document.querySelectorAll('.segmentado button').forEach(b => b.addEventListener('click', () => cambiarVista(b.dataset.vista)));
+  document.querySelectorAll('#vistas button').forEach(b => b.addEventListener('click', () => cambiarVista(b.dataset.vista)));
+  document.querySelectorAll('#niveles button').forEach(b => b.addEventListener('click', () => ponerNivel(b.dataset.nivel, { vista: true, aviso: true })));
   $('tCodigo').addEventListener('click', () => seleccionarPestana('codigo'));
   $('tSerial').addEventListener('click', () => seleccionarPestana('serial'));
   $('btnCopiar').addEventListener('click', async () => { if (!(await copiarTexto(codigoActual()))) modalExportar('Copiar código', nombreArchivoBase() + '.ino', codigoActual(), 'text/plain'); });

@@ -123,3 +123,21 @@ aprendiz no puede subir su programa sin el Arduino IDE.
 - **Avisos:** nombre repetido, pin inexistente, nombre no definido y nombre igual a una variable.
 - **Prueba fija nueva `pines`** en `test/prueba_todo.py` y `test/compilar.js`. Los 9 programas compilan.
 - **Falla vieja corregida:** si un bloque de C++ libre se borraba justo después de cambiar su texto (por ejemplo, con "Nuevo"), el redibujo diferido fallaba con `FIELD_TEXT_BASELINE_CENTER`.
+
+## 2026-10-05 — Niveles 1 Explorador · 2 Constructor · 3 Inventor
+
+**Decisiones con Efraín:** se aceptan los nombres de los niveles. En el nivel 1 no hay variables y del monitor serial solo está "imprimir"; el resto del monitor llega en el nivel 2.
+
+**Hecho:**
+
+- **Selector 1 · 2 · 3** en la barra superior. El botón activo muestra el nombre del nivel.
+- **Cuántos bloques ve cada nivel:**
+  - 1 Explorador: 31 bloques en 13 categorías.
+  - 2 Constructor: 65 bloques en 16 categorías.
+  - 3 Inventor: 85 bloques en 17 categorías.
+  - Los conteos incluyen los bloques que aparecen en dos categorías.
+- **Dentro de los bloques:** en el nivel 2, "definir bloque" no tiene parámetros ni retorno, y las variables usan nombres de aprendiz.
+- **El proyecto guarda su nivel** y al abrirlo se cambia solo. Un nivel nunca borra bloques: si el programa usa bloques de un nivel más alto, aparece una nota.
+- **Vista inicial:** el nivel 1 abre en "Bloques" y el botón "Editar C++" solo está en el nivel 3. La primera vez se abre un proyecto vacío en el nivel 1, en vez del ejemplo del carro.
+- **Hallazgo:** el carro Bluetooth (proyecto estrella del nivel 2) necesita una variable de tipo carácter para los comandos. Se agregó "letra (para comandos)" a los tipos del nivel 2. El ejemplo "Carro Bluetooth" queda en nivel 3 porque usa un bloque propio con parámetros.
+- **Pruebas:** `npm test` revisa que todo bloque de la caja tenga nivel. `test/ui.py` captura los niveles 1 y 2.

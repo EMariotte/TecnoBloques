@@ -8,6 +8,7 @@ genera en vivo y ábrelo en tu placa. Funciona con **Arduino Uno R3, Nano y Mega
 
 ## Qué trae
 
+- **Tres niveles** que se eligen en la barra superior: **1 Explorador** (secuencias, repetir y decidir con un sensor), **2 Constructor** (variables, sensores, Bluetooth y bloques propios) y **3 Inventor** (funciones con parámetros, tiempo sin esperar y C++). El proyecto guarda su nivel, así cada reto abre en el que corresponde.
 - **Bloques de la TecnoAcademia:**
   - Shield de motores L293D (AFMotor_R4)
   - Sensor DHT11/DHT22
@@ -55,7 +56,7 @@ bloques o placas, decisiones y hoja de ruta. El historial del proyecto está en 
 
 - [x] **Fase 1:** editor, generador C++, funciones, Mis bloques, C++ libre, monitor serial
 - [ ] **Fase 2:** app de escritorio (Electron + arduino-cli) que compila y sube con un botón, con instalador, drivers CH340 y actualización automática
-- [ ] **Niveles 1 · 2 · 3** de bloques y nombres para los pines (`#define LedRojo 13`)
+- [x] **Niveles 1 · 2 · 3** de bloques y nombres para los pines (`#define LedRojo 13`)
 - [ ] **Librerías nuevas:** MPU6050, PCA9685 (Adafruit_PWMServoDriver) e I2C
 - [ ] **Fase 3:** Arduino Uno R4
 - [ ] **Fase 4:** pantallas OLED

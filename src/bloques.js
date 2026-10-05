@@ -842,9 +842,9 @@ Blockly.Blocks.fn_def = {
     this.appendDummyInput('CAB').appendField('definir bloque')
       .appendField(new Blockly.FieldTextInput('mi_bloque', function (v) { return nombreFuncionUnico(self, v); }), 'NAME')
       .appendField('devuelve')
-      .appendField(new Blockly.FieldDropdown(TIPOS_RET, function (v) { self.actualizarRetorno_(v); return v; }), 'TIPO');
+      .appendField(new MenuNivel(TIPOS_RET, (t) => nivelActual >= 3 || t === 'void', function (v) { self.actualizarRetorno_(v); return v; }), 'TIPO');
     this.appendDummyInput('PC').appendField('con')
-      .appendField(new Blockly.FieldDropdown([['0', '0'], ['1', '1'], ['2', '2'], ['3', '3'], ['4', '4']], function (v) { self.actualizarParams_(parseInt(v, 10)); return v; }), 'NPARAM')
+      .appendField(new MenuNivel([['0', '0'], ['1', '1'], ['2', '2'], ['3', '3'], ['4', '4']], (n) => nivelActual >= 3 || n === '0', function (v) { self.actualizarParams_(parseInt(v, 10)); return v; }), 'NPARAM')
       .appendField('parámetros');
     this.appendStatementInput('BODY').appendField('hacer');
     this.appendValueInput('RETURN').setAlign(Blockly.inputs.Align.RIGHT).appendField('devolver');
