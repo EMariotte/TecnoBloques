@@ -18,7 +18,7 @@ function crearVentana() {
   ventana = new BrowserWindow({
     width: 1366, height: 860, minWidth: 900, minHeight: 600,
     title: 'TecnoBloques', backgroundColor: '#eef1ec', show: false,
-    icon: path.join(__dirname, 'icono.png'),
+    icon: path.join(__dirname, process.platform === 'win32' ? 'icono.ico' : 'icono.png'),
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false }
   });
   Menu.setApplicationMenu(null);

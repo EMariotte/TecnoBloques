@@ -41,7 +41,8 @@
       "dist/TecnoBloques.html",
       "package.json",
       "LICENSE",
-      "NOTICE"
+      "NOTICE",
+      "escritorio/icono.ico"
     ],
     "extraResources": [
       {
@@ -66,7 +67,7 @@
           ]
         }
       ],
-      "icon": "escritorio/icono.png"
+      "icon": "escritorio/icono.ico"
     },
     "nsis": {
       "oneClick": true,
@@ -78,7 +79,9 @@
       ],
       "language": "3082",
       "include": "escritorio/instalador.nsh",
-      "artifactName": "TecnoBloques-Setup-${version}.${ext}"
+      "artifactName": "TecnoBloques-Setup-${version}.${ext}",
+      "installerIcon": "escritorio/icono.ico",
+      "uninstallerIcon": "escritorio/icono.ico"
     },
     "publish": [
       {

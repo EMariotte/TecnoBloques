@@ -135,6 +135,8 @@ TecnoBloques/
 │   ├── app-empaquetada.js    ← lo mismo con la app ya empaquetada (win-unpacked)
 │   ├── instalar-librerias.ps1← núcleo AVR + librerías para arduino-cli (Windows)
 │   └── requirements.txt      ← playwright
+├── marca/                    ← MARCA: generar.py (fuente única del dibujo), MARCA.md (guía),
+│                                svg/ (símbolo y variantes), png/ (íconos 16–1024, logos, compartir.png)
 ├── docs/capturas/            ← imágenes para el README
 └── dist/                     ← SALIDA (ignorada por git): TecnoBloques.html listo para usar
 ```
@@ -290,6 +292,17 @@ Los bloques propios son `var_set`, `var_get`, `var_cambiar` y `bucle_para`; no s
 2. `npm test`, `npm run compilar` y `npm run test:app`.
 3. `npm run instalador` y prueba el `.exe`.
 4. Crea el Release `v<versión>` en GitHub con estos 3 archivos: `TecnoBloques-Setup-<versión>.exe`, `TecnoBloques-Setup-<versión>.exe.blockmap` y `latest.yml`. Se puede hacer con `gh release create v<versión> <archivos> --title … --notes …`, o con `npm run publicar` y `GH_TOKEN`.
+
+### Marca (`marca/`)
+
+- **El símbolo:** dos bloques encajados (la pestaña de la cabeza entra en la muesca del cuerpo) forman un robot. La cabeza es verde, con un ojo engranaje y un ojo cursor y una antena en T. El cuerpo es blanco, con `</>`. Colores SENA: verde `#39A900` y azul `#00304D`. Lo aprobó Efraín el 5 oct 2026 (versión "A", con el engranaje a la izquierda).
+- **`marca/generar.py` es la única fuente.** Dibuja el SVG en una cuadrícula de 64 y genera los SVG, los PNG de 16 a 1024 (16 y 24 px usan solo la cabeza), `escritorio/icono.ico` (7 tamaños, PNG dentro de ICO), `escritorio/icono.png`, los logos horizontales y `compartir.png`. Usa Playwright y Chromium.
+- **Dónde se usa:**
+  - `build.js` inserta `marca/svg/simbolo-app.svg` en la barra superior, en lugar de `<!--SIMBOLO-->` de body.html.
+  - El favicon es `simbolo-cabeza.svg`, más el apple-touch-icon de 180 px y `theme-color` `#00304D`.
+  - electron-builder usa `icono.ico` para la app, el instalador y el desinstalador.
+  - La ventana de Electron usa `icono.ico` en Windows.
+- **En la interfaz**, "Tecno" usa `--ink` y "Bloques" usa `--accent`. Los botones siguen con `#2c8a1c` en tema claro, porque el verde SENA con texto blanco no alcanza el contraste AA.
 
 ### Receta: agregar un bloque
 

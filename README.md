@@ -1,3 +1,5 @@
+<p align="center"><img src="marca/png/logo-horizontal.png" alt="TecnoBloques" width="420"></p>
+
 # TecnoBloques
 
 Editor web de **programación por bloques en español para Arduino**, hecho en la
@@ -81,6 +83,12 @@ generan código para [OttoDIYLib](https://github.com/OttoDIY/OttoDIYLib). Los de
 generan código para [AFMotor R4 Compatible](https://github.com/PhoenixSmaug/AFMotor-Shield-R4-Compatible).
 
 Efraín Guillermo Mariotte Parra — Facilitador de Robótica, TecnoAcademia Tolima (SENA).
+
+## Marca
+
+El robot de TecnoBloques está hecho de **dos bloques encajados**: un ojo es un engranaje (robótica), el otro un
+cursor (código), y la antena es una **T** de TecnoAcademia. Colores institucionales del SENA. Archivos y reglas de
+uso en [`marca/MARCA.md`](marca/MARCA.md).
 
 ## Licencia
 

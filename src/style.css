@@ -105,7 +105,10 @@ button, input, select, textarea { font: inherit; color: inherit; }
   border-bottom: 1px solid var(--line);
 }
 .marca { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 17px; letter-spacing: .2px; }
-.marca svg { width: 26px; height: 26px; flex: none; }
+.marca svg { width: 30px; height: 30px; flex: none; }
+.marca .nombre { letter-spacing: -.2px; }
+.marca .tecno { color: var(--ink); }
+.marca .bloques { color: var(--accent); }
 .marca small { font-weight: 400; color: var(--muted); font-size: 12px; }
 #nombreProyecto {
   border: 1px solid transparent; background: transparent; border-radius: 6px;

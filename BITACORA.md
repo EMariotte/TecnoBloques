@@ -169,3 +169,26 @@ aprendiz no puede subir su programa sin el Arduino IDE.
 **Pendiente:** subir a placas reales, conseguir CH341SER.EXE, publicar el Release v0.2.0 y ligar los errores al bloque que los causa.
 
 **Nota (Efraín, mismo día):** ya está `CH341SER.EXE` en `escritorio/recursos/drivers/`. La prueba con placas reales pasa a la próxima sesión, en el ambiente donde están todas las placas. **No se publica el Release v0.2.0** hasta probarla.
+
+## 2026-10-05 — Marca de TecnoBloques
+
+**Proceso:**
+
+1. Primera ronda de 4 íconos. Efraín pidió más opciones y un ícono que reúna **bloques, código, TecnoAcademia y robótica**, con los colores institucionales.
+2. Seis conceptos, evaluados a 48, 32 y 16 px sobre fondo claro y oscuro.
+3. Cuatro finalistas que combinan lo mejor de cada uno. Se quitó la muesca superior, que hacía ver "orejas de gato". Se probaron en una sola tinta y con el nombre al lado.
+4. Efraín eligió **F4 (Pila T)** y pidió dos ajustes: que cabeza y cuerpo **encajen como bloques**, y una cara más mecánica con **un ojo engranaje y otro cursor**. Se aprobó la versión **A**, con el engranaje a la izquierda.
+
+**Hecho:**
+
+- **`marca/generar.py`** genera todo desde un solo dibujo: SVG (app, cabeza, sobre claro y oscuro, una tinta azul y blanca), PNG de 16 a 1024 px (a 16 y 24 px va solo la cabeza), `escritorio/icono.ico` de 7 tamaños, logos horizontales e imagen para compartir de 1200×630.
+- **Guía de uso:** `marca/MARCA.md`.
+- **Dónde quedó la marca:**
+  - el logo de la barra superior del editor;
+  - el favicon de la página web, que antes no tenía;
+  - el ícono para celulares;
+  - la app y el instalador, comprobado sacando el ícono del `.exe`;
+  - el README.
+- **Pendiente:**
+  - confirmar los colores con el manual de identidad del SENA;
+  - subir `compartir.png` como vista previa del repositorio en GitHub (Settings → Social preview; no se puede hacer por API).
