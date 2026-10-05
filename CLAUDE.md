@@ -81,9 +81,9 @@ Niveles           → (decidido) Selector 1 · 2 · 3 en la barra superior. Cada
                     El nivel 1 muestra la paleta más simple. Principiante = bloques del robot ("carro: avanzar"),
                     sin pines PWM, baudios ni tipos C++. Avanzado = paleta actual.
 
-Nombres de pines  → (decidido) Bloque para nombrar pines físicos: "el pin 13 se llama
-                    LedRojo" → #define LedRojo 13. Los nombres aparecen en todos los
-                    menús de pines y la revisión de choques sigue usando el número real.
+Nombres de pines  → ✅ HECHO (5 oct). "el pin 13 se llama LedRojo" → #define LedRojo 13.
+                    Los nombres aparecen en todos los menús de pines y la revisión de
+                    choques sigue usando el número real. Ver "Nombres de pines" en Arquitectura.
 
 Más librerías     → (decidido) MPU6050, Wire.h (I2C genérico) y Adafruit_PWMServoDriver
                     (PCA9685, 16 servos). LCD ampliada el 5 oct (símbolos propios,
@@ -194,6 +194,19 @@ Cada perfil define `fqbn`, pines digitales y analógicos, `soloAnalog` (A6 y A7 
 ### Variables tipadas
 
 Los bloques propios son `var_set`, `var_get`, `var_cambiar` y `bucle_para`; no se usan los de variables de Blockly. Cada variable tiene un tipo de Blockly que es directamente el tipo C++: `int`, `long`, `float`, `bool`, `char` o `String`. Se crean con el botón "Crear variable…" (modal propio) y se declaran como globales con su valor inicial.
+
+### Nombres de pines (`#define`)
+
+- `pin_nombre`: "el pin [PIN] se llama [NOMBRE]". Es un bloque suelto sin conexiones, como `cpp_global`, porque un `#define` es global. No se desactiva por estar suelto. Su `CampoPin('fisico')` lista solo pines reales, sin nombres.
+- `pin_valor`: un bloque de valor "pin [LedRojo]" que sirve para pasar un pin a un bloque propio.
+- El validador `validarNombrePin` convierte lo que se escribe en un identificador C++ válido. Usa `nombreC`. Si el nombre parece un pin real, como `A0` o `D5`, le agrega `_`.
+- `nombresDePines(ws)` lee los bloques activos. Al empezar `generarPrograma` se llena `Ard.nombresPin_` (nombre → `{pin, bloque}`), **antes** de generar cualquier bloque.
+- `opcionesPin()` pone primero los nombres que sirven para ese uso, como "LedRojo (13)". Los **campos guardan el nombre**, no el número: si se cambia 13 por 12 en `pin_nombre`, cambia en todo el programa.
+- Los generadores **emiten el valor tal cual** (`digitalWrite(LedRojo, HIGH)`). Para cualquier **lógica** con el número del pin deben usar `pinReal(v)`: PWM válido, Serial por hardware del Mega, `swRx`, Servo↔PWM, claves de `G.setup` como `pinMode_`. `G.pin` ya resuelve el número solo.
+- Para objetos que van uno por pin físico se usa `sufijoPin(v)` (`servo_Pinza`, `dht_Clima`). En los avisos se usa `pinTexto(v)`, que da "LedAzul (9)".
+- Los `#define` salen después de los `#include` y antes de los objetos globales, porque estos pueden usar los nombres. Por ejemplo, `DHT dht_Clima(Clima, DHT11)`.
+- Avisos: nombre repetido, pin inexistente en la placa, nombre no definido ("No hay un pin llamado…") y nombre igual a una variable o a un bloque propio.
+- Al renombrar un `pin_nombre`, un listener de `app.js` cambia los `CampoPin` que usaban el nombre viejo, en el mismo grupo de eventos (deshacer revierte todo, y se ignora si `!e.recordUndo`). `actualizar()` llama a `refrescarPines()` cuando cambia algún nombre o número, para que los menús muestren el texto nuevo.
 
 ### Funciones / bloques propios
 
@@ -330,6 +343,7 @@ Ojo: el ultrasonido trae 8/9 por defecto (pensado para Otto); **con la shield el
 | Monitor serial con una placa real | ⬜ **no probado** (en la nube no hay USB) |
 | `npm test` + `npm run compilar` en Windows 11 | ✅ los 8 programas compilan. `compilar.js` usa `ARDUINO_CLI`, o el arduino-cli que trae el Arduino IDE 2, o el del PATH |
 | Bloques nuevos de la LCD (20x4, 2 símbolos, cursor, borrar fila, desplazar) | ✅ compilan en uno y mega2560 sin warnings propios; guardar/abrir conserva los dibujos; editor probado con clics reales (claro y oscuro) |
+| Nombres de pines: 5 nombres usados en LED, botón, servo, PWM, DHT y un bloque propio, mezclando `13` y `LedRojo` | ✅ compila en uno; renombrar actualiza los bloques y deshacer lo revierte; avisos probados |
 | `instalar-librerias.ps1` | ⬜ no probado (en este PC las librerías se instalaron una por una con el arduino-cli del IDE) |
 
 Versiones con las que se compiló (Linux, 26 sep): núcleo AVR 1.8.6, AFMotor-Shield-R4-Compatible 1.0.1,
@@ -365,8 +379,8 @@ Fase 2 ⬜ App de escritorio para el aula (reemplaza al servidor de compilación
           - Mostrar errores del compilador en español y ligarlos al bloque si se puede.
           - build.js genera también la versión web para casa (sin "Subir").
 
-Fase 2b ⬜ Base del sistema de bloques, ANTES de sumar librerías nuevas:
-          nombres de pines (#define) y niveles desbloqueables.
+Fase 2b ◐ Base del sistema de bloques, ANTES de sumar librerías nuevas:
+          ✅ nombres de pines (#define) · ⬜ niveles 1·2·3 en la barra superior.
 
 Fase 3 ⬜ Uno R4 (cuando lleguen): perfil de placa + núcleo arduino:renesas_uno en el
           instalador. arduino-cli ya sabe cargar el R4 (DFU / toque a 1200 baudios).

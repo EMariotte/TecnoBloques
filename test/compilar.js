@@ -17,7 +17,8 @@ const FQBN = {
   carro_mega: 'arduino:avr:mega:cpu=atmega2560',
   todo_uno: 'arduino:avr:uno',
   todo_mega: 'arduino:avr:mega:cpu=atmega2560',
-  misbloques: 'arduino:avr:uno'
+  misbloques: 'arduino:avr:uno',
+  pines: 'arduino:avr:uno'
 };
 const salida = path.join(__dirname, 'salida');
 if (!fs.existsSync(salida)) { console.error('No hay test/salida. Corre primero: npm test'); process.exit(1); }

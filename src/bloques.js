@@ -161,6 +161,22 @@ bloque('var_get', COL.variables, function () {
 }, (b) => [nombreC(b.getField('VAR').getVariable().getName()), O.ATOMIC]);
 
 /* ================= Entradas y salidas ================= */
+/** Nombre de pin válido en C++ mientras se escribe: sin tildes ni espacios, y que no parezca un pin real. */
+function validarNombrePin(v) {
+  let s = nombreC(v);
+  if (/^[AD]\d+$/.test(s)) s += '_';
+  return s;
+}
+bloque('pin_nombre', COL.es, function () {
+  this.appendDummyInput().appendField('el pin').appendField(new CampoPin('fisico', '13'), 'PIN')
+    .appendField('se llama').appendField(new Blockly.FieldTextInput('LedRojo', validarNombrePin), 'NOMBRE');
+  this.setTooltip('Ponle al pin el nombre de lo que conectaste: LedRojo, Boton, Sensor… El nombre aparece en los menús de pines. Si cambias el número aquí, cambia en todo el programa.');
+}, () => '');
+bloque('pin_valor', COL.es, function () {
+  this.appendDummyInput().appendField('pin').appendField(new CampoPin('digital', '13'), 'PIN');
+  this.setOutput(true, 'Number');
+  this.setTooltip('El número de un pin (o su nombre). Sirve para pasarlo a tus propios bloques, por ejemplo parpadear(LedRojo).');
+}, (b) => [b.getFieldValue('PIN'), O.ATOMIC]);
 bloque('pin_modo', COL.es, function () {
   this.appendDummyInput().appendField('configurar pin').appendField(new CampoPin('digital', '2'), 'PIN').appendField('como')
     .appendField(dd([['entrada', 'INPUT'], ['entrada con pull-up', 'INPUT_PULLUP'], ['salida', 'OUTPUT']]), 'MODO');
@@ -172,14 +188,14 @@ bloque('escribir_digital', COL.es, function () {
   sentencia(this);
   this.setTooltip('Enciende o apaga un pin digital (LED, relé, zumbador activo). El pin se configura como salida solo.');
 }, (b) => {
-  const p = b.getFieldValue('PIN'); G.pin(p, 'E/S digital', b); G.setup('pinMode_' + p, `pinMode(${p}, OUTPUT);`);
+  const p = b.getFieldValue('PIN'); G.pin(p, 'E/S digital', b); G.setup('pinMode_' + pinReal(p), `pinMode(${p}, OUTPUT);`);
   return `digitalWrite(${p}, ${b.getFieldValue('EST')});\n`;
 });
 bloque('escribir_digital_valor', COL.es, function () {
   this.appendValueInput('V').appendField('escribir en pin').appendField(new CampoPin('digital', '13'), 'PIN').appendField('el valor lógico');
   sentencia(this);
 }, (b) => {
-  const p = b.getFieldValue('PIN'); G.pin(p, 'E/S digital', b); G.setup('pinMode_' + p, `pinMode(${p}, OUTPUT);`);
+  const p = b.getFieldValue('PIN'); G.pin(p, 'E/S digital', b); G.setup('pinMode_' + pinReal(p), `pinMode(${p}, OUTPUT);`);
   return `digitalWrite(${p}, ${G.val(b, 'V', O.NONE, 'LOW')} ? HIGH : LOW);\n`;
 });
 bloque('leer_digital', COL.es, function () {
@@ -193,9 +209,9 @@ bloque('escribir_pwm', COL.es, function () {
   this.setTooltip('Brillo de un LED o velocidad de un motor. Solo en pines con ~ (PWM).');
 }, (b) => {
   const p = b.getFieldValue('PIN'); G.pin(p, 'E/S digital', b);
-  if (!placa().pwm.map(String).includes(p)) G.aviso(`El pin ${p} no tiene PWM en ${placa().nombre}. Usa uno de: ${placa().pwm.join(', ')}.`, b);
+  if (!placa().pwm.map(String).includes(pinReal(p))) G.aviso(`El pin ${pinTexto(p)} no tiene PWM en ${placa().nombre}. Usa uno de: ${placa().pwm.join(', ')}.`, b);
   Ard.banderas_.pwmPines = (Ard.banderas_.pwmPines || []).concat([{ p, b }]);
-  G.setup('pinMode_' + p, `pinMode(${p}, OUTPUT);`);
+  G.setup('pinMode_' + pinReal(p), `pinMode(${p}, OUTPUT);`);
   return `analogWrite(${p}, constrain(${G.val(b, 'V')}, 0, 255));\n`;
 });
 bloque('leer_analogo', COL.es, function () {
@@ -276,14 +292,14 @@ bloque('serial_leer_numero', COL.serial, function () {
 /* ================= Bluetooth (HC-05 / HC-06) ================= */
 function configurarBT(rx, tx, b) {
   Ard.banderas_.btConfig = true;
-  const hw = placa().serialesHW.find(s => s.rx === String(rx) && s.tx === String(tx));
+  const hw = placa().serialesHW.find(s => s.rx === pinReal(rx) && s.tx === pinReal(tx));
   if (hw) {
     G.global('bt', `#define BT ${hw.nombre}  // Bluetooth en el puerto serie ${hw.nombre} (RX ${rx}, TX ${tx})`);
   } else {
     G.incluir('SoftwareSerial', '#include <SoftwareSerial.h>');
     G.global('bt', `SoftwareSerial BT(${rx}, ${tx});  // RX del Arduino (va al TX del módulo), TX del Arduino`);
     const p = placa();
-    if (p.swRx && !p.swRx.includes(String(rx))) {
+    if (p.swRx && !p.swRx.includes(pinReal(rx))) {
       G.aviso(`En ${p.nombre} el RX de Bluetooth por software solo funciona en ${p.swRx.join(', ')}. Mejor usa Serial1: RX 19 y TX 18.`, b);
     }
   }
@@ -370,13 +386,13 @@ bloque('servo_mover', COL.servos, function () {
   this.setInputsInline(true); sentencia(this);
   this.setTooltip('Ángulo de 0 a 180. En la shield L293D los conectores SERVO_1 y SERVO_2 son los pines 10 y 9.');
 }, (b) => {
-  const p = b.getFieldValue('PIN');
+  const p = b.getFieldValue('PIN'), s = 'servo_' + sufijoPin(p);  // un objeto por pin físico
   G.incluir('Servo', '#include <Servo.h>');
-  G.global('servo_' + p, `Servo servo_${nombreC(p)};`);
-  G.setup('servo_' + p, `servo_${nombreC(p)}.attach(${p});`);
+  G.global(s, `Servo ${s};`);
+  G.setup(s, `${s}.attach(${p});`);
   G.pin(p, 'Servo', b);
   Ard.banderas_.servoUsado = true;
-  return `servo_${nombreC(p)}.write(constrain(${G.val(b, 'A', O.NONE, '90')}, 0, 180));\n`;
+  return `${s}.write(constrain(${G.val(b, 'A', O.NONE, '90')}, 0, 180));\n`;
 });
 
 /* ================= Sensores ================= */
@@ -387,10 +403,10 @@ bloque('dht_leer', COL.sensores, function () {
   this.setOutput(true, 'Number');
   this.setTooltip('Usa la librería DHT de Adafruit. El sensor entrega un dato nuevo cada 1–2 segundos; si falla da NaN (revisa con "¿es un número válido?").');
 }, (b) => {
-  const p = b.getFieldValue('PIN'), t = b.getFieldValue('T'), n = 'dht_' + nombreC(p);
+  const p = b.getFieldValue('PIN'), t = b.getFieldValue('T'), n = 'dht_' + sufijoPin(p);
   G.incluir('DHT', '#include <DHT.h>');
   const previo = Ard.globales_.get(n);
-  if (previo && !previo.includes(`, ${t})`)) G.aviso(`En el pin ${p} hay un DHT11 y un DHT22 a la vez. Elige uno.`, b);
+  if (previo && !previo.includes(`, ${t})`)) G.aviso(`En el pin ${pinTexto(p)} hay un DHT11 y un DHT22 a la vez. Elige uno.`, b);
   G.global(n, `DHT ${n}(${p}, ${t});`);
   G.setup(n, `${n}.begin();`);
   G.pin(p, 'Sensor ' + t, b);
@@ -768,7 +784,7 @@ const MezclaCodigo = {
   initCodigo(titulo, porDefecto) {
     this.appendDummyInput('CAB').appendField(titulo)
       .appendField(new Blockly.FieldImage(ICONO_LAPIZ, 18, 18, 'editar', () => editarCodigoBloque(this)), 'EDIT')
-      .appendField(new Blockly.FieldTextInput(porDefecto, (v) => { setTimeout(() => this.pintarLineas_ && this.pintarLineas_(), 0); return v; }), 'CODE');
+      .appendField(new Blockly.FieldTextInput(porDefecto, (v) => { setTimeout(() => !this.isDeadOrDying() && this.pintarLineas_(), 0); return v; }), 'CODE');
     this.getField('CODE').setVisible(false);
     this.pintarLineas_();
   },

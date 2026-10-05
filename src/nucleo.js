@@ -41,8 +41,38 @@ function opcionesPin(tipo) {
   let lista;
   if (tipo === 'analogico') lista = p.analogicos;
   else if (tipo === 'pwm') lista = p.pwm.map(String);
+  else if (tipo === 'fisico') lista = p.digitales.map(String).concat(p.analogicos);
   else lista = p.digitales.map(String).concat(p.analogicos.filter(a => !p.soloAnalog.includes(a)));
-  return lista.map(v => [String(v), String(v)]);
+  const opts = lista.map(v => [String(v), String(v)]);
+  if (tipo === 'fisico') return opts;
+  // Primero los pines con nombre que sirven para este uso: "LedRojo (13)"
+  const vistos = new Set();
+  const nombres = nombresDePines().filter(n => lista.includes(n.pin) && !vistos.has(n.nombre) && vistos.add(n.nombre))
+    .map(n => [`${n.nombre} (${n.pin})`, n.nombre]);
+  return nombres.concat(opts);
+}
+
+/* ---------- Nombres de pines (#define) ---------- */
+/** Pines con nombre del programa: [{nombre, pin, bloque}]. Solo bloques activos. */
+function nombresDePines(ws) {
+  ws = ws || (typeof espacio !== 'undefined' ? espacio : null);
+  if (!ws) return [];
+  return ws.getBlocksByType('pin_nombre', true).filter(b => b.isEnabled())
+    .map(b => ({ nombre: b.getFieldValue('NOMBRE'), pin: b.getFieldValue('PIN'), bloque: b }));
+}
+/** "LedRojo" → "13". Un pin sin nombre se devuelve igual. */
+function pinReal(v) {
+  const s = String(v);
+  const n = Ard.nombresPin_ && Ard.nombresPin_.get(s);
+  return n ? n.pin : s;
+}
+/** Para avisos: "LedAzul (9)" o "9". */
+function pinTexto(v) { const r = pinReal(v); return r !== String(v) ? `${v} (${r})` : String(v); }
+/** Sufijo para objetos que van uno por pin físico: el primer nombre de ese pin o su número (servo_Pinza, servo__10). */
+function sufijoPin(v) {
+  const r = pinReal(v);
+  const n = Ard.nombresPin_ && [...Ard.nombresPin_.values()].find(x => x.pin === r);
+  return n ? n.nombre : nombreC(r);
 }
 /** Convierte "A0" o "13" a un número único de pin para detectar choques. */
 function pinNumero(pin) {
@@ -157,7 +187,10 @@ const G = {
   global(k, codigo) { if (!Ard.globales_.has(k)) Ard.globales_.set(k, codigo); },
   setup(k, codigo) { if (!Ard.setup_.has(k)) Ard.setup_.set(k, codigo); },
   ayuda(k, codigo) { if (!Ard.ayudas_.has(k)) Ard.ayudas_.set(k, codigo); },
-  pin(pin, uso, bloque) { Ard.pines_.push({ pin: String(pin), uso, id: bloque && bloque.id }); },
+  pin(pin, uso, bloque) {
+    const s = String(pin), real = pinReal(s);
+    Ard.pines_.push({ pin: real, nombre: real !== s ? s : null, uso, id: bloque && bloque.workspace === espacio ? bloque.id : null });
+  },
   aviso(msg, bloque, tipo) { Ard.avisos_.push({ msg, id: bloque && bloque.workspace === espacio ? bloque.id : null, tipo: tipo || 'aviso' }); },
   val(b, nombre, orden, defecto) { return Ard.valueToCode(b, nombre, orden === undefined ? O.NONE : orden) || (defecto === undefined ? '0' : defecto); },
   sentencias(b, nombre) { return Ard.statementToCode(b, nombre); },
@@ -169,6 +202,14 @@ const ORDEN_INCLUDES = ['Wire', 'SPI', 'SoftwareSerial', 'Servo', 'Otto', 'AFMot
 /** Genera el programa completo a partir del espacio de trabajo. */
 function generarPrograma(ws) {
   Ard.init(ws);
+  // Nombres de pines: se leen antes de generar para que cualquier bloque los pueda usar
+  Ard.nombresPin_ = new Map();
+  for (const n of nombresDePines(ws)) {
+    if (Ard.nombresPin_.has(n.nombre)) { G.aviso(`Hay dos pines con el nombre "${n.nombre}". Cambia uno.`, n.bloque); continue; }
+    const p = placa();
+    if (!p.digitales.map(String).includes(n.pin) && !p.analogicos.includes(n.pin)) G.aviso(`El pin ${n.pin} no existe en ${p.nombre}.`, n.bloque);
+    Ard.nombresPin_.set(n.nombre, n);
+  }
   let globalLibre = '';
   const tops = ws.getTopBlocks(true);
   for (const b of tops) {
@@ -184,7 +225,7 @@ function generarPrograma(ws) {
   } else {
     G.aviso('Falta el bloque "al iniciar / repetir por siempre". Sin él la placa no hace nada.', null);
   }
-  const sueltos = tops.filter(b => !['programa', 'fn_def', 'cpp_global'].includes(b.type));
+  const sueltos = tops.filter(b => !['programa', 'fn_def', 'cpp_global', 'pin_nombre'].includes(b.type));
   if (sueltos.length) {
     G.aviso(`Hay ${sueltos.length} bloque(s) suelto(s) fuera del programa; no se incluyen en el código.`, sueltos[0], 'info');
   }
@@ -208,8 +249,15 @@ function generarPrograma(ws) {
   const variables = ws.getVariableMap().getAllVariables().map(v =>
     `${v.getType() || 'int'} ${nombreC(v.getName())} = ${valorInicial(v.getType() || 'int')};`);
   const p = placa();
+  const nombresVar = new Set(ws.getVariableMap().getAllVariables().map(v => nombreC(v.getName())));
+  for (const [nombre, n] of Ard.nombresPin_) {
+    if (nombresVar.has(nombre)) G.aviso(`"${nombre}" es el nombre de un pin y también de una variable. Cambia uno de los dos.`, n.bloque);
+    else if (Ard.funciones_.has(nombre)) G.aviso(`"${nombre}" es el nombre de un pin y también de un bloque propio. Cambia uno de los dos.`, n.bloque);
+  }
+  const defines = [...Ard.nombresPin_.values()].map(n => `#define ${n.nombre} ${n.pin}`);
   let out = `// ${document.getElementById('nombreProyecto').value || 'Proyecto'} · ${p.nombre}\n// Generado con TecnoBloques\n`;
   if (includes.length) out += '\n' + includes.join('\n') + '\n';
+  if (defines.length) out += '\n// Nombres de los pines\n' + defines.join('\n') + '\n';
   if (Ard.globales_.size) out += '\n' + [...Ard.globales_.values()].join('\n') + '\n';
   if (variables.length) out += '\n' + variables.join('\n') + '\n';
   if (globalLibre.trim()) out += '\n' + globalLibre.replace(/\s+$/, '') + '\n';
@@ -311,7 +359,8 @@ function revisarPines() {
   for (const [, usos] of mapa) {
     const distintos = [...new Set(usos.map(u => u.uso))];
     if (distintos.length > 1) {
-      const pin = usos[0].pin;
+      const nombres = [...new Set(usos.map(u => u.nombre).filter(Boolean))];
+      const pin = usos[0].pin + (nombres.length ? ` (${nombres.join(', ')})` : '');
       const conBloque = usos.find(u => u.id) || {};
       G.aviso(`El pin ${pin} lo usan a la vez: ${distintos.join(', ')}.`, conBloque.id ? espacio.getBlockById(conBloque.id) : null);
     }
@@ -319,7 +368,10 @@ function revisarPines() {
   const p = placa();
   for (const u of Ard.pines_) {
     const valido = p.digitales.map(String).includes(u.pin) || p.analogicos.includes(u.pin);
-    if (!valido) G.aviso(`El pin ${u.pin} no existe en ${p.nombre}.`, u.id ? espacio.getBlockById(u.id) : null);
+    if (valido) continue;
+    const bloque = u.id ? espacio.getBlockById(u.id) : null;
+    if (/^A?\d+$/.test(u.pin)) G.aviso(`El pin ${u.pin} no existe en ${p.nombre}.`, bloque);
+    else G.aviso(`No hay un pin llamado "${u.pin}". Ponle ese nombre con el bloque "el pin … se llama …".`, bloque);
   }
 }
 
@@ -360,7 +412,7 @@ function finalizarModulos() {
   if ((f.servoUsado || f.ottoConfig || f.brazosConfig) && f.pwmPines) {
     const sin = placa().servoSinPWM.map(String);
     for (const u of f.pwmPines) {
-      if (sin.includes(u.p)) G.aviso(`Con servos conectados, el PWM del pin ${u.p} deja de funcionar (la librería Servo usa ese temporizador). Usa otro pin PWM.`, u.b);
+      if (sin.includes(pinReal(u.p))) G.aviso(`Con servos conectados, el PWM del pin ${pinTexto(u.p)} deja de funcionar (la librería Servo usa ese temporizador). Usa otro pin PWM.`, u.b);
     }
   }
   if (f.detenerTodos) {

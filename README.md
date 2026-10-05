@@ -17,6 +17,7 @@ genera en vivo y ábrelo en tu placa. Funciona con **Arduino Uno R3, Nano y Mega
   - Servos
   - Ultrasonido HC-SR04
   - **Otto humanoide** (caminar, bailar, gestos, sonidos y brazos)
+- **Nombres para los pines:** "el pin 13 se llama LedRojo" (`#define`). Luego eliges LedRojo en cualquier menú de pines.
 - **Variables con tipo** (entero, decimal, texto, carácter…) y **funciones propias** con parámetros y valor de retorno.
 - **Mis bloques:** guarda tus funciones y úsalas en cualquier otro programa. Se pueden exportar e importar como archivo.
 - **C++ libre:** mezcla bloques con líneas de código escritas a mano.

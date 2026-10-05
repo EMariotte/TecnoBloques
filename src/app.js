@@ -202,9 +202,9 @@ const TOOLBOX = {
     { kind: 'category', name: 'Mis bloques', colour: COL.mis, custom: 'MIS_BLOQUES_TB' },
     { kind: 'sep' },
     { kind: 'category', name: 'Entradas y salidas', colour: COL.es, contents: [
-      B('escribir_digital'), B('leer_digital'), B('pin_modo'), B('escribir_pwm', { inputs: { V: num(128) } }), B('leer_analogo'),
+      B('pin_nombre'), B('escribir_digital'), B('leer_digital'), B('pin_modo'), B('escribir_pwm', { inputs: { V: num(128) } }), B('leer_analogo'),
       B('escribir_digital_valor', { inputs: { V: { shadow: { type: 'logic_boolean' } } } }),
-      B('tono', { inputs: { F: num(440), D: num(200) } }), B('sin_tono')
+      B('tono', { inputs: { F: num(440), D: num(200) } }), B('sin_tono'), B('pin_valor')
     ] },
     { kind: 'category', name: 'Tiempo', colour: COL.tiempo, contents: [
       B('esperar', { inputs: { MS: num(1000) } }), B('esperar_seg', { inputs: { S: num(1) } }), B('millis'),
@@ -489,8 +489,12 @@ function ayudaMisBloques() {
 let temporizador = null;
 function programarActualizacion() { clearTimeout(temporizador); temporizador = setTimeout(actualizar, 120); }
 let avisados = [];
+let firmaPines = '';
 function actualizar() {
   if (!espacio) return;
+  // Si cambió algún nombre de pin, los menús de pines muestran el texto nuevo ("LedRojo (12)")
+  const f = JSON.stringify(nombresDePines().map(n => [n.nombre, n.pin]));
+  if (f !== firmaPines) { firmaPines = f; refrescarPines(); }
   Blockly.Events.setGroup(true);
   try {
     espacio.getAllBlocks(false).forEach(b => { if (b.refrescar_ && !b.isInFlyout) b.refrescar_(); });
@@ -1024,6 +1028,18 @@ function iniciar() {
             c.firma_.nombre = e.newValue; c.actualizarForma_();
           }
         });
+      }
+    }
+    // Renombrar un pin: los bloques que usaban el nombre viejo pasan al nuevo (al deshacer, Blockly ya revierte todo)
+    if (e.type === Blockly.Events.BLOCK_CHANGE && e.element === 'field' && e.name === 'NOMBRE' && e.recordUndo && e.oldValue) {
+      const b = espacio.getBlockById(e.blockId);
+      if (b && b.type === 'pin_nombre' && !nombresDePines().some(n => n.nombre === e.oldValue)) {
+        const grupo = Blockly.Events.getGroup();
+        Blockly.Events.setGroup(e.group || true);
+        espacio.getAllBlocks(false).forEach(c => c.inputList.forEach(inp => inp.fieldRow.forEach(f => {
+          if (f instanceof CampoPin && f.getValue() === e.oldValue) f.setValue(e.newValue);
+        })));
+        Blockly.Events.setGroup(grupo);
       }
     }
     programarActualizacion();

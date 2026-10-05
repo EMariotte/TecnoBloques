@@ -112,3 +112,14 @@ aprendiz no puede subir su programa sin el Arduino IDE.
 - **Avisos nuevos:** más de 8 símbolos, un símbolo que no existe y una columna o fila que no cabe en 16x2 o 20x4.
 - **Hallazgo:** la librería no permite regular el brillo, solo encender o apagar la luz. El contraste se ajusta con el potenciómetro del módulo. Se explica en la ayuda del bloque.
 - **Primera compilación real en Windows**, con el arduino-cli que trae el Arduino IDE 2: los 8 programas de prueba compilan. `test/compilar.js` ahora encuentra ese arduino-cli solo. Las pruebas guardan los .ino en UTF-8.
+
+## 2026-10-05 — Nombres de pines (#define)
+
+**Hecho:**
+
+- **Bloque "el pin [13] se llama [LedRojo]"** que genera `#define LedRojo 13`. Los nombres aparecen primero en todos los menús de pines como "LedRojo (13)", y el C++ usa el nombre. Si se cambia el número en ese bloque, cambia en todo el programa. Si se renombra, los bloques que lo usan se actualizan solos y deshacer lo revierte.
+- **Bloque de valor "pin [LedRojo]"** para pasar pines a los bloques propios, por ejemplo `parpadear(LedRojo)`.
+- **Revisión de choques:** sigue usando el número real y los avisos muestran el nombre y el número, como "LedAzul (9)". Los objetos se nombran por el pin: `servo_Pinza` y `dht_Clima`.
+- **Avisos:** nombre repetido, pin inexistente, nombre no definido y nombre igual a una variable.
+- **Prueba fija nueva `pines`** en `test/prueba_todo.py` y `test/compilar.js`. Los 9 programas compilan.
+- **Falla vieja corregida:** si un bloque de C++ libre se borraba justo después de cambiar su texto (por ejemplo, con "Nuevo"), el redibujo diferido fallaba con `FIELD_TEXT_BASELINE_CENTER`.
