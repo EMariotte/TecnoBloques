@@ -86,8 +86,8 @@ Nombres de pines  → (decidido) Bloque para nombrar pines físicos: "el pin 13 
                     menús de pines y la revisión de choques sigue usando el número real.
 
 Más librerías     → (decidido) MPU6050, Wire.h (I2C genérico) y Adafruit_PWMServoDriver
-                    (PCA9685, 16 servos). El LCD I2C (16x2 y 20x4) y Wire ya existen;
-                    falta aclarar qué se quiere agregar en LCD. Bus I2C compartido:
+                    (PCA9685, 16 servos). LCD ampliada el 5 oct (símbolos propios,
+                    cursor, desplazar, borrar fila…). Bus I2C compartido:
                     LCD 0x27/0x3F, PCA9685 0x40, MPU6050 0x68.
 ```
 
@@ -268,6 +268,18 @@ DHT                → La librería de Adafruit ya guarda la última lectura dur
 LCD I2C            → LiquidCrystal_I2C (Frank de Brabander / marcoschwartz): usa
                      lcd.init() + lcd.backlight(). Direcciones 0x27 o 0x3F.
                      I2C: A4/A5 en Uno/Nano, 20/21 en el Mega.
+                     El BRILLO no se regula por programa: la luz de fondo solo se
+                     enciende/apaga (setBacklight también). Contraste = potenciómetro.
+                     Símbolos propios: CampoDibujo (5x8, valor = 40 caracteres '0'/'1')
+                     con editor emergente y 8 dibujos listos. "crear símbolo" genera un
+                     byte[8] global + lcd.createChar(n, …) + lcd.setCursor(0, 0), porque
+                     createChar deja la LCD escribiendo en la memoria de símbolos.
+                     El número 0–7 se asigna por nombre (indiceSimbolo); repetir un nombre
+                     con otro dibujo lo redefine (sirve para animar). Avisos: más de 8
+                     símbolos, símbolo inexistente, columna/fila fuera de la pantalla
+                     (solo con números fijos). "borrar fila" usa el helper lcdBorrarFila.
+                     Trampa de Blockly: el CSS pinta de blanco los <rect> hijos directos
+                     de un campo editable → los puntos van dentro de un <g> propio.
 
 Otto humanoide     → OttoDIYLib v13 (Otto.h) solo maneja 4 servos (piernas y pies) +
                      zumbador. No trae brazos. Los brazos se manejan con dos Servo
@@ -307,7 +319,7 @@ Ojo: el ultrasonido trae 8/9 por defecto (pensado para Otto); **con la shield el
 
 ---
 
-## Estado de verificación (26 sep 2026)
+## Estado de verificación (5 oct 2026)
 
 | Qué | Resultado |
 |---|---|
@@ -316,11 +328,15 @@ Ojo: el ultrasonido trae 8/9 por defecto (pensado para Otto); **con la shield el
 | Mis bloques: 2 bloques anidados (uno devuelve float y llama al otro con 2 parámetros), guardar → proyecto nuevo → borrar librería → reabrir proyecto | ✅ mismo código generado y compila |
 | Interfaz: categorías, crear variable, Mis bloques, modo texto, monitor, tema oscuro, 400 px | ✅ sin errores de JavaScript (Playwright + Chromium) |
 | Monitor serial con una placa real | ⬜ **no probado** (en la nube no hay USB) |
-| `test/compilar.js` y `instalar-librerias.ps1` en Windows | ⬜ **no probados** (se escribieron para arduino-cli; la verificación se hizo en Linux con arduino-builder + avr-gcc 7.3) |
+| `npm test` + `npm run compilar` en Windows 11 | ✅ los 8 programas compilan. `compilar.js` usa `ARDUINO_CLI`, o el arduino-cli que trae el Arduino IDE 2, o el del PATH |
+| Bloques nuevos de la LCD (20x4, 2 símbolos, cursor, borrar fila, desplazar) | ✅ compilan en uno y mega2560 sin warnings propios; guardar/abrir conserva los dibujos; editor probado con clics reales (claro y oscuro) |
+| `instalar-librerias.ps1` | ⬜ no probado (en este PC las librerías se instalaron una por una con el arduino-cli del IDE) |
 
-Versiones con las que se compiló: núcleo AVR 1.8.6, AFMotor-Shield-R4-Compatible 1.0.1,
+Versiones con las que se compiló (Linux, 26 sep): núcleo AVR 1.8.6, AFMotor-Shield-R4-Compatible 1.0.1,
 DHT sensor library 1.4.7, Adafruit Unified Sensor 1.1.15, LiquidCrystal_I2C 1.1.4,
 OttoDIYLib 13.0.0, Servo 1.3.0.
+Windows (5 oct): arduino-cli 1.5.1, núcleo AVR 1.8.7, Adafruit Motor Shield R4 Compatible 1.0.0,
+LiquidCrystal I2C 1.1.2, el resto igual.
 
 Uso de memoria: carro en Uno usa 36 % de flash y 29 % de RAM. El programa con todos los bloques usa 68 % de flash y 53 % de RAM en el Uno. **Ojo con la OLED en Uno/Nano:** el buffer de SSD1306 ocupa 1 KB de los 2 KB de RAM.
 

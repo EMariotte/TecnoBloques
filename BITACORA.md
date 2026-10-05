@@ -95,3 +95,20 @@ aprendiz no puede subir su programa sin el Arduino IDE.
   titularidad con la coordinación SENNOVA.
 - **Repositorio público** en GitHub (`EMariotte/TecnoBloques`), necesario para
   la actualización automática sin tokens.
+
+## 2026-10-05 — Pantalla LCD ampliada y primera compilación en Windows
+
+**Hecho:**
+
+- **Bloques nuevos de la LCD:**
+  - escribir donde está el cursor
+  - mover el cursor
+  - borrar una fila
+  - **crear símbolo**, con un editor de 5x8 puntos que se pinta tocando o arrastrando, botones Borrar e Invertir y 8 dibujos listos (corazón, carita, grado, flecha, nota, batería, campana, persona)
+  - mostrar un símbolo
+  - correr el texto a la izquierda o a la derecha
+  - ocultar o mostrar el texto
+  - tipo de cursor
+- **Avisos nuevos:** más de 8 símbolos, un símbolo que no existe y una columna o fila que no cabe en 16x2 o 20x4.
+- **Hallazgo:** la librería no permite regular el brillo, solo encender o apagar la luz. El contraste se ajusta con el potenciómetro del módulo. Se explica en la ayuda del bloque.
+- **Primera compilación real en Windows**, con el arduino-cli que trae el Arduino IDE 2: los 8 programas de prueba compilan. `test/compilar.js` ahora encuentra ese arduino-cli solo. Las pruebas guardan los .ino en UTF-8.

@@ -227,7 +227,11 @@ const TOOLBOX = {
       B('dht_leer'), B('ultrasonido'), B('es_valido')
     ] },
     { kind: 'category', name: 'Pantalla LCD', colour: COL.lcd, contents: [
-      B('lcd_iniciar'), B('lcd_escribir', { inputs: { V: txt('Hola'), C: num(0), F: num(0) } }), B('lcd_limpiar'), B('lcd_luz')
+      B('lcd_iniciar'), B('lcd_escribir', { inputs: { V: txt('Hola'), C: num(0), F: num(0) } }),
+      B('lcd_escribir_aqui', { inputs: { V: num(0) } }), B('lcd_cursor_mover', { inputs: { C: num(0), F: num(1) } }),
+      B('lcd_limpiar'), B('lcd_borrar_fila', { inputs: { F: num(1) } }),
+      B('lcd_simbolo_crear'), B('lcd_simbolo_mostrar', { inputs: { C: num(15), F: num(0) } }),
+      B('lcd_desplazar'), B('lcd_pantalla'), B('lcd_cursor'), B('lcd_luz')
     ] },
     { kind: 'category', name: 'Otto humanoide', colour: COL.otto, contents: [
       B('otto_iniciar'), B('otto_brazos_iniciar'), { kind: 'label', text: 'Moverse' },

@@ -1,9 +1,13 @@
 // Compila con arduino-cli los .ino que generan las pruebas (test/salida/<nombre>/<nombre>.ino).
-// Requisitos: arduino-cli en el PATH, núcleo arduino:avr y las librerías de test/instalar-librerias.ps1.
+// Requisitos: arduino-cli (en el PATH, en la variable ARDUINO_CLI o dentro del Arduino IDE 2 en Windows),
+// núcleo arduino:avr y las librerías de test/instalar-librerias.ps1.
 // Uso: npm test   (genera los .ino)   y luego   npm run compilar
 const { execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+
+const IDE_CLI = path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Arduino IDE', 'resources', 'app', 'lib', 'backend', 'resources', 'arduino-cli.exe');
+const CLI = process.env.ARDUINO_CLI || (fs.existsSync(IDE_CLI) ? IDE_CLI : 'arduino-cli');
 
 const FQBN = {
   carro: 'arduino:avr:uno',
@@ -22,7 +26,7 @@ for (const [nombre, fqbn] of Object.entries(FQBN)) {
   const dir = path.join(salida, nombre);
   if (!fs.existsSync(path.join(dir, nombre + '.ino'))) { console.log(`- ${nombre}: no generado, se omite`); continue; }
   try {
-    const out = execFileSync('arduino-cli', ['compile', '--fqbn', fqbn, '--warnings', 'default', dir], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    const out = execFileSync(CLI, ['compile', '--fqbn', fqbn, '--warnings', 'default', dir], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
     const uso = out.split('\n').filter(l => /Sketch uses|El sketch usa|Global variables|Las variables/.test(l)).join(' | ');
     console.log(`✔ ${nombre} (${fqbn}) ${uso}`);
   } catch (e) {

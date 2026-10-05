@@ -335,6 +335,20 @@ function finalizarModulos() {
     configurarLCD('0x27', '16', '2', null);
     G.aviso('Usas la pantalla LCD sin el bloque "iniciar pantalla". Se asumió la dirección 0x27 de 16x2.', null, 'info');
   }
+  if (f.lcdConfig) {
+    const cols = f.lcdCols, filas = f.lcdFilas;
+    for (const u of f.lcdPos || []) {
+      if (u.c !== null && (u.c < 0 || u.c >= cols)) G.aviso(`La columna ${u.c} no existe en una pantalla de ${cols}x${filas}: usa de 0 a ${cols - 1}.`, u.b);
+      if (u.f !== null && (u.f < 0 || u.f >= filas)) G.aviso(`La fila ${u.f} no existe en una pantalla de ${cols}x${filas}: usa de 0 a ${filas - 1}.`, u.b);
+    }
+    if (f.lcdBorrarFila) G.ayuda('lcdBorrarFila', `void lcdBorrarFila(int fila) {\n  lcd.setCursor(0, fila);\n  for (int i = 0; i < ${cols}; i++) lcd.print(' ');\n  lcd.setCursor(0, fila);\n}`);
+  }
+  for (const u of f.lcdMostrados || []) {
+    if (!(f.lcdCreados && f.lcdCreados.has(u.nombre))) G.aviso(`No hay un bloque "LCD crear símbolo" llamado "${u.nombre}".`, u.b);
+  }
+  if (f.lcdCreados && f.lcdCreados.size > 8) {
+    G.aviso(`La pantalla guarda máximo 8 símbolos distintos y el programa crea ${f.lcdCreados.size}. Reusa un nombre para cambiar el dibujo de un símbolo.`, null);
+  }
   if (f.ottoUsado && !f.ottoConfig) {
     configurarOtto(['2', '3', '4', '5', '13'], null);
     G.aviso('Usas bloques de Otto sin "iniciar Otto". Se asumieron los pines 2, 3, 4, 5 y zumbador 13.', null, 'info');

@@ -11,7 +11,7 @@ genera en vivo y ábrelo en tu placa. Funciona con **Arduino Uno R3, Nano y Mega
 - **Bloques de la TecnoAcademia:**
   - Shield de motores L293D (AFMotor_R4)
   - Sensor DHT11/DHT22
-  - Pantalla LCD 16x2 por I2C
+  - Pantalla LCD 16x2 o 20x4 por I2C, con **símbolos propios** que se dibujan con el mouse
   - Monitor serial
   - Bluetooth HC-05/HC-06
   - Servos

@@ -254,6 +254,26 @@ select, .entrada {
 .blocklyFlyoutButton .blocklyFlyoutButtonBackground, .blocklyFlyoutButtonBackground { fill: var(--accent-soft) !important; stroke: var(--accent) !important; }
 .blocklyFlyoutButton .blocklyText { fill: var(--ink) !important; font-family: var(--ui) !important; }
 .blocklyWidgetDiv .blocklyMenu, .blocklyDropDownDiv { font-family: var(--ui) !important; }
+
+/* Editor de símbolos de la LCD (5 x 8 puntos) */
+.blocklyDropDownContent:has(.tb-dibujo) { max-height: none; }
+.tb-dibujo { padding: 10px; color: var(--ink); max-width: 230px; }
+.tb-dibujo p { margin: 0 0 8px; font-size: 13px; color: var(--muted); }
+.tb-dibujo-rejilla {
+  display: grid; grid-template-columns: repeat(5, 24px); gap: 3px; width: max-content; margin: 0 auto;
+  padding: 6px; background: #1e4fa8; border-radius: 6px; touch-action: none; user-select: none;
+}
+.tb-dibujo-celda { width: 24px; height: 24px; border-radius: 3px; background: #2b5fbf; cursor: pointer; }
+.tb-dibujo-celda.on { background: #eef4ff; }
+.tb-dibujo-acciones { display: flex; gap: 6px; justify-content: center; margin: 8px 0; }
+.tb-dibujo button {
+  font: inherit; font-size: 13px; color: var(--ink); background: var(--panel-2);
+  border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer;
+}
+.tb-dibujo button:hover { border-color: var(--accent); }
+.tb-dibujo-listos { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.tb-dibujo-listos button { padding: 4px 0; display: flex; justify-content: center; }
+.tb-dibujo-listos svg { fill: var(--ink); }
 .blocklyText.cpp-linea, .cpp-linea { font-family: var(--mono) !important; }
 .blocklyScrollbarHandle { fill: var(--muted) !important; fill-opacity: .35 !important; }
 

@@ -411,8 +411,135 @@ bloque('ultrasonido', COL.sensores, function () {
 });
 
 /* ================= Pantalla LCD 16x2 I2C ================= */
+/** Dibujo de 5x8 puntos para un símbolo de la LCD: 40 caracteres '0'/'1', fila por fila. */
+const DIBUJOS_LCD = [
+  ['corazón', '0000001010111111111111111011100010000000'],
+  ['carita', '0000001010010100000010001011100000000000'],
+  ['grado °', '0110010010100100110000000000000000000000'],
+  ['flecha', '0010001110101010010000100001000010000000'],
+  ['nota', '0001000011000100001001110111100110000000'],
+  ['batería', '0111011111100011000111111111111111111111'],
+  ['campana', '0010001110011100111011111000000010000000'],
+  ['persona', '0111001110001001111100100010101000100000']
+];
+const DIBUJO_VACIO = '0'.repeat(40);
+class CampoDibujo extends Blockly.Field {
+  constructor(valor) {
+    super(valor || DIBUJO_VACIO);
+    this.SERIALIZABLE = true;
+    this.CURSOR = 'pointer';
+  }
+  doClassValidation_(v) { return typeof v === 'string' && /^[01]{40}$/.test(v) ? v : null; }
+  initView() {
+    const T = CampoDibujo.T, dom = Blockly.utils.dom;
+    // Dentro de un grupo propio: el CSS de Blockly pinta de blanco los <rect> hijos directos del campo.
+    const g = dom.createSvgElement('g', {}, this.fieldGroup_);
+    dom.createSvgElement('rect', { width: 5 * T + 3, height: 8 * T + 3, rx: 3, fill: '#1e4fa8' }, g);
+    this.puntos_ = [];
+    for (let i = 0; i < 40; i++) {
+      this.puntos_.push(dom.createSvgElement('rect', { x: 2 + (i % 5) * T, y: 2 + Math.floor(i / 5) * T, width: T - 1, height: T - 1 }, g));
+    }
+  }
+  render_() {
+    const v = this.getValue() || DIBUJO_VACIO;
+    if (this.puntos_) this.puntos_.forEach((r, i) => r.setAttribute('fill', v[i] === '1' ? '#eef4ff' : '#2b5fbf'));
+    this.size_ = new Blockly.utils.Size(5 * CampoDibujo.T + 3, 8 * CampoDibujo.T + 3);
+  }
+  getText_() { return 'dibujo'; }
+  showEditor_() {
+    const div = Blockly.DropDownDiv.getContentDiv();
+    div.textContent = '';
+    const caja = document.createElement('div');
+    caja.className = 'tb-dibujo';
+    const rejilla = document.createElement('div');
+    rejilla.className = 'tb-dibujo-rejilla';
+    let pintando = null;
+    const celdas = [];
+    const poner = (i, on) => {
+      const v = this.getValue();
+      if ((v[i] === '1') === on) return;
+      this.setValue(v.slice(0, i) + (on ? '1' : '0') + v.slice(i + 1));
+      pintarCeldas();
+    };
+    const pintarCeldas = () => { const v = this.getValue(); celdas.forEach((c, i) => c.classList.toggle('on', v[i] === '1')); };
+    const soltar = () => { if (pintando !== null) { pintando = null; Blockly.Events.setGroup(false); } };
+    for (let i = 0; i < 40; i++) {
+      const c = document.createElement('div');
+      c.className = 'tb-dibujo-celda';
+      c.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        Blockly.Events.setGroup(true);
+        pintando = this.getValue()[i] !== '1';
+        poner(i, pintando);
+      });
+      c.addEventListener('pointerenter', () => { if (pintando !== null) poner(i, pintando); });
+      celdas.push(c); rejilla.appendChild(c);
+    }
+    rejilla.addEventListener('pointerup', soltar);
+    rejilla.addEventListener('pointerleave', soltar);
+    const acciones = document.createElement('div');
+    acciones.className = 'tb-dibujo-acciones';
+    const boton = (texto, titulo, fn) => {
+      const btn = document.createElement('button');
+      btn.type = 'button'; btn.textContent = texto; btn.title = titulo;
+      btn.addEventListener('click', () => { fn(); pintarCeldas(); });
+      acciones.appendChild(btn);
+    };
+    boton('Borrar', 'Apagar todos los puntos', () => this.setValue(DIBUJO_VACIO));
+    boton('Invertir', 'Cambiar puntos encendidos por apagados', () => this.setValue(this.getValue().replace(/[01]/g, (d) => (d === '1' ? '0' : '1'))));
+    const listos = document.createElement('div');
+    listos.className = 'tb-dibujo-listos';
+    DIBUJOS_LCD.forEach(([nombre, bits]) => {
+      const btn = document.createElement('button');
+      btn.type = 'button'; btn.title = nombre;
+      btn.innerHTML = '<svg viewBox="0 0 10 16" width="15" height="24">' +
+        [...bits].map((d, i) => (d === '1' ? `<rect x="${(i % 5) * 2}" y="${Math.floor(i / 5) * 2}" width="1.7" height="1.7"/>` : '')).join('') + '</svg>';
+      btn.addEventListener('click', () => { this.setValue(bits); pintarCeldas(); });
+      listos.appendChild(btn);
+    });
+    const ayuda = document.createElement('p');
+    ayuda.textContent = 'Toca o arrastra para pintar. Abajo hay dibujos listos.';
+    caja.append(ayuda, rejilla, acciones, listos);
+    div.appendChild(caja);
+    pintarCeldas();
+    Blockly.DropDownDiv.setColour('var(--panel)', 'var(--line)');
+    Blockly.DropDownDiv.showPositionedByField(this, soltar);
+  }
+}
+CampoDibujo.T = 6;
+
+/** Menú con los nombres de los símbolos creados en el programa (acepta cualquier nombre). */
+class CampoSimbolo extends Blockly.FieldDropdown {
+  constructor(valor) { super(function () { return [[valor, valor]]; }); this.setValue(valor); }
+  doClassValidation_(v) { return v === null || v === undefined ? null : String(v); }
+  getOptions() {
+    const b = this.getSourceBlock && this.getSourceBlock();
+    const ws = b && b.workspace;
+    const nombres = ws ? [...new Set(ws.getBlocksByType('lcd_simbolo_crear', true).map(x => x.getFieldValue('NAME')))] : [];
+    const v = this.getValue();
+    if (v && !nombres.includes(v)) nombres.push(v);
+    if (!nombres.length) nombres.push('corazón');
+    return nombres.map(n => [n, n]);
+  }
+}
+
+/** Número de 0 a 7 que la pantalla le da a cada símbolo (en el orden en que aparecen). */
+function indiceSimbolo(nombre) {
+  const m = Ard.banderas_.lcdSimbolos || (Ard.banderas_.lcdSimbolos = new Map());
+  if (!m.has(nombre)) m.set(nombre, m.size);
+  return m.get(nombre);
+}
+/** Guarda las posiciones escritas con números fijos para revisarlas contra el tamaño de la pantalla. */
+function anotarPosLCD(b, entradaCol, entradaFila) {
+  const fijo = (n) => { const t = n && b.getInputTargetBlock(n); return t && t.type === 'math_number' ? Number(t.getFieldValue('NUM')) : null; };
+  (Ard.banderas_.lcdPos || (Ard.banderas_.lcdPos = [])).push({ b, c: fijo(entradaCol), f: fijo(entradaFila) });
+}
+function usarLCD() { Ard.banderas_.lcdUsado = true; }
+
 function configurarLCD(dir, col, fil, b) {
   Ard.banderas_.lcdConfig = true;
+  Ard.banderas_.lcdCols = Number(col);
+  Ard.banderas_.lcdFilas = Number(fil);
   G.incluir('Wire', '#include <Wire.h>');
   G.incluir('LiquidCrystal_I2C', '#include <LiquidCrystal_I2C.h>');
   G.global('lcd', `LiquidCrystal_I2C lcd(${dir}, ${col}, ${fil});`);
@@ -437,15 +564,82 @@ bloque('lcd_escribir', COL.lcd, function () {
   this.appendValueInput('F').appendField('fila');
   this.setInputsInline(true); sentencia(this);
   this.setTooltip('Columnas y filas empiezan en 0. En 16x2: columnas 0–15, filas 0–1.');
-}, (b) => { Ard.banderas_.lcdUsado = true; return `lcd.setCursor(${G.val(b, 'C')}, ${G.val(b, 'F')});\nlcd.print(${G.val(b, 'V', O.NONE, '""')});\n`; });
+}, (b) => { usarLCD(); anotarPosLCD(b, 'C', 'F'); return `lcd.setCursor(${G.val(b, 'C')}, ${G.val(b, 'F')});\nlcd.print(${G.val(b, 'V', O.NONE, '""')});\n`; });
+bloque('lcd_escribir_aqui', COL.lcd, function () {
+  this.appendValueInput('V').appendField('LCD escribir');
+  this.appendDummyInput().appendField('donde está el cursor');
+  this.setInputsInline(true); sentencia(this);
+  this.setTooltip('Escribe seguido de lo último que escribiste. Sirve para poner un número justo después de un texto.');
+}, (b) => { usarLCD(); return `lcd.print(${G.val(b, 'V', O.NONE, '""')});\n`; });
+bloque('lcd_cursor_mover', COL.lcd, function () {
+  this.appendValueInput('C').appendField('LCD mover cursor a columna');
+  this.appendValueInput('F').appendField('fila');
+  this.setInputsInline(true); sentencia(this);
+  this.setTooltip('Elige dónde aparece lo próximo que escribas. Columnas y filas empiezan en 0.');
+}, (b) => { usarLCD(); anotarPosLCD(b, 'C', 'F'); return `lcd.setCursor(${G.val(b, 'C')}, ${G.val(b, 'F')});\n`; });
 bloque('lcd_limpiar', COL.lcd, function () {
   this.appendDummyInput().appendField('LCD borrar todo');
   sentencia(this);
-}, () => { Ard.banderas_.lcdUsado = true; return 'lcd.clear();\n'; });
+}, () => { usarLCD(); return 'lcd.clear();\n'; });
+bloque('lcd_borrar_fila', COL.lcd, function () {
+  this.appendValueInput('F').appendField('LCD borrar fila');
+  this.setInputsInline(true); sentencia(this);
+  this.setTooltip('Borra solo una fila y deja el cursor al comienzo de ella. Así la pantalla no parpadea.');
+}, (b) => { usarLCD(); Ard.banderas_.lcdBorrarFila = true; anotarPosLCD(b, null, 'F'); return `lcdBorrarFila(${G.val(b, 'F')});\n`; });
+bloque('lcd_simbolo_crear', COL.lcd, function () {
+  this.appendDummyInput().appendField('LCD crear símbolo').appendField(new Blockly.FieldTextInput('corazón'), 'NAME')
+    .appendField(new CampoDibujo(DIBUJOS_LCD[0][1]), 'DIBUJO');
+  sentencia(this);
+  this.setTooltip('Toca el dibujo para pintarlo (5 x 8 puntos). Caben hasta 8 símbolos distintos. Ponlo en "al iniciar", después de iniciar la pantalla.');
+}, (b) => {
+  usarLCD();
+  const nombre = (b.getFieldValue('NAME') || '').trim() || 'simbolo';
+  const n = indiceSimbolo(nombre);
+  const bits = b.getFieldValue('DIBUJO');
+  const creados = Ard.banderas_.lcdCreados || (Ard.banderas_.lcdCreados = new Map());
+  if (!creados.has(nombre)) creados.set(nombre, new Map());
+  const dibujos = creados.get(nombre);
+  if (!dibujos.has(bits)) dibujos.set(bits, 'simbolo_' + nombreC(nombre) + (dibujos.size ? '_' + (dibujos.size + 1) : ''));
+  const arreglo = dibujos.get(bits);
+  const filas = bits.match(/.{5}/g).map(f => '0b' + f).join(', ');
+  G.global('lcdsim_' + arreglo, `byte ${arreglo}[8] = { ${filas} };`);
+  return `lcd.createChar(${n}, ${arreglo});  // símbolo "${nombre}"\nlcd.setCursor(0, 0);\n`;
+});
+bloque('lcd_simbolo_mostrar', COL.lcd, function () {
+  this.appendDummyInput().appendField('LCD mostrar símbolo').appendField(new CampoSimbolo('corazón'), 'SIM');
+  this.appendValueInput('C').appendField('en columna');
+  this.appendValueInput('F').appendField('fila');
+  this.setInputsInline(true); sentencia(this);
+  this.setTooltip('Muestra un símbolo creado con "LCD crear símbolo". Cada símbolo ocupa un solo espacio.');
+}, (b) => {
+  usarLCD(); anotarPosLCD(b, 'C', 'F');
+  const nombre = b.getFieldValue('SIM');
+  (Ard.banderas_.lcdMostrados || (Ard.banderas_.lcdMostrados = [])).push({ nombre, b });
+  return `lcd.setCursor(${G.val(b, 'C')}, ${G.val(b, 'F')});\nlcd.write(byte(${indiceSimbolo(nombre)}));  // ${nombre}\n`;
+});
+bloque('lcd_desplazar', COL.lcd, function () {
+  this.appendDummyInput().appendField('LCD correr el texto 1 lugar a la').appendField(dd([['izquierda', 'scrollDisplayLeft'], ['derecha', 'scrollDisplayRight']]), 'D');
+  sentencia(this);
+  this.setTooltip('Ponlo en un bucle con una espera para que el texto se mueva como un aviso luminoso.');
+}, (b) => { usarLCD(); return `lcd.${b.getFieldValue('D')}();\n`; });
+bloque('lcd_pantalla', COL.lcd, function () {
+  this.appendDummyInput().appendField('LCD').appendField(dd([['ocultar', 'noDisplay'], ['mostrar', 'display']]), 'M').appendField('el texto');
+  sentencia(this);
+  this.setTooltip('Oculta el texto sin borrarlo: al mostrarlo vuelve lo que había. Sirve para hacer parpadear un mensaje.');
+}, (b) => { usarLCD(); return `lcd.${b.getFieldValue('M')}();\n`; });
+bloque('lcd_cursor', COL.lcd, function () {
+  this.appendDummyInput().appendField('LCD cursor').appendField(dd([['oculto', 'OCULTO'], ['raya abajo', 'RAYA'], ['cuadro que parpadea', 'CUADRO']]), 'C');
+  sentencia(this);
+  this.setTooltip('El cursor marca dónde se escribirá lo próximo.');
+}, (b) => {
+  usarLCD();
+  return { OCULTO: 'lcd.noCursor();\nlcd.noBlink();\n', RAYA: 'lcd.cursor();\nlcd.noBlink();\n', CUADRO: 'lcd.noCursor();\nlcd.blink();\n' }[b.getFieldValue('C')];
+});
 bloque('lcd_luz', COL.lcd, function () {
   this.appendDummyInput().appendField('LCD luz de fondo').appendField(dd([['encender', 'backlight'], ['apagar', 'noBacklight']]), 'L');
   sentencia(this);
-}, (b) => { Ard.banderas_.lcdUsado = true; return `lcd.${b.getFieldValue('L')}();\n`; });
+  this.setTooltip('La luz solo se enciende o se apaga. Si no se ven las letras, gira con un destornillador el potenciómetro azul de atrás (contraste).');
+}, (b) => { usarLCD(); return `lcd.${b.getFieldValue('L')}();\n`; });
 
 /* ================= Otto humanoide (OttoDIYLib + servos de brazos) ================= */
 function configurarOtto(p, b) {
