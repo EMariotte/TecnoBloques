@@ -276,14 +276,14 @@ details.subir-detalle pre { max-height: 220px; overflow: auto; font-family: var(
 
 /* Editor de símbolos de la LCD (5 x 8 puntos) */
 .blocklyDropDownContent:has(.tb-dibujo) { max-height: none; }
-.tb-dibujo { padding: 10px; color: var(--ink); max-width: 230px; }
+.tb-dibujo { padding: 10px; color: var(--ink); max-width: 260px; }
 .tb-dibujo p { margin: 0 0 8px; font-size: 13px; color: var(--muted); }
 .tb-dibujo-rejilla {
   display: grid; grid-template-columns: repeat(5, 24px); gap: 3px; width: max-content; margin: 0 auto;
   padding: 6px; background: #1e4fa8; border-radius: 6px; touch-action: none; user-select: none;
 }
-.tb-dibujo-celda { width: 24px; height: 24px; border-radius: 3px; background: #2b5fbf; cursor: pointer; }
-.tb-dibujo-celda.on { background: #eef4ff; }
+.tb-dibujo-celda { width: 24px; height: 24px; border-radius: 3px; background: var(--apagado, #2b5fbf); cursor: pointer; }
+.tb-dibujo-celda.on { background: var(--encendido, #eef4ff); }
 .tb-dibujo-acciones { display: flex; gap: 6px; justify-content: center; margin: 8px 0; }
 .tb-dibujo button {
   font: inherit; font-size: 13px; color: var(--ink); background: var(--panel-2);

@@ -15,11 +15,16 @@ genera en vivo y ábrelo en tu placa. Funciona con **Arduino Uno R3, Nano y Mega
   - Shield de motores L293D (AFMotor_R4)
   - Sensor DHT11/DHT22
   - Pantalla LCD 16x2 o 20x4 por I2C, con **símbolos propios** que se dibujan con el mouse
+  - **Matriz LED 8x8** (MAX7219): dibujos con el mouse, animaciones, texto que pasa, y orientación + espejo para que nunca haya que dibujar al revés
+  - **Boca de Otto**: las 31 bocas de Otto, dibujos propios que giran igual que ellas, y texto
+  - **Sensor de movimiento MPU6050** (inclinación en grados, aceleración, giro)
+  - **Controlador de 16 servos PCA9685** (servos en grados; **calibración por canal** con nombre: base, hombro, codo, pinza…)
+  - **Bus I2C:** "buscar dispositivos" (dice si tu LCD es 0x27 o 0x3F) y envío/lectura de bytes
   - Monitor serial
   - Bluetooth HC-05/HC-06
   - Servos
   - Ultrasonido HC-SR04
-  - **Otto humanoide** (caminar, bailar, gestos, sonidos y brazos)
+  - **Otto humanoide** (caminar, bailar, gestos, sonidos y brazos), con **calibración** que queda guardada en el robot
 - **Nombres para los pines:** "el pin 13 se llama LedRojo" (`#define`). Luego eliges LedRojo en cualquier menú de pines.
 - **Listas y matrices** (nivel 3): melodías, listas de pines, mediciones y coreografías de Otto en una tabla que se edita con el mouse.
 - **Variables con tipo** (entero, decimal, texto, carácter…) y **funciones propias** con parámetros y valor de retorno.
@@ -72,7 +77,8 @@ bloques o placas, decisiones y hoja de ruta. El historial del proyecto está en 
 - [x] **Fase 1:** editor, generador C++, funciones, Mis bloques, C++ libre, monitor serial
 - [x] **Fase 2:** app de escritorio (Electron + arduino-cli) que compila y sube con un botón, con instalador y actualización automática (falta probar con placas reales)
 - [x] **Niveles 1 · 2 · 3** de bloques y nombres para los pines (`#define LedRojo 13`)
-- [ ] **Librerías nuevas:** MPU6050, PCA9685 (Adafruit_PWMServoDriver) e I2C
+- [x] **Librerías nuevas:** MPU6050, PCA9685 (Adafruit_PWMServoDriver) e I2C
+- [x] **Listas y matrices** (nivel 3)
 - [ ] **Fase 3:** Arduino Uno R4
 - [ ] **Fase 4:** pantallas OLED
 - [ ] **Fase 5:** diseñador de bloques para instructores

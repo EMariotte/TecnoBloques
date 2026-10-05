@@ -3,7 +3,7 @@
 
 arduino-cli core update-index
 arduino-cli core install arduino:avr
-arduino-cli lib install "DHT sensor library" "Adafruit Unified Sensor" "LiquidCrystal I2C" "Servo"
+arduino-cli lib install "DHT sensor library" "Adafruit Unified Sensor" "LiquidCrystal I2C" "Servo" "MPU6050_light" "Adafruit PWM Servo Driver Library" "LedControl"
 
 # AFMotor_R4 y OttoDIYLib se instalan desde GitHub (requiere permitir instalaciones por git)
 arduino-cli config set library.enable_unsafe_install true

@@ -19,7 +19,12 @@ const FQBN = {
   todo_mega: 'arduino:avr:mega:cpu=atmega2560',
   misbloques: 'arduino:avr:uno',
   pines: 'arduino:avr:uno',
-  listas: 'arduino:avr:uno'
+  listas: 'arduino:avr:uno',
+  i2c_uno: 'arduino:avr:uno',
+  i2c_mega: 'arduino:avr:mega:cpu=atmega2560',
+  otto_calibrar: 'arduino:avr:nano:cpu=atmega328',
+  otto_calibrado: 'arduino:avr:nano:cpu=atmega328',
+  matriz: 'arduino:avr:uno'
 };
 const salida = path.join(__dirname, 'salida');
 if (!fs.existsSync(salida)) { console.error('No hay test/salida. Corre primero: npm test'); process.exit(1); }

@@ -1,7 +1,7 @@
 # CLAUDE.md — TecnoBloques
 
 > Memoria técnica del proyecto para Claude Code / Claude en Cowork.
-> Actualizado: 5 de octubre de 2026 · Estado: **v0.2 — app de escritorio que compila y sube (Fase 2), instalador armado. Falta probar la carga con una placa real y publicar la primera versión en GitHub Releases.**
+> Actualizado: 5 de octubre de 2026 (cierre de sesión) · Estado: **v0.2 — app de escritorio que compila y sube, con niveles, nombres de pines, listas y matrices, I2C (MPU6050, PCA9685), calibraciones (PCA9685 y Otto), matriz LED y boca de Otto, y marca propia. Instalador armado y SIN publicar: la próxima sesión es la prueba con placas reales en el ambiente (ver "Próxima sesión").**
 
 ---
 
@@ -91,10 +91,13 @@ Nombres de pines  → ✅ HECHO (5 oct). "el pin 13 se llama LedRojo" → #defin
                     Los nombres aparecen en todos los menús de pines y la revisión de
                     choques sigue usando el número real. Ver "Nombres de pines" en Arquitectura.
 
-Más librerías     → (decidido) MPU6050, Wire.h (I2C genérico) y Adafruit_PWMServoDriver
-                    (PCA9685, 16 servos). LCD ampliada el 5 oct (símbolos propios,
-                    cursor, desplazar, borrar fila…). Bus I2C compartido:
-                    LCD 0x27/0x3F, PCA9685 0x40, MPU6050 0x68.
+Más librerías     → ✅ HECHO (5 oct): MPU6050 (MPU6050_light), Wire.h (I2C genérico y
+                    "buscar dispositivos") y Adafruit_PWMServoDriver (PCA9685, 16 servos).
+                    LCD ampliada (símbolos propios, cursor, desplazar, borrar fila…).
+                    Bus I2C compartido: LCD 0x27/0x3F, PCA9685 0x40–0x47, MPU6050 0x68/0x69.
+                    ✅ Matriz LED 8x8 MAX7219 (la misma de la boca de Otto): en la categoría
+                    Otto con las funciones de OttoDIYLib (opción A) y en la categoría
+                    "Matriz LED" con LedControl (opción B). Decidido por Efraín el 5 oct.
 ```
 
 ---
@@ -257,6 +260,89 @@ Los bloques propios son `var_set`, `var_get`, `var_cambiar` y `bucle_para`; no s
 - `declararListas()` emite `tipo nombre[N] = {…};` (o `[F][C]`) después de los objetos globales. Las constantes `nombre_largo`, `nombre_filas` y `nombre_columnas` solo se emiten si algún bloque las usa (`Ard.banderas_.largoUsado`). Avisa si las listas pasan de ¼ de la RAM de la placa.
 - Avisa también si un nombre de lista choca con una variable, un pin con nombre o un bloque propio.
 
+### Bus I2C y módulos (LCD, MPU6050, PCA9685, Wire)
+
+- `usarI2C(b, quien, dir)` (bloques.js) hace lo común a todo módulo I2C:
+  - `#include <Wire.h>`, y `Wire.begin();` como **primera** línea de su `G.setup`;
+  - registra SDA/SCL como `Bus I2C (SDA)` / `Bus I2C (SCL)`. Al ser el mismo uso para todos, no hay choques falsos, pero sí se avisa si alguien usa A4 como pin digital;
+  - avisa si dos módulos distintos tienen la misma dirección (`Ard.banderas_.i2cDirs`).
+  La LCD también pasa por aquí.
+- **MPU6050** (`MPU6050_light` 1.2.1):
+  - `configurarMPU`: `MPU6050 mpu(Wire);`, `mpu.begin()`, con `setAddress` si la dirección es 0x69, y `delay(1000)` + `calcOffsets()` si se marca calibrar.
+  - Las lecturas usan la ayuda `mpuLeido()`, que llama a `mpu.update()` y devuelve el objeto: `mpuLeido().getAngleX()`.
+  - Nivel 2: iniciar y ángulo X/Y/Z. Nivel 3: aceleración, velocidad de giro y temperatura.
+  - Si falta "iniciar", se asume 0x68 y se calibra.
+- **PCA9685** (`Adafruit_PWMServoDriver` 3.0.3, depende de Adafruit BusIO):
+  - `configurarPCA`: `pca.begin()`, `setOscillatorFrequency(27000000)` y `setPWMFreq(50)`.
+  - "Soltar" es `setPWM(c, 0, 4096)`. Para PWM de LEDs, `setPin` (0–4095, a 50 Hz).
+  - Si falta "iniciar", se asume 0x40.
+  - **Calibración por canal (`pca_calibracion`, nivel 3; idea de Efraín):**
+    - Es un bloque suelto: "calibración de servos del PCA9685 para [N] servos". Al cambiar N se agregan o quitan filas `S{i}`, y una fila nueva toma el primer canal libre. El mecanismo es el mismo de `fn_def`/NPARAM, así que guardar y abrir funciona.
+    - Cada fila tiene: canal (0–15), **nombre** (por defecto base, hombro, codo y pinza), pulso para 0° y pulso para 180° (`FieldNumber` de 300 a 2800 µs).
+    - Con dos pulsos se cubre todo: el recorrido, enderezar el servo (subir o bajar los dos por igual) e **invertir el giro** (intercambiarlos).
+    - `leerCalibracionPCA(ws)` llena `Ard.calPCA_` antes de generar. Avisa si un canal se repite, si los dos pulsos son iguales o si hay dos bloques de calibración.
+    - `definirPcaServo()` (en `finalizarModulos`, solo si hay "mover servo"):
+      - con calibración, emite la **matriz** `int pcaCalibracion[16][2]` (una fila por canal, comentada con el nombre) y `pcaServo` lee `pcaCalibracion[canal][0]` y `[1]`;
+      - sin calibración, `pcaServo` usa 500/2500 directamente, sin tabla.
+    - `CampoCanal` es el menú de canales de mover, soltar y PWM. Muestra "hombro (1)" pero guarda el número. `refrescarPines()` lo actualiza cuando cambian los nombres, y el C++ lleva `// hombro` en cada llamada.
+- **Wire genérico:**
+  - `i2c_buscar` (nivel 2) usa la ayuda `i2cBuscar()`: imprime cada dirección con el módulo probable y usa `F()` para no gastar RAM.
+  - Nivel 3: enviar byte, pedir N bytes, ¿hay bytes?, leer byte.
+  - `validarDirI2C` acepta `0x27` o `39` y solo direcciones válidas, de 0x08 a 0x77.
+- En la caja de bloques, el PCA9685 va en **Servos** y el MPU6050 en **Sensores**, cada uno con un título. La categoría **I2C** es nueva. `toolboxNivel` quita los títulos que quedan sin bloques en un nivel.
+
+### Calibración de Otto (`otto_calibracion`, nivel 2)
+
+- Es un bloque suelto y **fijo** (sin filas que se agreguen):
+  - piernas izquierda y derecha;
+  - pies izquierdo y derecho;
+  - la casilla "con brazos (humanoide)", que muestra u oculta la fila de brazos;
+  - la casilla "guardar en la memoria del robot".
+  El ajuste está en **grados** (`FieldNumber` de −40 a 40), porque así trabaja OttoDIYLib ("trims").
+- `leerCalibracionOtto(ws)` llena `Ard.calOtto_` antes de generar y marca `ottoUsado` (y `brazosUsado`). Así **el bloque solo ya es un programa completo**: el "programa para calibrar", con los pines por defecto si falta "iniciar".
+- `definirCalibracionOtto()` va en `finalizarModulos`, después de iniciar Otto y los brazos. Hace `Otto.setTrims(...)`, más `Otto.saveTrimsOnEEPROM()` si se marca guardar, y luego `Otto.home()`. Para los brazos, asigna `ottoTrimBrazos[0..1]` y, si se guarda, hace `EEPROM.update` y vuelve a llamar `ottoBrazos(90, 90)`.
+- **Memoria del robot (EEPROM):**
+
+  | Dirección | Contenido |
+  |---|---|
+  | 0–3 | piernas y pies (OttoDIYLib las lee en `Otto.init(…, true, …)`) |
+  | 4–5 | brazo izquierdo y brazo derecho |
+  | 6 | marca `0x5A` = "hay brazos calibrados" |
+
+  `configurarBrazos` lee 4–5 al arrancar si está la marca. **La calibración queda en la placa, no en el robot:** si se cambia la placa de robot, hay que calibrar otra vez.
+- **Brazos:** todo movimiento pasa por `ottoBrazo(izquierdo, grados)`, que suma el ajuste. `ottoBrazos(izq, der)` y `ottoSaludar` la usan; antes `ottoSaludar` escribía directo al servo.
+
+### Matriz LED y boca de Otto (MAX7219 8x8)
+
+- **Campo de dibujo general (`CampoDibujo(valor, opciones)`):**
+  - `OP_LCD` es 5×8 azul (símbolos de la LCD); `OP_MATRIZ` es 8×8 con LED rojos y los 8 dibujos de `DIBUJOS_8X8`.
+  - El valor es una cadena de '0' y '1', fila por fila de arriba abajo y de izquierda a derecha: **el dibujo tal como se ve**.
+  - El editor trae Borrar, Invertir, **Espejo** y, en dibujos cuadrados, **Girar** 90°.
+  - El constructor usa `Blockly.Field.SKIP_SETUP`, porque Blockly valida el valor antes de que el campo conozca su tamaño.
+- **Arreglos de dibujos en C++:** `arregloDibujo(bits)` declara `byte dibujoN[8] = { 0b…, … }`, uno por dibujo distinto, que la boca de Otto y la matriz comparten. En el C++, las filas en binario son el dibujo.
+- **Boca de Otto (OttoDIYLib, opción A):**
+  - Bloques: iniciar boca (DIN A3, CS A2, CLK A1, orientación 1–4 "arriba/abajo/izquierda/derecha" igual que los ejemplos de Otto, y brillo); las 31 bocas con nombre en español (`putMouth`); dibujo propio; borrar; texto (`writeText`: hasta 9 caracteres, mayúsculas y números; un texto fijo se limpia y se avisa si se corta); punto; brillo.
+  - **Orientación:** OttoDIYLib solo gira sus bocas y el texto, porque `Otto.setLed` escribe sin girar. `ottoBocaPunto(x, y)` aplica a los dibujos propios **la misma transformación** que `Otto_Matrix::writeFull`:
+
+    | Orientación | Va a |
+    |---|---|
+    | 1 | (x, y) |
+    | 2 | (7−x, 7−y) |
+    | 3 | (7−y, x) |
+    | 4 | (y, 7−x) |
+
+    Se verificó con las 31 bocas en las 4 orientaciones, sin diferencias. Así el aprendiz **siempre dibuja como se ve** y elige la orientación con la que la sonrisa se ve bien.
+  - `initMATRIX` deja el brillo en 15. El bloque iniciar pone 4 por defecto, porque el brillo alto gasta batería y puede reiniciar la placa con los servos.
+  - Si se usa la boca sin "iniciar boca", se asumen A3/A2/A1, orientación 1 y brillo 4.
+- **Matriz LED (LedControl 1.0.6, opción B, categoría propia):**
+  - Bloques: iniciar (DIN 12, CLK 11, CS 10 como en los ejemplos de LedControl; orientación normal/90°/al revés/270°; **espejo**, porque hay módulos genéricos cableados en espejo; brillo, que arranca en 4); mostrar dibujo; borrar; **animación de N cuadros** (2–8, el bloque se amolda y genera `byte animacionN[N][8]`); texto; punto; brillo.
+  - `matrizUbicar(x, y, &fila, &col)` aplica el giro y el espejo. `matrizDibujo` arma las 8 filas y usa `setRow`. El texto usa una **fuente propia de 5×7** (`FUENTE_5X7` en JS, que genera la tabla `PROGMEM` con columnas por byte) y desplaza de derecha a izquierda.
+  - El objeto se llama `matrizLed` y está en RESERVADAS, para no chocar con una lista llamada "matriz".
+  - La librería LedControl está en `preparar-arduino.js` e `instalar-librerias.ps1`.
+- **Niveles:**
+  - nivel 1: matriz iniciar, dibujo y borrar; boca de Otto: bocas, dibujo y borrar;
+  - nivel 2: animación, texto, punto y brillo; iniciar boca.
+
 ### Funciones / bloques propios
 
 - `fn_def` ("definir bloque"): tiene los campos `NAME` y `TIPO` (retorno) y `NPARAM` (0–4). Para cada parámetro hay `P{i}N` y `P{i}T`. La entrada `RETURN` solo se ve si el tipo no es `void`. La forma se reconstruye desde el validador de `NPARAM`. El nombre es único en el espacio de trabajo: si se repite, se le agrega `_2`.
@@ -409,6 +495,11 @@ Sin firma digital  → El instalador no está firmado: Windows SmartScreen muest
                      protegió su PC" → "Más información" → "Ejecutar de todas formas".
                      Firmarlo requiere un certificado de firma de código (decisión abierta).
 
+Macros de Otto     → OttoDIYLib define como #define palabras comunes: otto, wave, one…nine,
+                     zero, smile, heart, sad, angry, confused… (bocas y gestos). Una
+                     variable o un pin con esos nombres no compila. Están en RESERVADAS,
+                     así que nombreC() les agrega "_" (heart → heart_).
+
 Prototipos         → Siempre se emiten prototipos de funciones y helpers (no se depende
                      de que arduino-cli los genere con ctags).
 
@@ -441,24 +532,59 @@ Ojo: el ultrasonido trae 8/9 por defecto (pensado para Otto); **con la shield el
 | Instalador `TecnoBloques-Setup-0.2.0.exe` (175 MB) | ✅ se arma; ⬜ falta ejecutarlo en un PC del aula |
 | **Subir a una placa real** desde la app | ⬜ **no probado** (en este PC solo hay puertos COM3/COM4 sin USB) |
 | Listas y matrices: caso fijo `listas` (melodía con "para cada", listas int/String/char/bool/float, lista de pines con nombre, matriz 3×4 recorrida con "contar con") | ✅ compila en uno; guardar/abrir igual; avisos de posición, lista inexistente, valor inválido y nombre repetido; editor de tabla con clics reales |
+| Librerías I2C: caso fijo `i2c` (buscar dispositivos + LCD + MPU6050 + PCA9685 calibrado; servo sigue la inclinación) | ✅ compila en uno (45 % flash) y mega2560, también con el arduino-cli del paquete de la app; sin choques falsos en A4/A5 y choque real detectado |
+| Calibración por canal del PCA9685: N de 4 a 6 a 2 a 4, canal libre en filas nuevas, menú "hombro (1)" que se actualiza al renombrar, guardar/abrir, avisos de canal repetido y pulsos iguales, hombro invertido (2400 → 600), caso sin calibración | ✅ en la interfaz; el caso `i2c` compila en uno y mega2560 |
+| Calibración de Otto: programa que solo calibra y guarda (Nano) + programa que saluda con brazos calibrados; ocultar brazos; guardar/abrir; nombre reservado `heart` | ✅ compilan en nano; ejemplo Otto humanoide sigue compilando |
+| Matriz LED + boca de Otto: caso fijo `matriz` (matriz girada 90° con espejo + boca orientación 2; dibujo, animación de 3 cuadros, texto fijo con tilde y ñ, texto de variable, punto, brillo, bocas, gesto) | ✅ compila en uno (48 % flash), también con el paquete de la app; editor 8×8 con Girar/Espejo probado; el editor 5×8 de la LCD sigue igual |
 | `instalar-librerias.ps1` | ⬜ no probado (en este PC las librerías se instalaron una por una con el arduino-cli del IDE) |
 
 Versiones con las que se compiló (Linux, 26 sep): núcleo AVR 1.8.6, AFMotor-Shield-R4-Compatible 1.0.1,
 DHT sensor library 1.4.7, Adafruit Unified Sensor 1.1.15, LiquidCrystal_I2C 1.1.4,
 OttoDIYLib 13.0.0, Servo 1.3.0.
-Windows (5 oct): arduino-cli 1.5.1, núcleo AVR 1.8.7, Adafruit Motor Shield R4 Compatible 1.0.0,
-LiquidCrystal I2C 1.1.2, el resto igual.
+Windows (5 oct): arduino-cli 1.5.1, núcleo AVR 1.8.7 (IDE) / 1.8.8 (paquete de la app), AFMotor R4 1.0.0–1.0.1,
+LiquidCrystal I2C 1.1.2, MPU6050_light 1.2.1, Adafruit PWM Servo Driver 3.0.3 + Adafruit BusIO 1.17.4, el resto igual.
 
 Uso de memoria: carro en Uno usa 36 % de flash y 29 % de RAM. El programa con todos los bloques usa 68 % de flash y 53 % de RAM en el Uno. **Ojo con la OLED en Uno/Nano:** el buffer de SSD1306 ocupa 1 KB de los 2 KB de RAM.
 
-### Pendiente de validar con hardware (Efraín)
+### Próxima sesión: prueba con hardware en el ambiente (Efraín, con todas las placas)
 
-0. **App de escritorio:** instalar `TecnoBloques-Setup-0.2.0.exe`, conectar un Uno y un Nano clon, y pulsar "Subir a la placa". Revisar los mensajes si el Nano necesita "bootloader antiguo".
-1. Monitor serial: conectar, recibir y **enviar** con el ejemplo "Eco serial y LED" (en la app o en Chrome/Edge con `dist/TecnoBloques.html`).
-2. Otto humanoide: pines y ángulos de los brazos, dirección de giro y velocidades.
-3. Carro: sentido de los motores M1/M2 y comandos 'A'/'S' desde una app Bluetooth.
-4. LCD: dirección 0x27 vs 0x3F de los módulos del aula.
-5. Clones con CH340: que el puerto aparezca y el monitor funcione.
+Nada de esto se ha probado con placas reales. **El Release v0.2.0 NO se publica hasta pasar el bloque A.**
+El instalador ya está armado con todo lo de hoy:
+`%LOCALAPPDATA%\TecnoBloques-build\TecnoBloques-Setup-0.2.0.exe` (176 MB). Trae el driver CH340 y las 10 librerías. Si cambia `src/`, se rearma con `npm run instalador`.
+
+**A. La app y la carga (lo que bloquea la publicación):**
+1. Instalar en un PC del ambiente. SmartScreen mostrará "Más información" → "Ejecutar de todas formas". Aceptar el driver CH340.
+2. "Subir a la placa" en **Uno R3**, **Nano clon CH340** (probar "Nano" y "Nano bootloader antiguo") y **Mega**. Revisar el aviso "la placa no coincide", el % de memoria y los mensajes de error, por ejemplo con otro programa abierto en el puerto.
+3. **Monitor serial** en la app: con el ejemplo "Eco serial y LED", recibir y **enviar**. También que se cierre al subir y se vuelva a abrir.
+4. Que el puerto del CH340 aparezca solo en el selector "Puerto" (cada 3 s).
+
+**B. Robots y módulos:**
+5. **Otto:** subir el "programa para calibrar" (bloque "calibración de Otto" solo, con "guardar") en cada robot y comprobar que otro programa sin el bloque queda derecho. **Marcar cada placa**, porque la calibración vive en la placa. Validar pines y ángulos de los brazos (arriba 160/20, abajo 20/160, saludar) y el sentido de caminar y girar.
+6. **Boca de Otto:** qué orientación (1–4) hace ver bien la sonrisa; que un dibujo propio y el texto salgan derechos con esa orientación; brillo cómodo; gestos con boca.
+7. **Matriz LED suelta (LedControl):** orientación y si necesita "espejo"; lectura del texto que pasa; animación.
+8. **PCA9685:** servos con fuente en V+; encontrar los pulsos de 0° y 180° de los servos del aula y probar un servo invertido.
+9. **MPU6050:** ejes X/Y respecto al robot, calibración quieto, dirección 0x68.
+10. **I2C:** "buscar dispositivos" para saber si las LCD del aula son 0x27 o 0x3F.
+11. **Carro:** sentido de M1/M2 y comandos 'A'/'S' desde una app Bluetooth.
+
+**C. Si todo pasa:** publicar el Release v0.2.0 (sección "Publicar una versión"). Después, publicar una 0.2.1 de prueba para comprobar que la **actualización automática** llega a los PC del aula.
+
+**D. Decisiones abiertas:**
+- confirmar con SENNOVA la titularidad y los colores de la marca;
+- subir `marca/png/compartir.png` en GitHub (Settings → Social preview);
+- dónde publicar la versión web (GitHub Pages);
+- firma digital del instalador.
+
+**E. Lo siguiente en desarrollo, en orden sugerido:**
+1. Otto **coreografía con matrices** (`_moveServos`, una fila por pose).
+2. Otto relajar/despertar (`detachServos`) y velocidad máxima (`enableServoLimit`).
+3. **Ejemplos y retos por nivel**, sobre todo para el nivel 1.
+4. "Calibrar en vivo" por el monitor serial (PCA9685 y Otto).
+5. Ligar los errores del compilador al bloque que los causa.
+6. Versión web para casa en GitHub Pages.
+7. Uno R4 (fase 3) cuando lleguen.
+
+**Limpieza:** `release/win-unpacked.tmp` quedó bloqueada por VS Code en el primer intento de empaquetar. Se puede borrar con VS Code cerrado; está en `.gitignore`.
 
 ---
 
@@ -472,8 +598,9 @@ Fase 2 ◐ App de escritorio para el aula (5 oct 2026):
           ✅ Electron + arduino-cli embebido, selector de puerto, Subir con avance,
              errores en español, monitor serial con el puerto elegido, instalador NSIS,
              actualización automática (electron-updater), versión web con explicación.
-          ⬜ Probar la carga con placas reales (Uno, Nano clon CH340, Mega).
-          ⬜ Poner CH341SER.EXE en escritorio/recursos/drivers y publicar el Release v0.2.0.
+          ✅ CH341SER.EXE en escritorio/recursos/drivers (el instalador lo ofrece).
+          ⬜ Probar la carga con placas reales (Uno, Nano clon CH340, Mega) → próxima sesión.
+          ⬜ Publicar el Release v0.2.0 (solo después de la prueba con hardware).
           ⬜ Ligar los errores del compilador al bloque que los causa.
           ⬜ Publicar la versión web (GitHub Pages).
 
@@ -491,8 +618,9 @@ Fase 5 ⬜ Nivel 2 de librerías: diseñador de bloques para instructores (forma
 
 Fase 6 ⬜ Nivel 3: catálogo compartido de bloques (posiblemente Supabase, como Tecnohonguera).
 
-Ideas sueltas: guardar la calibración de Otto, más ejemplos por práctica,
-exportar a PDF una ficha del programa para la evidencia del aprendiz.
+Ideas sueltas: coreografías de Otto con matrices, calibrar en vivo por el monitor serial,
+más ejemplos y retos por práctica, exportar a PDF una ficha del programa para la evidencia
+del aprendiz, concurso para ponerle nombre a la mascota (el robot de la marca).
 ```
 
 ---
@@ -502,7 +630,6 @@ exportar a PDF una ficha del programa para la evidencia del aprendiz.
 - **Titularidad:** confirmar con la coordinación SENNOVA que el titular es «SENA – TecnoAcademia Tolima» (así está en `NOTICE`) y Efraín figura como autor.
 - **Web para casa:** publicarla en GitHub Pages (lo natural, HTTPS) u otro sitio.
 - **Firma del instalador:** sin certificado, SmartScreen avisa en la primera instalación. Un certificado de firma de código cuesta dinero cada año; también se puede pedir a SENA si tiene uno.
-- **Librería del MPU6050:** cuál usar (propuesta: MPU6050_light, porque da ángulos directos y es liviana para el Uno).
 
 ---
 

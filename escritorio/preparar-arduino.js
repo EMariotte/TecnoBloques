@@ -12,7 +12,8 @@ const CLI = path.join(DESTINO, 'arduino-cli.exe');
 const URL_CLI = 'https://downloads.arduino.cc/arduino-cli/arduino-cli_latest_Windows_64bit.zip';
 
 // Librerías del índice de Arduino (nombre exacto del índice)
-const LIBRERIAS = ['DHT sensor library', 'Adafruit Unified Sensor', 'LiquidCrystal I2C', 'Servo'];
+const LIBRERIAS = ['DHT sensor library', 'Adafruit Unified Sensor', 'LiquidCrystal I2C', 'Servo',
+  'MPU6050_light', 'Adafruit PWM Servo Driver Library', 'LedControl'];
 // Librerías que se instalan desde su repositorio
 const LIBRERIAS_GIT = [
   'https://github.com/PhoenixSmaug/AFMotor-Shield-R4-Compatible.git',

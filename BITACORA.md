@@ -206,3 +206,92 @@ aprendiz no puede subir su programa sin el Arduino IDE.
 - **Avisos:** posición fija fuera de rango, lista inexistente, valor que no es del tipo, nombre repetido con una variable, un pin o un bloque propio, y uso alto de memoria.
 - **El C++ queda legible:** `int melodia[5] = { … };` y `const int melodia_largo = 5;`, este último solo si se usa.
 - **Prueba fija nueva `listas`.** Los 10 programas de prueba compilan.
+
+## 2026-10-05 — Librerías I2C: MPU6050, PCA9685 y Wire
+
+**Decisión:** el bloque se sigue llamando "lista" (como en Python y JavaScript, que es lo que más programarán los aprendices). La ayuda aclara que en C++ se llama arreglo (array).
+
+**Hecho:**
+
+- **Bus I2C compartido (`usarI2C`):** todos los módulos registran A4/A5 como "Bus I2C". Así no hay avisos falsos entre la LCD, el MPU y el PCA, pero sí se avisa si alguien usa A4 como pin digital. También se avisa si dos módulos usan la misma dirección.
+- **MPU6050 (MPU6050_light 1.2.1):** iniciar (dirección 0x68/0x69, calibrar 1 s) y ángulo X/Y/Z en el nivel 2; aceleración, velocidad de giro y temperatura en el nivel 3.
+- **PCA9685 (Adafruit PWM Servo Driver 3.0.3):**
+  - nivel 2: iniciar (0x40–0x47), mover el servo de un canal a N grados, soltar el servo;
+  - nivel 3: PWM por canal (0–4095) y calibrar el pulso de 0° y 180°.
+- **Categoría I2C:** "buscar dispositivos I2C" (nivel 2) escribe en el monitor serial cada dirección y el módulo probable. Enviar, pedir y leer bytes van en el nivel 3.
+- **Paquete de la app:** se agregaron MPU6050_light, la librería del PCA9685 y Adafruit BusIO (`preparar-arduino.js` e `instalar-librerias.ps1`).
+- **Corrección:** en el nivel 1 aparecían títulos de la caja de bloques sin bloques debajo. Ahora se quitan.
+- **Prueba fija nueva `i2c`** (Uno y Mega). Los 12 programas de prueba compilan.
+
+**Pendiente:** rearmar el instalador antes de publicar, porque el paquete de Arduino cambió.
+
+## 2026-10-05 — Calibración por canal del PCA9685 (idea de Efraín)
+
+**Idea:** en lugar de un solo par de pulsos para todos los servos, un bloque parecido al de las matrices: se elige cuántos servos calibrar y el bloque muestra una fila por servo, con su canal y sus pulsos para 0° y 180°. Retoma las matrices, porque la calibración es una tabla.
+
+**Aportes al diseño:**
+
+- **Un nombre por servo**, igual que con los pines con nombre. El menú de canales muestra "hombro (1)" y el C++ lo pone como comentario.
+- **Sin columnas extra:** los dos pulsos ya permiten ajustar el recorrido, enderezar el servo e invertir el giro (intercambiándolos).
+- **Se quitó el bloque de calibración general** (no estaba publicado), para que haya una sola forma de calibrar.
+
+**Hecho:**
+
+- **Bloque suelto `pca_calibracion`** (nivel 3), de 1 a 16 servos (4 por defecto: base, hombro, codo, pinza). Una fila nueva toma el siguiente canal libre.
+- **C++ generado:** la matriz `int pcaCalibracion[16][2]`, con una fila por canal y su nombre como comentario. `pcaServo()` lee la fila de su canal. Sin calibración, el C++ queda sin tabla.
+- **Avisos:** canal repetido, pulsos iguales, dos bloques de calibración, y calibración que no se usa.
+- **Prueba:** el caso `i2c` incluye la calibración, con un servo invertido. Los 12 programas compilan.
+
+**Idea para después:** un ejemplo "calibrar servos en vivo" que use el envío del monitor serial para ajustar el pulso sin volver a subir el programa.
+
+## 2026-10-05 — Calibración de Otto e investigación de matrices LED
+
+**Pedido de Efraín:** un bloque de calibración para Otto como el del PCA9685, pero fijo, porque los servos de Otto ya tienen nombre. También pidió las funciones de la matriz LED y sugerencias para Otto (solo servos) y para la matriz.
+
+**Hecho:**
+
+- **Bloque "calibración de Otto (ajuste en grados)"** (nivel 2), suelto y fijo: piernas, pies y brazos (estos con la casilla "con brazos").
+  - Usa los "trims" de OttoDIYLib: `setTrims` y `saveTrimsOnEEPROM`.
+  - Con "guardar en la memoria del robot", la calibración queda en la EEPROM y **cualquier programa la carga sola**. Los brazos van en las direcciones 4 y 5, con una marca en la 6.
+  - El bloque solo ya es el programa para calibrar: se sube una vez por robot.
+- **Brazos:** todo movimiento pasa por `ottoBrazo()`, que aplica la calibración. Saludar se saltaba la calibración y quedó corregido.
+- **Hallazgo:** OttoDIYLib define como macros `otto`, `wave`, `one`…`nine`, `smile`, `heart`, `sad`, `angry`… Una variable con esos nombres no compilaba. Se agregaron a las palabras reservadas.
+- **Investigación de matrices LED:** se revisó la API real de las tres opciones:
+  - la matriz de OttoDIYLib, es decir la boca MAX7219 del humanoide;
+  - LedControl 1.0.6, para módulos MAX7219 de 8×8;
+  - Arduino_LED_Matrix, la matriz integrada del Uno R4 WiFi.
+  Las sugerencias quedaron en la conversación, pendientes de decisión.
+- **Pruebas fijas nuevas:** `otto_calibrar` y `otto_calibrado` (Nano). Los 14 programas compilan.
+
+## 2026-10-05 — Matriz LED: boca de Otto (OttoDIYLib) y categoría "Matriz LED" (LedControl)
+
+**Decisiones de Efraín:** la matriz es la misma MAX7219 8x8 de la boca de Otto. En la categoría Otto se usa la opción A (funciones de OttoDIYLib) y en una categoría nueva la opción B (LedControl), con su librería. Pidió además resolver la orientación: con Ottoblockly, los dibujos hechos LED por LED salen siempre en una orientación y en el robot hay que dibujarlos al revés.
+
+**Causa encontrada:** OttoDIYLib aplica la orientación de `initMATRIX` solo a sus bocas y al texto (`writeFull` y `sendChar`), pero `Otto.setLed` escribe sin girar.
+
+**Hecho:**
+
+- **`ottoBocaPunto()`** aplica a los dibujos propios la misma transformación que la librería aplica a sus bocas. Se verificó con las 31 bocas en las 4 orientaciones, sin diferencias. Ahora el aprendiz dibuja como se ve en el robot y elige la orientación en "iniciar boca" con la convención de Otto (arriba 1, abajo 2, izquierda 3, derecha 4).
+- **Bloques de la boca de Otto:** iniciar (pines de los ejemplos de Otto y brillo, que la librería dejaba al máximo), las 31 bocas con nombre en español, dibujo propio, borrar, texto (máximo 9 caracteres, se avisa), punto y brillo.
+- **Categoría "Matriz LED" con LedControl:** iniciar (orientación, espejo y brillo), dibujo, borrar, animación de 2 a 8 cuadros (el bloque se amolda), texto con fuente propia de 5×7, punto y brillo.
+- **Editor de dibujo generalizado:** 5×8 azul para la LCD y 8×8 rojo para la matriz, con botones Espejo y Girar.
+- **Librería LedControl 1.0.6** agregada al paquete de la app. Prueba fija nueva `matriz`. Los 15 programas compilan.
+
+## 2026-10-05 — Cierre de la sesión
+
+**Resumen del día** (sesión larga, todo el 5 de octubre):
+
+- **Fase 1 terminada y ampliada:**
+  - LCD con símbolos;
+  - nombres de pines (`#define`);
+  - niveles 1 · 2 · 3;
+  - listas y matrices;
+  - I2C (MPU6050, PCA9685, Wire);
+  - calibración del PCA9685 por canal y de Otto con memoria del robot;
+  - matriz LED (LedControl) y boca de Otto con la orientación corregida.
+- **Fase 2, app de escritorio:** Electron + arduino-cli + instalador con driver CH340 y actualización automática, armado pero **sin publicar**.
+- **Marca:** el robot de dos bloques encajados, con los colores SENA.
+- **Repositorio público:** EMariotte/TecnoBloques, licencia Apache 2.0.
+- **15 programas de prueba** que compilan con las librerías reales. Pruebas de interfaz y de la app con Playwright.
+
+**Próxima sesión (Efraín, en el ambiente con todas las placas):** probar con hardware según la lista "Próxima sesión" de `CLAUDE.md`, y solo después publicar el Release v0.2.0.

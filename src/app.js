@@ -225,14 +225,24 @@ const TOOLBOX = {
     { kind: 'category', name: 'Bluetooth', colour: COL.bt, contents: [
       B('bt_iniciar'), B('bt_enviar', { inputs: { V: txt('Hola') } }), B('bt_disponible'), B('bt_leer_caracter'), B('bt_leer_texto')
     ] },
+    { kind: 'category', name: 'I2C', colour: COL.i2c, contents: [
+      B('i2c_buscar'), B('i2c_enviar', { inputs: { V: num(0) } }), B('i2c_pedir', { inputs: { N: num(1) } }), B('i2c_disponible'), B('i2c_leer')
+    ] },
     { kind: 'sep' },
     { kind: 'category', name: 'Motores (shield)', colour: COL.motores, contents: [
       B('motor_dc', { inputs: { VEL: num(200) } }), B('motor_detener'), B('motores_detener_todos'),
       B('motor_paso', { inputs: { RPM: num(10), N: num(100) } })
     ] },
-    { kind: 'category', name: 'Servos', colour: COL.servos, contents: [B('servo_mover', { inputs: { A: num(90) } })] },
+    { kind: 'category', name: 'Servos', colour: COL.servos, contents: [
+      B('servo_mover', { inputs: { A: num(90) } }),
+      { kind: 'label', text: 'Controlador de 16 servos (PCA9685)' },
+      B('pca_iniciar'), B('pca_servo', { inputs: { A: num(90) } }), B('pca_soltar'), B('pca_pwm', { inputs: { V: num(2048) } }),
+      B('pca_calibracion')
+    ] },
     { kind: 'category', name: 'Sensores', colour: COL.sensores, contents: [
-      B('dht_leer'), B('ultrasonido'), B('es_valido')
+      B('dht_leer'), B('ultrasonido'), B('es_valido'),
+      { kind: 'label', text: 'Sensor de movimiento (MPU6050)' },
+      B('mpu_iniciar'), B('mpu_angulo'), B('mpu_dato')
     ] },
     { kind: 'category', name: 'Pantalla LCD', colour: COL.lcd, contents: [
       B('lcd_iniciar'), B('lcd_escribir', { inputs: { V: txt('Hola'), C: num(0), F: num(0) } }),
@@ -241,11 +251,19 @@ const TOOLBOX = {
       B('lcd_simbolo_crear'), B('lcd_simbolo_mostrar', { inputs: { C: num(15), F: num(0) } }),
       B('lcd_desplazar'), B('lcd_pantalla'), B('lcd_cursor'), B('lcd_luz')
     ] },
+    { kind: 'category', name: 'Matriz LED', colour: COL.matriz, contents: [
+      B('matriz_iniciar'), B('matriz_dibujo'), B('matriz_borrar'), B('matriz_animacion'),
+      B('matriz_texto', { inputs: { V: txt('HOLA') } }), B('matriz_punto', { inputs: { X: num(3), Y: num(3) } }),
+      B('matriz_brillo', { inputs: { V: num(4) } })
+    ] },
     { kind: 'category', name: 'Otto humanoide', colour: COL.otto, contents: [
-      B('otto_iniciar'), B('otto_brazos_iniciar'), { kind: 'label', text: 'Moverse' },
+      B('otto_iniciar'), B('otto_brazos_iniciar'), B('otto_calibracion'), { kind: 'label', text: 'Moverse' },
       B('otto_caminar', { inputs: { N: num(2) } }), B('otto_girar', { inputs: { N: num(2) } }), B('otto_pierna'),
       B('otto_baile', { inputs: { N: num(2) } }), B('otto_saltar'), B('otto_reposo'), { kind: 'label', text: 'Brazos' }, B('otto_brazos'),
       { kind: 'label', text: 'Sonidos y gestos' }, B('otto_sonido'), B('otto_gesto'), B('otto_tono', { inputs: { F: num(440), D: num(200) } }),
+      { kind: 'label', text: 'Boca (matriz LED)' }, B('otto_boca_iniciar'), B('otto_boca'), B('otto_boca_dibujo'), B('otto_boca_borrar'),
+      B('otto_boca_texto', { inputs: { V: txt('HOLA') } }), B('otto_boca_punto', { inputs: { X: num(3), Y: num(3) } }),
+      B('otto_boca_brillo', { inputs: { V: num(4) } }),
       { kind: 'label', text: 'Sensor de distancia' }, B('ultrasonido')
     ] },
     { kind: 'sep' },
@@ -272,13 +290,20 @@ const NIVEL_BLOQUE = {
   bt_iniciar: 2, bt_enviar: 2, bt_disponible: 2, bt_leer_caracter: 2, bt_leer_texto: 2,
   motor_detener: 2, dht_leer: 2,
   lcd_escribir_aqui: 2, lcd_cursor_mover: 2, lcd_borrar_fila: 2, lcd_desplazar: 2, lcd_pantalla: 2, lcd_luz: 2,
-  otto_iniciar: 2, otto_brazos_iniciar: 2, otto_pierna: 2, otto_tono: 2,
+  otto_iniciar: 2, otto_brazos_iniciar: 2, otto_calibracion: 2, otto_pierna: 2, otto_tono: 2,
+  // Matriz LED (LedControl) y boca de Otto (OttoDIYLib)
+  matriz_iniciar: 1, matriz_dibujo: 1, matriz_borrar: 1, otto_boca: 1, otto_boca_dibujo: 1, otto_boca_borrar: 1,
+  matriz_animacion: 2, matriz_texto: 2, matriz_punto: 2, matriz_brillo: 2,
+  otto_boca_iniciar: 2, otto_boca_texto: 2, otto_boca_punto: 2, otto_boca_brillo: 2,
   // 3 · Inventor: funciones con parámetros, tipos, tiempo sin delay, C++
   controls_flow_statements: 3, math_single: 3, math_modulo: 3, math_constrain: 3, math_round: 3, es_valido: 3,
   text_length: 3, texto_a_numero: 3, fn_param: 3, pin_modo: 3, escribir_digital_valor: 3, pin_valor: 3,
   millis: 3, cada_ms: 3, serial_leer_numero: 3, motor_paso: 3, lcd_cursor: 3,
   lista_crear: 3, lista_vacia: 3, matriz_crear: 3, lista_elemento: 3, lista_poner: 3, lista_largo: 3,
   lista_para_cada: 3, matriz_elemento: 3, matriz_poner: 3, matriz_tamano: 3,
+  // Librerías I2C: lo básico en el nivel 2, lo detallado en el 3
+  i2c_buscar: 2, mpu_iniciar: 2, mpu_angulo: 2, pca_iniciar: 2, pca_servo: 2, pca_soltar: 2,
+  i2c_enviar: 3, i2c_pedir: 3, i2c_disponible: 3, i2c_leer: 3, mpu_dato: 3, pca_pwm: 3, pca_calibracion: 3,
   cpp_linea: 3, cpp_expresion: 3, cpp_global: 3
 };
 const NIVEL_CATEGORIA = { VARIABLES_TB: 2, FUNCIONES_TB: 2, MIS_BLOQUES_TB: 1 };
@@ -290,7 +315,9 @@ function toolboxNivel(n) {
   for (const c of TOOLBOX.contents) {
     if (c.kind !== 'category') { items.push(c); continue; }
     if (c.custom) { if ((NIVEL_CATEGORIA[c.custom] || 1) <= n) items.push(c); continue; }
-    const contents = c.contents.filter(i => i.kind !== 'block' || nivelDe(i.type) <= n);
+    const visibles = c.contents.filter(i => i.kind !== 'block' || nivelDe(i.type) <= n);
+    // Un título (label) sin bloques debajo en este nivel también se quita
+    const contents = visibles.filter((i, k) => i.kind !== 'label' || (visibles[k + 1] && visibles[k + 1].kind === 'block'));
     if (contents.some(i => i.kind === 'block')) items.push(Object.assign({}, c, { contents }));
   }
   const limpio = items.filter((c, i, a) => c.kind !== 'sep' || (i > 0 && i < a.length - 1 && a[i - 1].kind !== 'sep'));
@@ -580,7 +607,7 @@ let firmaPines = '';
 function actualizar() {
   if (!espacio) return;
   // Si cambió algún nombre de pin, los menús de pines muestran el texto nuevo ("LedRojo (12)")
-  const f = JSON.stringify(nombresDePines().map(n => [n.nombre, n.pin]));
+  const f = JSON.stringify([nombresDePines().map(n => [n.nombre, n.pin]), nombresDeCanales()]);
   if (f !== firmaPines) { firmaPines = f; refrescarPines(); }
   Blockly.Events.setGroup(true);
   try {
@@ -941,7 +968,7 @@ function cargarEjemplo(ej) {
 function refrescarPines() {
   if (!espacio) return;
   espacio.getAllBlocks(false).forEach(b => b.inputList.forEach(inp => inp.fieldRow.forEach(f => {
-    if (f instanceof CampoPin) { f.doValueUpdate_(f.getValue()); f.forceRerender(); }
+    if (f instanceof CampoPin || f instanceof CampoCanal) { f.doValueUpdate_(f.getValue()); f.forceRerender(); }
   })));
 }
 
@@ -1074,7 +1101,9 @@ if ('serial' in navigator) {
 const NOMBRES_LIB = {
   AFMotor_R4: 'AFMotor R4 Compatible (búscala como "AFMotor R4")', DHT: 'DHT sensor library (Adafruit) + Adafruit Unified Sensor',
   LiquidCrystal_I2C: 'LiquidCrystal I2C (Frank de Brabander)', Otto: 'OttoDIYLib', Servo: 'Servo (ya viene con el IDE)',
-  SoftwareSerial: 'SoftwareSerial (ya viene con el IDE)', Wire: 'Wire (ya viene con el IDE)'
+  SoftwareSerial: 'SoftwareSerial (ya viene con el IDE)', Wire: 'Wire (ya viene con el IDE)',
+  MPU6050_light: 'MPU6050_light (rfetick)', Adafruit_PWMServoDriver: 'Adafruit PWM Servo Driver Library (+ Adafruit BusIO)',
+  LedControl: 'LedControl (Eberhard Fahle)'
 };
 function librerias() {
   return [...(ultimo.codigo.matchAll(/#include <([^>.]+)\.h>/g))].map(m => NOMBRES_LIB[m[1]] || m[1]);

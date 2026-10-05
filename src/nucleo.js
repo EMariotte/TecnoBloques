@@ -154,7 +154,11 @@ const RESERVADAS = new Set(('setup loop if else for while do switch case default
   'char byte String void true false HIGH LOW INPUT OUTPUT INPUT_PULLUP delay millis micros Serial class new delete const static unsigned ' +
   'signed short struct union enum goto sizeof this public private protected virtual template typename namespace using auto register ' +
   'volatile extern inline operator friend try catch throw and or not xor min max abs map random constrain round sq sqrt pow lcd BT Otto ' +
-  'word size_t main FORWARD BACKWARD RELEASE LEFT RIGHT SMALL MEDIUM BIG').split(' '));
+  'word size_t main FORWARD BACKWARD RELEASE LEFT RIGHT SMALL MEDIUM BIG mpu pca Wire EEPROM matrizLed ' +
+  // OttoDIYLib define estas palabras como macros (bocas y gestos): usarlas como nombre rompe la compilación
+  'otto wave zero one two three four five six seven eight nine smile happyOpen happyClosed heart bigSurprise smallSurprise ' +
+  'tongueOut vamp1 vamp2 lineMouth confused diagonal sad sadOpen sadClosed okMouth xMouth interrogation thunder culito angry ' +
+  'littleUuh dreamMouth adivinawi').split(' '));
 function nombreC(n) {
   let s = String(n || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z0-9_]/g, '_');
   if (!s) s = 'x';
@@ -299,7 +303,7 @@ const G = {
   nuevoId() { return ++Ard.contador_; }
 };
 
-const ORDEN_INCLUDES = ['Wire', 'SPI', 'SoftwareSerial', 'Servo', 'Otto', 'AFMotor_R4', 'DHT', 'LiquidCrystal_I2C'];
+const ORDEN_INCLUDES = ['Wire', 'SPI', 'SoftwareSerial', 'Servo', 'EEPROM', 'Otto', 'AFMotor_R4', 'DHT', 'LiquidCrystal_I2C', 'MPU6050_light', 'Adafruit_PWMServoDriver', 'LedControl'];
 
 /** Genera el programa completo a partir del espacio de trabajo. */
 function generarPrograma(ws) {
@@ -313,6 +317,8 @@ function generarPrograma(ws) {
     Ard.nombresPin_.set(n.nombre, n);
   }
   Ard.listas_ = leerListas(ws);
+  Ard.calPCA_ = leerCalibracionPCA(ws);
+  Ard.calOtto_ = leerCalibracionOtto(ws);
   let globalLibre = '';
   const tops = ws.getTopBlocks(true);
   for (const b of tops) {
@@ -328,7 +334,7 @@ function generarPrograma(ws) {
   } else {
     G.aviso('Falta el bloque "al iniciar / repetir por siempre". Sin él la placa no hace nada.', null);
   }
-  const sueltos = tops.filter(b => !['programa', 'fn_def', 'cpp_global', 'pin_nombre', 'lista_crear', 'lista_vacia', 'matriz_crear'].includes(b.type));
+  const sueltos = tops.filter(b => !['programa', 'fn_def', 'cpp_global', 'pin_nombre', 'lista_crear', 'lista_vacia', 'matriz_crear', 'pca_calibracion', 'otto_calibracion'].includes(b.type));
   if (sueltos.length) {
     G.aviso(`Hay ${sueltos.length} bloque(s) suelto(s) fuera del programa; no se incluyen en el código.`, sueltos[0], 'info');
   }
@@ -496,6 +502,16 @@ function finalizarModulos() {
     configurarLCD('0x27', '16', '2', null);
     G.aviso('Usas la pantalla LCD sin el bloque "iniciar pantalla". Se asumió la dirección 0x27 de 16x2.', null, 'info');
   }
+  if (f.mpuUsado && !f.mpuConfig) {
+    configurarMPU('0x68', true, null);
+    G.aviso('Usas el MPU6050 sin el bloque "iniciar MPU6050". Se asumió la dirección 0x68 y se calibra al arrancar (déjalo quieto 1 segundo).', null, 'info');
+  }
+  if (f.pcaUsado && !f.pcaConfig) {
+    configurarPCA('0x40', null);
+    G.aviso('Usas el PCA9685 sin el bloque "iniciar PCA9685". Se asumió la dirección 0x40.', null, 'info');
+  }
+  if (f.pcaServo) definirPcaServo();
+  if (Ard.calPCA_ && !f.pcaServo) G.aviso('La calibración de servos no se usa todavía: agrega un bloque "PCA9685 mover servo".', Ard.calPCA_.bloque, 'info');
   if (f.lcdConfig) {
     const cols = f.lcdCols, filas = f.lcdFilas;
     for (const u of f.lcdPos || []) {
@@ -517,6 +533,15 @@ function finalizarModulos() {
   if (f.brazosUsado && !f.brazosConfig) {
     configurarBrazos('6', '7', null);
     G.aviso('Usas los brazos de Otto sin "iniciar brazos". Se asumieron los pines 6 y 7.', null, 'info');
+  }
+  if (Ard.calOtto_) definirCalibracionOtto();
+  if (f.bocaUsada && !f.bocaConfig) {
+    configurarBoca('A3', 'A2', 'A1', '1', 4, null);
+    G.aviso('Usas la boca de Otto sin "iniciar boca". Se asumieron los pines de Otto (DIN A3, CS A2, CLK A1), orientación 1 y brillo 4.', null, 'info');
+  }
+  if (f.matrizUsada && !f.matrizConfig) {
+    configurarMatriz('12', '11', '10', '0', false, 4, null);
+    G.aviso('Usas la matriz LED sin el bloque "iniciar matriz LED". Se asumieron DIN 12, CLK 11, CS 10, orientación normal y brillo 4.', null, 'info');
   }
   if ((f.servoUsado || f.ottoConfig || f.brazosConfig) && f.pwmPines) {
     const sin = placa().servoSinPWM.map(String);

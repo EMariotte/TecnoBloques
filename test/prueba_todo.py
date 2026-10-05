@@ -158,6 +158,94 @@ JS_LISTAS = r"""() => {
   return r;
 }"""
 
+JS_I2C = r"""(placa) => {
+  // Bus I2C compartido: LCD + MPU6050 + PCA9685. Un servo sigue la inclinación y la LCD la muestra.
+  nuevoProyecto(); ponerNivel(3);
+  placaActual = placa; document.getElementById('placa').value = placa;
+  const ws = espacio, vm = ws.getVariableMap();
+  const vAng = vm.createVariable('inclinacion', 'float');
+  const n = (v) => ({ block: { type: 'math_number', fields: { NUM: v } } });
+  const cadena = (...bs) => bs.reduceRight((sig, b) => (sig ? Object.assign({}, b, { next: { block: sig } }) : b), null);
+  const vg = { block: { type: 'var_get', fields: { VAR: { id: vAng.getId() } } } };
+  const prog = ws.getBlocksByType('programa')[0];
+  const setup = Blockly.serialization.blocks.append(cadena(
+    { type: 'serial_iniciar', fields: { B: '9600' } },
+    { type: 'i2c_buscar' },
+    { type: 'lcd_iniciar', fields: { DIR: '0x27', T: '16x2' } },
+    { type: 'mpu_iniciar', fields: { DIR: '0x68', CAL: 'TRUE' } },
+    { type: 'pca_iniciar', fields: { DIR: '0x40' } }
+  ), ws);
+  // Calibración por canal: base en el 0, hombro invertido en el 3 (pulsos intercambiados)
+  Blockly.serialization.blocks.append({ type: 'pca_calibracion', x: 700, y: 20, fields: { N: '2',
+    S0C: '0', S0N: 'base', S0A: 550, S0B: 2450, S1C: '3', S1N: 'hombro', S1A: 2400, S1B: 600 } }, ws);
+  prog.getInput('SETUP').connection.connect(setup.previousConnection);
+  const loop = Blockly.serialization.blocks.append(cadena(
+    { type: 'var_set', fields: { VAR: { id: vAng.getId() } }, inputs: { V: { block: { type: 'mpu_angulo', fields: { EJE: 'X' } } } } },
+    { type: 'lcd_escribir', inputs: { V: { block: { type: 'texto_unir', inputs: { A: { block: { type: 'text', fields: { TEXT: 'Angulo: ' } } }, B: vg } } }, C: n(0), F: n(0) } },
+    { type: 'pca_servo', fields: { C: '0' }, inputs: { A: { block: { type: 'mapear', inputs: { V: vg, A: n(-45), B: n(45), C: n(0), D: n(180) } } } } },
+    { type: 'pca_servo', fields: { C: '3' }, inputs: { A: n(90) } },
+    { type: 'serial_imprimir', inputs: { V: { block: { type: 'mpu_dato', fields: { D: 'getAccZ' } } } } },
+    { type: 'esperar', inputs: { MS: n(50) } }
+  ), ws);
+  prog.getInput('LOOP').connection.connect(loop.previousConnection);
+  actualizar();
+  return { codigo: ultimo.codigo, avisos: ultimo.avisos.map(a => a.msg) };
+}"""
+
+JS_OTTO_CAL = r"""(soloCalibrar) => {
+  // Calibración de Otto: (a) programa que solo calibra y guarda; (b) programa normal que saluda con los brazos
+  nuevoProyecto(); ponerNivel(3);
+  placaActual = 'nano'; document.getElementById('placa').value = 'nano';
+  const ws = espacio;
+  Blockly.serialization.blocks.append({ type: 'otto_calibracion', x: 600, y: 20,
+    fields: { YL: -4, YR: 6, RL: 0, RR: -3, BRAZOS: 'TRUE', BI: 5, BD: -7, GUARDAR: 'TRUE' } }, ws);
+  if (!soloCalibrar) {
+    const prog = ws.getBlocksByType('programa')[0];
+    const b = Blockly.serialization.blocks.append({ type: 'otto_brazos', fields: { A: 'SAL_IZQ' },
+      next: { block: { type: 'otto_caminar', inputs: { N: { block: { type: 'math_number', fields: { NUM: 2 } } } } } } }, ws);
+    prog.getInput('LOOP').connection.connect(b.previousConnection);
+  }
+  actualizar();
+  return { codigo: ultimo.codigo, avisos: ultimo.avisos.map(a => a.msg) };
+}"""
+
+JS_MATRIZ = r"""() => {
+  // Matriz LED con LedControl (girada y en espejo) + boca de Otto (orientación 2), con dibujos, texto, puntos y animación
+  nuevoProyecto(); ponerNivel(3);
+  placaActual = 'uno'; document.getElementById('placa').value = 'uno';
+  const ws = espacio, vm = ws.getVariableMap();
+  const vT = vm.createVariable('temperatura', 'float');
+  const n = (v) => ({ block: { type: 'math_number', fields: { NUM: v } } });
+  const t = (v) => ({ block: { type: 'text', fields: { TEXT: v } } });
+  const cadena = (...bs) => bs.reduceRight((sig, b) => (sig ? Object.assign({}, b, { next: { block: sig } }) : b), null);
+  const prog = ws.getBlocksByType('programa')[0];
+  const setup = Blockly.serialization.blocks.append(cadena(
+    { type: 'matriz_iniciar', fields: { DIN: '12', CLK: '11', CS: '10', GIRO: '1', ESPEJO: 'TRUE', BRILLO: 3 } },
+    { type: 'otto_iniciar' },
+    { type: 'otto_boca_iniciar', fields: { DIN: 'A3', CS: 'A2', CLK: 'A1', GIRO: '2', BRILLO: 5 } }
+  ), ws);
+  prog.getInput('SETUP').connection.connect(setup.previousConnection);
+  const loop = Blockly.serialization.blocks.append(cadena(
+    { type: 'matriz_dibujo', fields: { DIBUJO: DIBUJOS_8X8[0][1] } },
+    { type: 'matriz_animacion', fields: { N: '3', MS: 150 } },
+    { type: 'matriz_texto', fields: { VEL: '80' }, inputs: { V: t('¡Hola, Niño!') } },
+    { type: 'matriz_texto', fields: { VEL: '45' }, inputs: { V: { block: { type: 'var_get', fields: { VAR: { id: vT.getId() } } } } } },
+    { type: 'matriz_punto', fields: { E: 'true' }, inputs: { X: n(0), Y: n(7) } },
+    { type: 'matriz_brillo', inputs: { V: n(8) } },
+    { type: 'matriz_borrar' },
+    { type: 'otto_boca', fields: { BOCA: 'smile' } },
+    { type: 'otto_boca_dibujo', fields: { DIBUJO: DIBUJOS_8X8[0][1] } },
+    { type: 'otto_boca_texto', fields: { VEL: '100' }, inputs: { V: t('Hola Otto, ¿qué tal?') } },
+    { type: 'otto_boca_punto', fields: { E: 'false' }, inputs: { X: n(1), Y: n(2) } },
+    { type: 'otto_boca_brillo', inputs: { V: n(2) } },
+    { type: 'otto_gesto', fields: { G: 'OttoHappy' } },
+    { type: 'otto_boca_borrar' }
+  ), ws);
+  prog.getInput('LOOP').connection.connect(loop.previousConnection);
+  actualizar();
+  return { codigo: ultimo.codigo, avisos: ultimo.avisos.map(a => a.msg) };
+}"""
+
 with sync_playwright() as p:
     nav = p.chromium.launch()
     pag = nav.new_page(viewport={'width': 1400, 'height': 860})
@@ -199,5 +287,19 @@ with sync_playwright() as p:
     (d / 'listas.ino').write_text(r['codigo'], encoding='utf-8')
     print('LISTAS avisos:', r['avisos'], '| igual tras reabrir:', r['igualTrasAbrir'])
     print(' avisos de error:', *r['avisosError'], sep='\n   ')
+    for placa in ['uno', 'mega']:
+        r = pag.evaluate(JS_I2C, placa)
+        d = SALIDA / f'i2c_{placa}'; d.mkdir(exist_ok=True)
+        (d / f'i2c_{placa}.ino').write_text(r['codigo'], encoding='utf-8')
+        print(f'I2C {placa} avisos:', r['avisos'])
+    for nombre, solo in (('otto_calibrar', True), ('otto_calibrado', False)):
+        r = pag.evaluate(JS_OTTO_CAL, solo)
+        d = SALIDA / nombre; d.mkdir(exist_ok=True)
+        (d / f'{nombre}.ino').write_text(r['codigo'], encoding='utf-8')
+        print(f'{nombre} avisos:', r['avisos'])
+    r = pag.evaluate(JS_MATRIZ)
+    d = SALIDA / 'matriz'; d.mkdir(exist_ok=True)
+    (d / 'matriz.ino').write_text(r['codigo'], encoding='utf-8')
+    print('MATRIZ avisos:', *r['avisos'], sep='\n   ')
     print('ERRORES:', *errores, sep='\n')
     nav.close()
