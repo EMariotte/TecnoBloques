@@ -7,7 +7,7 @@ const COL = {
   programa: '#2f6b4f', logica: '#3f73c8', bucles: '#2f9463', mate: '#5a62c4', texto: '#b3603f',
   variables: '#c04a86', funciones: '#8a55c4', mis: '#6d45b0', es: '#16889c', tiempo: '#8a7a12',
   serial: '#27708f', bt: '#2a5fa8', motores: '#c05d22', servos: '#cc8420', sensores: '#23907e',
-  lcd: '#4d6a8c', otto: '#cf4d3a', cpp: '#56616a'
+  lcd: '#4d6a8c', otto: '#cf4d3a', cpp: '#56616a', listas: '#9d3d8f'
 };
 
 function bloque(tipo, color, init, gen) {
@@ -228,6 +228,177 @@ bloque('sin_tono', COL.es, function () {
   this.appendDummyInput().appendField('silenciar pin').appendField(new CampoPin('digital', '8'), 'PIN');
   sentencia(this);
 }, (b) => `noTone(${b.getFieldValue('PIN')});\n`);
+
+/* ================= Listas y matrices (nivel 3) ================= */
+// Se crean con bloques sueltos (son globales en C++). generarPrograma las lee antes de generar
+// (leerListas en nucleo.js), así cualquier bloque conoce su tipo y tamaño.
+const TIPOS_LISTA = TIPOS_VAR;
+const TIPOS_MATRIZ = TIPOS_VAR.filter(t => t[1] !== 'String');
+
+/** Menú con los nombres de las listas (o matrices) del programa; acepta cualquier nombre. */
+class CampoLista extends Blockly.FieldDropdown {
+  constructor(clase, valor) { super(function () { return [[valor, valor]]; }); this.clase_ = clase; this.setValue(valor); }
+  doClassValidation_(v) { return v === null || v === undefined ? null : String(v); }
+  getOptions() {
+    const tipos = this.clase_ === 'matriz' ? ['matriz_crear'] : ['lista_crear', 'lista_vacia'];
+    const nombres = [];
+    if (typeof espacio !== 'undefined' && espacio) {
+      tipos.forEach(t => espacio.getBlocksByType(t, true).forEach(b => { const n = b.getFieldValue('NAME'); if (!nombres.includes(n)) nombres.push(n); }));
+    }
+    const v = this.getValue();
+    if (v && !nombres.includes(v)) nombres.push(v);
+    if (!nombres.length) nombres.push(this.clase_ === 'matriz' ? 'matriz' : 'lista');
+    return nombres.map(n => [n, n]);
+  }
+}
+
+bloque('lista_crear', COL.listas, function () {
+  this.appendDummyInput().appendField('lista').appendField(new Blockly.FieldTextInput('notas', validarNombrePin), 'NAME')
+    .appendField('de').appendField(new Blockly.FieldDropdown(TIPOS_LISTA), 'TIPO');
+  this.appendDummyInput().appendField('con los valores').appendField(new Blockly.FieldTextInput('262, 294, 330, 349'), 'VALORES');
+  this.setTooltip('Una lista guarda varios valores del mismo tipo, separados por comas. Las posiciones empiezan en 0: el primero es la posición 0. En C++ esto se llama arreglo (array); en Python, lista.');
+}, () => '');
+bloque('lista_vacia', COL.listas, function () {
+  this.appendDummyInput().appendField('lista').appendField(new Blockly.FieldTextInput('lecturas', validarNombrePin), 'NAME')
+    .appendField('de').appendField(new Blockly.FieldDropdown(TIPOS_LISTA), 'TIPO')
+    .appendField('con').appendField(new Blockly.FieldNumber(10, 1, 200, 1), 'N').appendField('espacios');
+  this.setTooltip('Una lista vacía para ir guardando valores, por ejemplo mediciones. Empieza llena de ceros. En C++ se llama arreglo (array).');
+}, () => '');
+
+/* La matriz guarda sus valores en un campo oculto (JSON) y los muestra fila por fila sobre el bloque. */
+const ICONO_TABLA = 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24" rx="5" fill="#ffffff" fill-opacity=".22"/><path d="M5 6h14v12H5zM5 10h14M5 14h14M10 6v12M15 6v12" fill="none" stroke="#fff" stroke-width="1.6"/></svg>');
+function datosMatriz(b) {
+  let d;
+  try { d = JSON.parse(b.getFieldValue('DATOS') || '[]'); } catch (e) { d = []; }
+  const f = Number(b.getFieldValue('F')) || 1, c = Number(b.getFieldValue('C')) || 1;
+  const r = [];
+  for (let i = 0; i < f; i++) { r.push([]); for (let j = 0; j < c; j++) r[i].push(d[i] && d[i][j] !== undefined && d[i][j] !== '' ? String(d[i][j]) : '0'); }
+  return r;
+}
+Blockly.Blocks.matriz_crear = {
+  init() {
+    this.setColour(COL.listas);
+    const repintar = (v) => { setTimeout(() => !this.isDeadOrDying() && this.pintarFilas_(), 0); return v; };
+    this.appendDummyInput('CAB').appendField('matriz').appendField(new Blockly.FieldTextInput('baile', validarNombrePin), 'NAME')
+      .appendField('de').appendField(new Blockly.FieldDropdown(TIPOS_MATRIZ), 'TIPO')
+      .appendField(new Blockly.FieldNumber(4, 1, 16, 1, repintar), 'F').appendField('filas ×')
+      .appendField(new Blockly.FieldNumber(4, 1, 16, 1, repintar), 'C').appendField('columnas')
+      .appendField(new Blockly.FieldImage(ICONO_TABLA, 18, 18, 'editar valores', () => editarMatriz(this)), 'EDIT')
+      .appendField(new Blockly.FieldTextInput('[[90,90,90,90],[60,120,90,90],[90,90,60,120],[90,90,90,90]]', repintar), 'DATOS');
+    this.getField('DATOS').setVisible(false);
+    this.setTooltip('Una tabla de valores: por ejemplo, cada fila es una pose de Otto y cada columna un servo. Toca la tabla para editar los valores. Filas y columnas empiezan en 0.');
+    this.pintarFilas_();
+  },
+  pintarFilas_() {
+    let i = 0;
+    while (this.getInput('R' + i)) { this.removeInput('R' + i); i++; }
+    const d = datosMatriz(this);
+    const ancho = Math.max(...d.flat().map(x => x.length), 1);
+    d.slice(0, 8).forEach((fila, k) => {
+      const t = fila.map(x => x.padStart(ancho)).join('  ');
+      this.appendDummyInput('R' + k).appendField(new Blockly.FieldLabel(t.length > 60 ? t.slice(0, 58) + '…' : t, 'cpp-linea'));
+    });
+    if (d.length > 8) this.appendDummyInput('R8').appendField(new Blockly.FieldLabel(`… ${d.length - 8} filas más`, 'cpp-linea'));
+  }
+};
+Ard.forBlock.matriz_crear = () => '';
+/** Editor de la matriz: una tabla con un campo por celda. */
+function editarMatriz(b) {
+  if (b.isInFlyout) return;
+  const d = datosMatriz(b);
+  const tabla = el('table', { class: 'tb-matriz' },
+    el('tr', null, el('th', null, ''), d[0].map((_, j) => el('th', null, String(j)))),
+    d.map((fila, i) => el('tr', null, el('th', null, String(i)), fila.map((x, j) => el('td', null,
+      el('input', { class: 'entrada', value: x, 'data-f': i, 'data-c': j, 'aria-label': `fila ${i}, columna ${j}`, size: 4 }))))));
+  modal({
+    titulo: `Matriz "${b.getFieldValue('NAME')}"`,
+    cuerpo: [el('p', { class: 'muted' }, 'Filas y columnas empiezan en 0. Usa Tab para pasar a la celda siguiente.'), el('div', { class: 'tb-matriz-caja' }, tabla)],
+    botones: [{ texto: 'Cancelar' }, { texto: 'Guardar', primario: true, accion: () => {
+      const n = d.map(f => f.slice());
+      tabla.querySelectorAll('input').forEach(inp => { n[inp.dataset.f][inp.dataset.c] = inp.value.trim() || '0'; });
+      b.setFieldValue(JSON.stringify(n), 'DATOS');
+    } }]
+  });
+}
+
+bloque('lista_elemento', COL.listas, function () {
+  this.appendValueInput('I').appendField('elemento');
+  this.appendDummyInput().appendField('de').appendField(new CampoLista('lista', 'notas'), 'LISTA');
+  this.setInputsInline(true); this.setOutput(true);
+  this.setTooltip('El valor guardado en esa posición. La primera posición es 0.');
+}, (b) => {
+  const n = b.getFieldValue('LISTA');
+  usarLista(b, n, 'lista', 'I');
+  return [`${n}[${G.val(b, 'I')}]`, O.POSTFIX];
+});
+bloque('lista_poner', COL.listas, function () {
+  this.appendDummyInput().appendField('poner en').appendField(new CampoLista('lista', 'notas'), 'LISTA');
+  this.appendValueInput('I').appendField('posición');
+  this.appendValueInput('V').appendField('el valor');
+  this.setInputsInline(true); sentencia(this);
+}, (b) => {
+  const n = b.getFieldValue('LISTA');
+  usarLista(b, n, 'lista', 'I');
+  return `${n}[${G.val(b, 'I')}] = ${G.val(b, 'V', O.ASSIGN)};\n`;
+});
+bloque('lista_largo', COL.listas, function () {
+  this.appendDummyInput().appendField('largo de').appendField(new CampoLista('lista', 'notas'), 'LISTA');
+  this.setOutput(true, 'Number');
+  this.setTooltip('Cuántos elementos tiene la lista. La última posición es el largo menos 1.');
+}, (b) => {
+  const n = b.getFieldValue('LISTA');
+  usarLista(b, n, 'lista');
+  Ard.banderas_.largoUsado = (Ard.banderas_.largoUsado || new Set()).add(n);
+  return [`${n}_largo`, O.ATOMIC];
+});
+bloque('lista_para_cada', COL.listas, function () {
+  this.appendDummyInput().appendField('para cada').appendField(new Blockly.FieldVariable(null, undefined, TIPOS_CODIGO, 'int'), 'VAR')
+    .appendField('en').appendField(new CampoLista('lista', 'notas'), 'LISTA');
+  this.appendStatementInput('DO').appendField('hacer');
+  sentencia(this);
+  this.setTooltip('Repite una vez por cada elemento: la variable toma el valor de cada uno, en orden.');
+}, (b) => {
+  const n = b.getFieldValue('LISTA');
+  const vb = b.getField('VAR').getVariable();
+  const v = nombreC(vb.getName());
+  const l = usarLista(b, n, 'lista');
+  if (l && ((l.tipo === 'String') !== (vb.getType() === 'String'))) G.aviso(`La variable "${vb.getName()}" es de otro tipo que la lista "${n}". Usa una variable de tipo ${NOMBRE_TIPO[l.tipo]}.`, b);
+  Ard.banderas_.largoUsado = (Ard.banderas_.largoUsado || new Set()).add(n);
+  const i = '_k' + profundidad(b, 'lista_para_cada');
+  return `for (int ${i} = 0; ${i} < ${n}_largo; ${i}++) {\n${Ard.INDENT}${v} = ${n}[${i}];\n${G.sentencias(b, 'DO')}}\n`;
+});
+bloque('matriz_elemento', COL.listas, function () {
+  this.appendDummyInput().appendField('de').appendField(new CampoLista('matriz', 'baile'), 'M');
+  this.appendValueInput('F').appendField('fila');
+  this.appendValueInput('C').appendField('columna');
+  this.setInputsInline(true); this.setOutput(true);
+  this.setTooltip('El valor en esa fila y columna. Ambas empiezan en 0.');
+}, (b) => {
+  const n = b.getFieldValue('M');
+  usarLista(b, n, 'matriz', 'F', 'C');
+  return [`${n}[${G.val(b, 'F')}][${G.val(b, 'C')}]`, O.POSTFIX];
+});
+bloque('matriz_poner', COL.listas, function () {
+  this.appendDummyInput().appendField('poner en').appendField(new CampoLista('matriz', 'baile'), 'M');
+  this.appendValueInput('F').appendField('fila');
+  this.appendValueInput('C').appendField('columna');
+  this.appendValueInput('V').appendField('el valor');
+  this.setInputsInline(true); sentencia(this);
+}, (b) => {
+  const n = b.getFieldValue('M');
+  usarLista(b, n, 'matriz', 'F', 'C');
+  return `${n}[${G.val(b, 'F')}][${G.val(b, 'C')}] = ${G.val(b, 'V', O.ASSIGN)};\n`;
+});
+bloque('matriz_tamano', COL.listas, function () {
+  this.appendDummyInput().appendField('número de').appendField(dd([['filas', 'filas'], ['columnas', 'columnas']]), 'Q')
+    .appendField('de').appendField(new CampoLista('matriz', 'baile'), 'M');
+  this.setOutput(true, 'Number');
+}, (b) => {
+  const n = b.getFieldValue('M'), q = b.getFieldValue('Q');
+  usarLista(b, n, 'matriz');
+  Ard.banderas_.largoUsado = (Ard.banderas_.largoUsado || new Set()).add(n + ':' + q);
+  return [`${n}_${q}`, O.ATOMIC];
+});
 
 /* ================= Tiempo ================= */
 bloque('esperar', COL.tiempo, function () {

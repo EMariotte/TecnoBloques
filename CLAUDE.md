@@ -243,6 +243,20 @@ Los bloques propios son `var_set`, `var_get`, `var_cambiar` y `bucle_para`; no s
 - Avisos: nombre repetido, pin inexistente en la placa, nombre no definido ("No hay un pin llamado…") y nombre igual a una variable o a un bloque propio.
 - Al renombrar un `pin_nombre`, un listener de `app.js` cambia los `CampoPin` que usaban el nombre viejo, en el mismo grupo de eventos (deshacer revierte todo, y se ignora si `!e.recordUndo`). `actualizar()` llama a `refrescarPines()` cuando cambia algún nombre o número, para que los menús muestren el texto nuevo.
 
+### Listas y matrices (nivel 3)
+
+- **Definiciones** (bloques sueltos sin conexiones, globales en C++):
+  - `lista_crear`: nombre, tipo y valores separados por comas.
+  - `lista_vacia`: nombre, tipo y N espacios.
+  - `matriz_crear`: nombre, tipo, F filas × C columnas. Los datos van en un campo oculto `DATOS` (JSON). Se ven fila por fila sobre el bloque (`pintarFilas_`) y se editan en una tabla modal (`editarMatriz`, con el ícono de tabla). Si se cambia F o C, se recorta o se rellena con 0 sin perder los datos guardados.
+- `leerListas(ws)` (nucleo.js) llena `Ard.listas_` **antes de generar**. `valorC()` convierte cada valor al tipo:
+  - acepta números, `verdadero`/`falso`/`sí`/`no`, una letra para `char`, texto para `String`, y pines (`A0`, `HIGH`/`LOW`, pines con nombre);
+  - un valor que no sirve se avisa y se reemplaza por el valor inicial del tipo.
+- **Uso:** `lista_elemento`, `lista_poner`, `lista_largo`, `lista_para_cada` (asigna cada elemento a una variable; avisa si mezcla texto y números), `matriz_elemento`, `matriz_poner` y `matriz_tamano`. Eligen la lista con `CampoLista('lista'|'matriz')`. **Las posiciones empiezan en 0.**
+- `usarLista()` avisa si la lista no existe, si es de otra clase, o si una posición fija se sale del tamaño.
+- `declararListas()` emite `tipo nombre[N] = {…};` (o `[F][C]`) después de los objetos globales. Las constantes `nombre_largo`, `nombre_filas` y `nombre_columnas` solo se emiten si algún bloque las usa (`Ard.banderas_.largoUsado`). Avisa si las listas pasan de ¼ de la RAM de la placa.
+- Avisa también si un nombre de lista choca con una variable, un pin con nombre o un bloque propio.
+
 ### Funciones / bloques propios
 
 - `fn_def` ("definir bloque"): tiene los campos `NAME` y `TIPO` (retorno) y `NPARAM` (0–4). Para cada parámetro hay `P{i}N` y `P{i}T`. La entrada `RETURN` solo se ve si el tipo no es `void`. La forma se reconstruye desde el validador de `NPARAM`. El nombre es único en el espacio de trabajo: si se repite, se le agrega `_2`.
@@ -426,6 +440,7 @@ Ojo: el ultrasonido trae 8/9 por defecto (pensado para Otto); **con la shield el
 | App de escritorio (Electron 44.5.1, arduino-cli 1.5.1, núcleo AVR 1.8.8): abre, lista puertos, compila el carro (≈7 s; ≈3 s con caché) y Otto, error de puerto inexistente y error de C++ con línea, todo en español | ✅ en desarrollo y empaquetada (`win-unpacked`), sin errores de JavaScript |
 | Instalador `TecnoBloques-Setup-0.2.0.exe` (175 MB) | ✅ se arma; ⬜ falta ejecutarlo en un PC del aula |
 | **Subir a una placa real** desde la app | ⬜ **no probado** (en este PC solo hay puertos COM3/COM4 sin USB) |
+| Listas y matrices: caso fijo `listas` (melodía con "para cada", listas int/String/char/bool/float, lista de pines con nombre, matriz 3×4 recorrida con "contar con") | ✅ compila en uno; guardar/abrir igual; avisos de posición, lista inexistente, valor inválido y nombre repetido; editor de tabla con clics reales |
 | `instalar-librerias.ps1` | ⬜ no probado (en este PC las librerías se instalaron una por una con el arduino-cli del IDE) |
 
 Versiones con las que se compiló (Linux, 26 sep): núcleo AVR 1.8.6, AFMotor-Shield-R4-Compatible 1.0.1,

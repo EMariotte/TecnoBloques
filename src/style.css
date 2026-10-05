@@ -293,6 +293,13 @@ details.subir-detalle pre { max-height: 220px; overflow: auto; font-family: var(
 .tb-dibujo-listos { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
 .tb-dibujo-listos button { padding: 4px 0; display: flex; justify-content: center; }
 .tb-dibujo-listos svg { fill: var(--ink); }
+
+/* Editor de matrices */
+.tb-matriz-caja { max-height: 60vh; overflow: auto; }
+.tb-matriz { border-collapse: collapse; }
+.tb-matriz th { font-weight: 400; color: var(--muted); font-size: 12px; padding: 2px 6px; }
+.tb-matriz td { padding: 2px; }
+.tb-matriz input { width: 4.2em; text-align: right; font-family: var(--mono); padding: 4px 6px; }
 .blocklyText.cpp-linea, .cpp-linea { font-family: var(--mono) !important; }
 .blocklyScrollbarHandle { fill: var(--muted) !important; fill-opacity: .35 !important; }
 

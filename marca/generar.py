@@ -105,7 +105,7 @@ def main():
     (M / 'svg').mkdir(parents=True, exist_ok=True)
     (M / 'png').mkdir(parents=True, exist_ok=True)
     for nombre, contenido in SVGS.items():
-        (M / 'svg' / nombre).write_text(contenido, encoding='utf-8')
+        (M / 'svg' / nombre).write_text(contenido, encoding='utf-8', newline='\n')
 
     b64 = lambda s: 'data:image/svg+xml;base64,' + base64.b64encode(s.encode()).decode()
     with sync_playwright() as p:

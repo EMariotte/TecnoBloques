@@ -172,6 +172,85 @@ function caracterC(s) {
   return "'" + c + "'";
 }
 
+/* ---------- Listas y matrices ---------- */
+const BYTES_TIPO = { int: 2, long: 4, float: 4, bool: 1, char: 1, String: 6 };
+/** Un valor escrito por el aprendiz → literal de C++ del tipo pedido, o null si no sirve. */
+function valorC(txt, tipo) {
+  const t = String(txt).trim();
+  if (tipo === 'String') return cadenaC(t.replace(/^"(.*)"$/, '$1'));
+  if (tipo === 'char') { const c = t.replace(/^'(.*)'$/, '$1'); return c.length === 1 ? caracterC(c) : null; }
+  if (tipo === 'bool') {
+    if (/^(verdadero|true|1|s[ií])$/i.test(t)) return 'true';
+    if (/^(falso|false|0|no)$/i.test(t)) return 'false';
+    return null;
+  }
+  if (tipo === 'float') return /^-?\d+(\.\d+)?$/.test(t) ? t : null;
+  if (/^-?\d+$/.test(t)) return t;                                           // int / long
+  if (/^A\d+$/.test(t) || /^(HIGH|LOW)$/.test(t) || (Ard.nombresPin_ && Ard.nombresPin_.has(t))) return t; // pines
+  return null;
+}
+/** Lee las listas y matrices del programa (bloques sueltos activos) → Map nombre → definición. */
+function leerListas(ws) {
+  const m = new Map();
+  const bloques = ['lista_crear', 'lista_vacia', 'matriz_crear'].flatMap(t => ws.getBlocksByType(t, true)).filter(b => b.isEnabled());
+  for (const b of bloques) {
+    const nombre = b.getFieldValue('NAME'), tipo = b.getFieldValue('TIPO');
+    if (m.has(nombre)) { G.aviso(`Hay dos listas o matrices con el nombre "${nombre}". Cambia una.`, b); continue; }
+    const malo = (x) => G.aviso(`"${x}" no es un valor de tipo ${NOMBRE_TIPO[tipo]} en "${nombre}". Se usó ${valorInicial(tipo)}.`, b);
+    const conv = (x) => { const c = valorC(x, tipo); if (c === null) { malo(x); return valorInicial(tipo); } return c; };
+    if (b.type === 'matriz_crear') {
+      const d = datosMatriz(b);
+      m.set(nombre, { clase: 'matriz', tipo, f: d.length, c: d[0].length, valores: d.map(fila => fila.map(conv)), bloque: b });
+    } else if (b.type === 'lista_vacia') {
+      m.set(nombre, { clase: 'lista', tipo, n: Number(b.getFieldValue('N')) || 1, valores: null, bloque: b });
+    } else {
+      const partes = String(b.getFieldValue('VALORES') || '').split(',').map(x => x.trim()).filter(x => x !== '');
+      if (!partes.length) { G.aviso(`La lista "${nombre}" no tiene valores. Escríbelos separados por comas.`, b); partes.push(tipo === 'String' ? '' : '0'); }
+      m.set(nombre, { clase: 'lista', tipo, n: partes.length, valores: partes.map(conv), bloque: b });
+    }
+  }
+  return m;
+}
+/** Un bloque usa una lista: revisa que exista, que sea de la clase correcta y anota las posiciones fijas. */
+function usarLista(b, nombre, clase, ...entradas) {
+  const l = Ard.listas_ && Ard.listas_.get(nombre);
+  if (!l) { G.aviso(`No hay una ${clase} llamada "${nombre}". Créala con el bloque "${clase}".`, b); return null; }
+  if (l.clase !== clase) { G.aviso(`"${nombre}" es una ${l.clase}, no una ${clase}.`, b); return null; }
+  const fijo = (n) => { const t = b.getInputTargetBlock(n); return t && t.type === 'math_number' ? Number(t.getFieldValue('NUM')) : null; };
+  const lim = clase === 'lista' ? [l.n] : [l.f, l.c];
+  entradas.forEach((e, k) => {
+    const v = fijo(e);
+    if (v === null) return;
+    if (v < 0 || v >= lim[k] || !Number.isInteger(v)) {
+      const que = clase === 'lista' ? `La lista "${nombre}" tiene ${l.n} elementos: usa posiciones de 0 a ${l.n - 1}.`
+        : `La matriz "${nombre}" tiene ${l.f} filas y ${l.c} columnas: ${k === 0 ? `filas de 0 a ${l.f - 1}` : `columnas de 0 a ${l.c - 1}`}.`;
+      G.aviso(que, b);
+    }
+  });
+  return l;
+}
+/** Declaraciones de C++ de las listas, matrices y sus tamaños (los tamaños solo si se usan). */
+function declararListas() {
+  const usados = Ard.banderas_.largoUsado || new Set();
+  const lineas = [];
+  let bytes = 0;
+  for (const [n, l] of Ard.listas_) {
+    if (l.clase === 'lista') {
+      lineas.push(l.valores ? `${l.tipo} ${n}[${l.n}] = { ${l.valores.join(', ')} };` : `${l.tipo} ${n}[${l.n}];  // empieza en ${valorInicial(l.tipo)}`);
+      if (usados.has(n)) lineas.push(`const int ${n}_largo = ${l.n};`);
+      bytes += l.n * BYTES_TIPO[l.tipo];
+    } else {
+      lineas.push(`${l.tipo} ${n}[${l.f}][${l.c}] = {\n` + l.valores.map(f => `  { ${f.join(', ')} }`).join(',\n') + '\n};');
+      if (usados.has(n + ':filas')) lineas.push(`const int ${n}_filas = ${l.f};`);
+      if (usados.has(n + ':columnas')) lineas.push(`const int ${n}_columnas = ${l.c};`);
+      bytes += l.f * l.c * BYTES_TIPO[l.tipo];
+    }
+  }
+  const ram = placa().nDig > 20 ? 8192 : 2048;
+  if (bytes > ram / 4) G.aviso(`Las listas y matrices ocupan unos ${bytes} bytes de los ${ram} de memoria de variables de ${placa().nombre}. Si la placa se comporta raro, hazlas más pequeñas.`, null);
+  return lineas;
+}
+
 /* ---------- Generador ---------- */
 const Ard = new Blockly.CodeGenerator('Arduino');
 const O = { ATOMIC: 0, POSTFIX: 1, UNARY: 2, MULT: 3, ADD: 4, SHIFT: 5, REL: 6, EQ: 7, BAND: 8, BXOR: 9, BOR: 10, AND: 11, OR: 12, COND: 13, ASSIGN: 14, NONE: 99 };
@@ -233,6 +312,7 @@ function generarPrograma(ws) {
     if (!p.digitales.map(String).includes(n.pin) && !p.analogicos.includes(n.pin)) G.aviso(`El pin ${n.pin} no existe en ${p.nombre}.`, n.bloque);
     Ard.nombresPin_.set(n.nombre, n);
   }
+  Ard.listas_ = leerListas(ws);
   let globalLibre = '';
   const tops = ws.getTopBlocks(true);
   for (const b of tops) {
@@ -248,7 +328,7 @@ function generarPrograma(ws) {
   } else {
     G.aviso('Falta el bloque "al iniciar / repetir por siempre". Sin él la placa no hace nada.', null);
   }
-  const sueltos = tops.filter(b => !['programa', 'fn_def', 'cpp_global', 'pin_nombre'].includes(b.type));
+  const sueltos = tops.filter(b => !['programa', 'fn_def', 'cpp_global', 'pin_nombre', 'lista_crear', 'lista_vacia', 'matriz_crear'].includes(b.type));
   if (sueltos.length) {
     G.aviso(`Hay ${sueltos.length} bloque(s) suelto(s) fuera del programa; no se incluyen en el código.`, sueltos[0], 'info');
   }
@@ -277,11 +357,17 @@ function generarPrograma(ws) {
     if (nombresVar.has(nombre)) G.aviso(`"${nombre}" es el nombre de un pin y también de una variable. Cambia uno de los dos.`, n.bloque);
     else if (Ard.funciones_.has(nombre)) G.aviso(`"${nombre}" es el nombre de un pin y también de un bloque propio. Cambia uno de los dos.`, n.bloque);
   }
+  for (const [nombre, l] of Ard.listas_) {
+    const otro = nombresVar.has(nombre) ? 'una variable' : Ard.nombresPin_.has(nombre) ? 'un pin' : Ard.funciones_.has(nombre) ? 'un bloque propio' : null;
+    if (otro) G.aviso(`"${nombre}" es el nombre de una ${l.clase} y también de ${otro}. Cambia uno de los dos.`, l.bloque);
+  }
+  const listas = declararListas();
   const defines = [...Ard.nombresPin_.values()].map(n => `#define ${n.nombre} ${n.pin}`);
   let out = `// ${document.getElementById('nombreProyecto').value || 'Proyecto'} · ${p.nombre}\n// Generado con TecnoBloques\n`;
   if (includes.length) out += '\n' + includes.join('\n') + '\n';
   if (defines.length) out += '\n// Nombres de los pines\n' + defines.join('\n') + '\n';
   if (Ard.globales_.size) out += '\n' + [...Ard.globales_.values()].join('\n') + '\n';
+  if (listas.length) out += '\n// Listas y matrices\n' + listas.join('\n') + '\n';
   if (variables.length) out += '\n' + variables.join('\n') + '\n';
   if (globalLibre.trim()) out += '\n' + globalLibre.replace(/\s+$/, '') + '\n';
   const protos = [...Ard.prototipos_.values()].concat([...Ard.ayudas_.keys()].map(k => Ard.ayudas_.get(k).split('\n')[0].replace(/\s*\{\s*$/, ';')));

@@ -192,3 +192,17 @@ aprendiz no puede subir su programa sin el Arduino IDE.
 - **Pendiente:**
   - confirmar los colores con el manual de identidad del SENA;
   - subir `compartir.png` como vista previa del repositorio en GitHub (Settings → Social preview; no se puede hacer por API).
+
+## 2026-10-05 — Listas y matrices (nivel 3)
+
+**Decisiones con Efraín:** las posiciones empiezan en 0, como en C++. El orden es: marca → listas y matrices → librerías MPU6050, PCA9685 e I2C.
+
+**Hecho:**
+
+- **Categoría nueva "Listas y matrices"**, en nivel 3:
+  - para crear: lista con valores, lista vacía de N espacios, y matriz de F×C;
+  - para usar: elemento, poner, largo, "para cada", elemento y poner de la matriz, y número de filas o columnas.
+- **La matriz se ve fila por fila sobre el bloque** y se edita en una tabla. Sirve, por ejemplo, para coreografías de Otto: cada fila es una pose y cada columna un servo.
+- **Avisos:** posición fija fuera de rango, lista inexistente, valor que no es del tipo, nombre repetido con una variable, un pin o un bloque propio, y uso alto de memoria.
+- **El C++ queda legible:** `int melodia[5] = { … };` y `const int melodia_largo = 5;`, este último solo si se usa.
+- **Prueba fija nueva `listas`.** Los 10 programas de prueba compilan.

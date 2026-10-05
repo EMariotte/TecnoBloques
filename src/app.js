@@ -199,6 +199,13 @@ const TOOLBOX = {
       B('texto_a_numero', { inputs: { V: txt('42') } })
     ] },
     { kind: 'category', name: 'Variables', colour: COL.variables, custom: 'VARIABLES_TB' },
+    { kind: 'category', name: 'Listas y matrices', colour: COL.listas, contents: [
+      B('lista_crear'), B('lista_vacia'), B('matriz_crear'),
+      B('lista_elemento', { inputs: { I: num(0) } }), B('lista_poner', { inputs: { I: num(0), V: num(0) } }), B('lista_largo'),
+      B('lista_para_cada'),
+      B('matriz_elemento', { inputs: { F: num(0), C: num(0) } }), B('matriz_poner', { inputs: { F: num(0), C: num(0), V: num(0) } }),
+      B('matriz_tamano')
+    ] },
     { kind: 'category', name: 'Funciones', colour: COL.funciones, custom: 'FUNCIONES_TB' },
     { kind: 'category', name: 'Mis bloques', colour: COL.mis, custom: 'MIS_BLOQUES_TB' },
     { kind: 'sep' },
@@ -270,6 +277,8 @@ const NIVEL_BLOQUE = {
   controls_flow_statements: 3, math_single: 3, math_modulo: 3, math_constrain: 3, math_round: 3, es_valido: 3,
   text_length: 3, texto_a_numero: 3, fn_param: 3, pin_modo: 3, escribir_digital_valor: 3, pin_valor: 3,
   millis: 3, cada_ms: 3, serial_leer_numero: 3, motor_paso: 3, lcd_cursor: 3,
+  lista_crear: 3, lista_vacia: 3, matriz_crear: 3, lista_elemento: 3, lista_poner: 3, lista_largo: 3,
+  lista_para_cada: 3, matriz_elemento: 3, matriz_poner: 3, matriz_tamano: 3,
   cpp_linea: 3, cpp_expresion: 3, cpp_global: 3
 };
 const NIVEL_CATEGORIA = { VARIABLES_TB: 2, FUNCIONES_TB: 2, MIS_BLOQUES_TB: 1 };

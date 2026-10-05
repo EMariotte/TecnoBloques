@@ -103,6 +103,61 @@ JS_PINES = r"""() => {
   return { codigo: ultimo.codigo, avisos: ultimo.avisos.map(a => a.msg), opciones };
 }"""
 
+JS_LISTAS = r"""() => {
+  // Listas y matrices: melodía con "para cada", listas de varios tipos (con pines con nombre) y una coreografía en matriz
+  nuevoProyecto(); ponerNivel(3);
+  placaActual = 'uno'; document.getElementById('placa').value = 'uno';
+  const ws = espacio, vm = ws.getVariableMap();
+  const vNota = vm.createVariable('nota', 'int'), vMsg = vm.createVariable('mensaje', 'String'), vF = vm.createVariable('f', 'int');
+  const n = (v) => ({ block: { type: 'math_number', fields: { NUM: v } } });
+  const suelto = (json, y) => Blockly.serialization.blocks.append(Object.assign({ x: 700, y }, json), ws);
+  suelto({ type: 'pin_nombre', fields: { PIN: '13', NOMBRE: 'LedRojo' } }, 10);
+  suelto({ type: 'pin_nombre', fields: { PIN: '12', NOMBRE: 'LedVerde' } }, 50);
+  suelto({ type: 'lista_crear', fields: { NAME: 'leds', TIPO: 'int', VALORES: 'LedRojo, LedVerde, A0' } }, 90);
+  suelto({ type: 'lista_crear', fields: { NAME: 'melodia', TIPO: 'int', VALORES: '262, 294, 330, 349, 392' } }, 150);
+  suelto({ type: 'lista_crear', fields: { NAME: 'mensajes', TIPO: 'String', VALORES: 'Hola, Adiós' } }, 210);
+  suelto({ type: 'lista_crear', fields: { NAME: 'comandos', TIPO: 'char', VALORES: 'A, S, D' } }, 270);
+  suelto({ type: 'lista_crear', fields: { NAME: 'encendidos', TIPO: 'bool', VALORES: 'verdadero, falso, sí' } }, 330);
+  suelto({ type: 'lista_vacia', fields: { NAME: 'lecturas', TIPO: 'float', N: 5 } }, 390);
+  suelto({ type: 'matriz_crear', fields: { NAME: 'baile', TIPO: 'int', F: 3, C: 4, DATOS: '[[90,90,90,90],[60,120,90,90],[90,90,60,120]]' } }, 450);
+  const prog = ws.getBlocksByType('programa')[0];
+  const cadena = (...bs) => bs.reduceRight((sig, b) => (sig ? Object.assign({}, b, { next: { block: sig } }) : b), null);
+  const vg = (v) => ({ block: { type: 'var_get', fields: { VAR: { id: v.getId() } } } });
+  const imprimir = (v) => ({ type: 'serial_imprimir', inputs: { V: v } });
+  const loop = Blockly.serialization.blocks.append(cadena(
+    { type: 'lista_para_cada', fields: { VAR: { id: vNota.getId() }, LISTA: 'melodia' }, inputs: { DO: { block: cadena(
+      { type: 'tono', fields: { PIN: '8' }, inputs: { F: vg(vNota), D: n(200) } },
+      { type: 'esperar', inputs: { MS: n(250) } }) } } },
+    { type: 'lista_poner', fields: { LISTA: 'lecturas' }, inputs: { I: n(0), V: { block: { type: 'leer_analogo', fields: { PIN: 'A0' } } } } },
+    { type: 'lista_para_cada', fields: { VAR: { id: vMsg.getId() }, LISTA: 'mensajes' }, inputs: { DO: { block: imprimir(vg(vMsg)) } } },
+    { type: 'bucle_para', fields: { VAR: { id: vF.getId() } }, inputs: {
+      DESDE: n(0), PASO: n(1),
+      HASTA: { block: { type: 'math_arithmetic', fields: { OP: 'MINUS' }, inputs: { A: { block: { type: 'matriz_tamano', fields: { Q: 'filas', M: 'baile' } } }, B: n(1) } } },
+      DO: { block: imprimir({ block: { type: 'matriz_elemento', fields: { M: 'baile' }, inputs: { F: vg(vF), C: n(3) } } }) } } },
+    { type: 'matriz_poner', fields: { M: 'baile' }, inputs: { F: n(2), C: n(3), V: n(45) } },
+    imprimir({ block: { type: 'lista_elemento', fields: { LISTA: 'comandos' }, inputs: { I: n(2) } } })
+  ), ws);
+  prog.getInput('LOOP').connection.connect(loop.previousConnection);
+  actualizar();
+  const r = { codigo: ultimo.codigo, avisos: ultimo.avisos.map(a => a.msg) };
+  // Guardar y reabrir conserva la matriz
+  const proy = JSON.parse(JSON.stringify(proyectoActual()));
+  cargarProyecto(proy, true); actualizar();
+  r.igualTrasAbrir = ultimo.codigo === r.codigo;
+  // Errores: posición fuera de rango, lista inexistente, valor que no es del tipo, nombre repetido con una variable
+  nuevoProyecto();
+  vm.createVariable('notas', 'int');
+  suelto({ type: 'lista_crear', fields: { NAME: 'notas', TIPO: 'int', VALORES: '1, hola, 3' } }, 10);
+  suelto({ type: 'matriz_crear', fields: { NAME: 'm', TIPO: 'int', F: 2, C: 2, DATOS: '[[1,2],[3,4]]' } }, 80);
+  const b = Blockly.serialization.blocks.append({ type: 'serial_imprimir', inputs: { V: { block: { type: 'lista_elemento', fields: { LISTA: 'notas' }, inputs: { I: n(3) } } } },
+    next: { block: { type: 'serial_imprimir', inputs: { V: { block: { type: 'lista_elemento', fields: { LISTA: 'fantasma' }, inputs: { I: n(0) } } } },
+    next: { block: { type: 'matriz_poner', fields: { M: 'm' }, inputs: { F: n(0), C: n(2), V: n(1) } } } } } }, ws);
+  ws.getBlocksByType('programa')[0].getInput('LOOP').connection.connect(b.previousConnection);
+  actualizar();
+  r.avisosError = ultimo.avisos.map(a => a.msg);
+  return r;
+}"""
+
 with sync_playwright() as p:
     nav = p.chromium.launch()
     pag = nav.new_page(viewport={'width': 1400, 'height': 860})
@@ -139,5 +194,10 @@ with sync_playwright() as p:
     pag.wait_for_timeout(300)
     deshecho = pag.evaluate("() => [espacio.getBlocksByType('escribir_digital').map(b => b.getFieldValue('PIN')), espacio.getBlocksByType('pin_nombre').map(b => b.getFieldValue('NOMBRE'))]")
     print(' renombrar LedRojo->LedVerde:', tras, '| deshacer:', deshecho)
+    r = pag.evaluate(JS_LISTAS)
+    d = SALIDA / 'listas'; d.mkdir(exist_ok=True)
+    (d / 'listas.ino').write_text(r['codigo'], encoding='utf-8')
+    print('LISTAS avisos:', r['avisos'], '| igual tras reabrir:', r['igualTrasAbrir'])
+    print(' avisos de error:', *r['avisosError'], sep='\n   ')
     print('ERRORES:', *errores, sep='\n')
     nav.close()
