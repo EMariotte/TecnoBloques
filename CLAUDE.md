@@ -574,7 +574,7 @@ El instalador ya está armado con todo lo de hoy:
 10. **I2C:** "buscar dispositivos" para saber si las LCD del aula son 0x27 o 0x3F.
 11. **Carro:** sentido de M1/M2 y comandos 'A'/'S' desde una app Bluetooth.
 
-**C.** ✅ Publicadas v0.2.0, v0.2.1 y v0.2.2. ✅ (6 oct) La app de Efraín pasó sola de 0.2.0 a 0.2.1 (descarga completa, porque su 0.2.0 no venía del Release; el título muestra "TecnoBloques 0.2.1"). ⬜ Confirmar 0.2.1 → 0.2.2 con descarga diferencial (pocos MB) y el aviso "Bajando…". Cuando pase el bloque A, quitar la nota "versión de prueba" de la siguiente versión e instalar en el aula.
+**C.** ✅ Publicadas v0.2.0, v0.2.1 y v0.2.2. ✅ (6 oct) La app de Efraín pasó sola de 0.2.0 a 0.2.1 (descarga completa, porque su 0.2.0 no venía del Release; el título muestra "TecnoBloques 0.2.1"). ✅ 0.2.1 → 0.2.2: descarga diferencial en ≈10 s, instalación en ≈30 s, aviso "Bajando…" visible. **La cadena de actualización está probada.** Cuando pase el bloque A, quitar la nota "versión de prueba" de la siguiente versión e instalar en el aula.
 
 **D. Decisiones abiertas:**
 - confirmar con SENNOVA la titularidad y los colores de la marca;
@@ -609,7 +609,7 @@ Fase 2 ◐ App de escritorio para el aula (5 oct 2026):
           ⬜ Probar la carga con placas reales (Uno, Nano clon CH340, Mega) → próxima sesión.
           ✅ Releases v0.2.0 y v0.2.1 publicados como versiones de prueba (6 oct).
           ✅ Actualización automática 0.2.0 → 0.2.1 comprobada en un PC (6 oct).
-          ⬜ Confirmar 0.2.1 → 0.2.2 (diferencial + aviso de descarga).
+          ✅ 0.2.1 → 0.2.2 diferencial (≈10 s de descarga + ≈30 s de instalación).
           ⬜ Ligar los errores del compilador al bloque que los causa.
           ⬜ Publicar la versión web (GitHub Pages).
 

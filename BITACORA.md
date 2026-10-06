@@ -351,3 +351,15 @@ Efraín aprobó los cambios en la versión de desarrollo. Se rearma el instalado
 - **`test/app.js` con su propia carpeta de datos:** la app solo permite una instancia, y antes la prueba se cerraba sola si la app instalada estaba abierta.
 
 Se publica la v0.2.2 para la segunda prueba de actualización, ahora diferencial.
+
+## 2026-10-06 — Segunda prueba de actualización: 0.2.1 → 0.2.2 (diferencial)
+
+Efraín reabrió la app 0.2.1:
+
+- apareció el aviso "Bajando una versión nueva…";
+- la **descarga tardó unos 10 segundos** (diferencial: solo lo que cambió, porque la 0.2.1 venía de un Release) y la **instalación unos 30 segundos**;
+- el título quedó en "TecnoBloques 0.2.2".
+
+**La cadena de actualización automática quedó probada de punta a punta.** Para el aula significa que cada versión nueva llega sola a los PC en menos de un minuto, sin reinstalar.
+
+**Falta del bloque A** para quitar la etiqueta "versión de prueba" e instalar en el aula: probar el Uno R3 y el Nano clon (bootloader nuevo y antiguo).
