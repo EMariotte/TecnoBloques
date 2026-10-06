@@ -1347,6 +1347,8 @@ function iniciar() {
   $('btnSubir').addEventListener('click', () => modalSubir());
   $('btnMonitor').addEventListener('click', abrirMonitor);
   if (escritorio) {
+    // La versión en el título de la ventana: así se sabe qué versión tiene cada PC del aula
+    escritorio.info().then((i) => { document.title = `TecnoBloques ${i.version}`; }).catch(() => {});
     $('campoPuerto').hidden = false;
     $('puerto').addEventListener('change', () => { guardarLocal(CLAVE_PUERTO, $('puerto').value); escritorio.preferirPuerto($('puerto').value); });
     $('puerto').addEventListener('focus', refrescarPuertos);

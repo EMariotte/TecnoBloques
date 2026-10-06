@@ -385,6 +385,7 @@ Los bloques propios son `var_set`, `var_get`, `var_cambiar` y `bucle_para`; no s
 - **Errores en español** (`explicarError` y `traducirErrorCpp` en app.js): librería faltante, programa muy grande o sin RAM, errores de C++ con número de línea y el texto de esa línea, puerto ocupado o inexistente, y placa que no responde (sugiere "Nano bootloader antiguo", otro cable y desconectar los pines 0 y 1). Siempre se puede abrir "Ver el mensaje completo". arduino-cli corre con `ARDUINO_LOCALE=en` para que los mensajes sean predecibles.
 - **Monitor serial en la app:** sigue siendo Web Serial. `main.js` atiende `select-serial-port` y elige el puerto del selector (`preferirPuerto`), sin ventana del sistema.
 - **arduino-cli:** `ubicarArduino()` busca primero `resources/arduino` (empaquetada) o `escritorio/recursos/arduino` (desarrollo), luego `ARDUINO_CLI` y luego el del Arduino IDE 2. Los datos se apuntan con `ARDUINO_DIRECTORIES_DATA` y `ARDUINO_DIRECTORIES_USER`. La instalación es por usuario (`%LOCALAPPDATA%\Programs\TecnoBloques`), así que esas carpetas se pueden escribir.
+- **Versión en el título:** en la app, `document.title` es "TecnoBloques <versión>" (desde `tbEscritorio.info()`). Sirve para saber qué versión tiene cada PC.
 - **Actualización automática:** `electron-updater` revisa GitHub Releases (EMariotte/TecnoBloques) 5 s después de abrir, descarga sola y pregunta "Reiniciar ahora / Más tarde". Sin internet o sin versiones publicadas no muestra nada. El `.blockmap` permite bajar solo lo que cambió.
 - **Instalador:** NSIS de un clic, por usuario, con acceso directo en el escritorio y en español. Ofrece el driver CH340 solo en la primera instalación y solo si `escritorio/recursos/drivers/CH341SER.EXE` existe (ver el LEEME de esa carpeta). Pesa unos 175 MB, casi todo avr-gcc.
 - **Versión web (casa):** el botón "Subir a la placa" explica cómo seguir: guardar el proyecto para abrirlo en el aula o usar Arduino IDE.
@@ -551,7 +552,7 @@ Uso de memoria: carro en Uno usa 36 % de flash y 29 % de RAM. El programa con to
 
 ### Próxima sesión: prueba con hardware en el ambiente (Efraín, con todas las placas)
 
-Nada de esto se ha probado con placas reales. **El Release v0.2.0 NO se publica hasta pasar el bloque A.**
+**Publicado (6 oct, decisión de Efraín):** v0.2.0 y v0.2.1 como **versiones de prueba** en GitHub Releases, para probar la actualización automática antes de llevar la app al aula. **Regla nueva: no instalar en los PC del aula hasta probar el Uno R3 y el Nano** (bloque A).
 El instalador ya está armado con todo lo de hoy:
 `%LOCALAPPDATA%\TecnoBloques-build\TecnoBloques-Setup-0.2.0.exe` (176 MB). Trae el driver CH340 y las 10 librerías. Si cambia `src/`, se rearma con `npm run instalador`.
 
@@ -570,7 +571,7 @@ El instalador ya está armado con todo lo de hoy:
 10. **I2C:** "buscar dispositivos" para saber si las LCD del aula son 0x27 o 0x3F.
 11. **Carro:** sentido de M1/M2 y comandos 'A'/'S' desde una app Bluetooth.
 
-**C. Si todo pasa:** publicar el Release v0.2.0 (sección "Publicar una versión"). Después, publicar una 0.2.1 de prueba para comprobar que la **actualización automática** llega a los PC del aula.
+**C.** ✅ Publicadas v0.2.0 y v0.2.1. ⬜ Confirmar que la app instalada de Efraín pasa sola de 0.2.0 a 0.2.1 (la versión se ve en el título de la ventana). Cuando pase el bloque A, quitar la nota "versión de prueba" de la siguiente versión e instalar en el aula.
 
 **D. Decisiones abiertas:**
 - confirmar con SENNOVA la titularidad y los colores de la marca;
@@ -603,7 +604,8 @@ Fase 2 ◐ App de escritorio para el aula (5 oct 2026):
              actualización automática (electron-updater), versión web con explicación.
           ✅ CH341SER.EXE en escritorio/recursos/drivers (el instalador lo ofrece).
           ⬜ Probar la carga con placas reales (Uno, Nano clon CH340, Mega) → próxima sesión.
-          ⬜ Publicar el Release v0.2.0 (solo después de la prueba con hardware).
+          ✅ Releases v0.2.0 y v0.2.1 publicados como versiones de prueba (6 oct).
+          ⬜ Confirmar la actualización automática 0.2.0 → 0.2.1 en un PC instalado.
           ⬜ Ligar los errores del compilador al bloque que los causa.
           ⬜ Publicar la versión web (GitHub Pages).
 

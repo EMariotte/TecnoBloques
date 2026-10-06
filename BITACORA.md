@@ -321,3 +321,13 @@ aprendiz no puede subir su programa sin el Arduino IDE.
 Efraín aprobó los cambios en la versión de desarrollo. Se rearma el instalador (la misma 0.2.0, sin publicar).
 
 **Falta del bloque A:** Uno R3 y Nano clon (bootloader nuevo y antiguo).
+
+## 2026-10-06 — Primeras versiones publicadas (de prueba) y prueba de actualización
+
+**Decisión de Efraín:** publicar ya en GitHub, como versión de prueba, para no reinstalar a mano y para **probar la actualización automática antes de llevar la app al aula**. Regla nueva: no instalar en los PC del aula hasta probar el Uno R3 y el Nano.
+
+**Hecho:**
+
+- Release **v0.2.0**, con el mismo código que la versión instalada.
+- Release **v0.2.1**, con un cambio visible para comprobar la actualización: la versión aparece en el título de la ventana ("TecnoBloques 0.2.1"), lo que además sirve para el soporte en el aula.
+- **Prueba pendiente:** que la app instalada de Efraín (0.2.0) muestre "Hay una versión nueva (0.2.1)" y se actualice.
