@@ -1,7 +1,7 @@
 # CLAUDE.md — TecnoBloques
 
 > Memoria técnica del proyecto para Claude Code / Claude en Cowork.
-> Actualizado: 5 de octubre de 2026 (cierre de sesión) · Estado: **v0.2 — app de escritorio que compila y sube, con niveles, nombres de pines, listas y matrices, I2C (MPU6050, PCA9685), calibraciones (PCA9685 y Otto), matriz LED y boca de Otto, y marca propia. Instalador armado y SIN publicar: la próxima sesión es la prueba con placas reales en el ambiente (ver "Próxima sesión").**
+> Actualizado: 6 de octubre de 2026 (cierre de sesión) · Estado: **v0.2.3 publicada en GitHub Releases como VERSIÓN DE PRUEBA. Probado con hardware: Mega 2560 clon CH340 (subir, monitor serial) y la actualización automática (0.2.0 → 0.2.1 → 0.2.2, diferencial ≈10 s). Otto humanoide usa todas las funciones de OttoDIYLib. Falta: Uno R3, Nano clon y los robots y módulos en el ambiente (ver "Próxima sesión"). No instalar en los PC del aula hasta probar el Uno y el Nano.**
 
 ---
 
@@ -312,6 +312,20 @@ Los bloques propios son `var_set`, `var_get`, `var_cambiar` y `bucle_para`; no s
   `configurarBrazos` lee 4–5 al arrancar si está la marca. **La calibración queda en la placa, no en el robot:** si se cambia la placa de robot, hay que calibrar otra vez.
 - **Brazos:** todo movimiento pasa por `ottoBrazo(izquierdo, grados)`, que suma el ajuste. `ottoBrazos(izq, der)` y `ottoSaludar` la usan; antes `ottoSaludar` escribía directo al servo.
 
+### Otto: cobertura de OttoDIYLib v13 (revisada el 6 oct)
+
+De las 37 funciones públicas se usan todas menos `oscillateServos` (queda para un futuro "inventa tu forma de caminar") y `getRestState`, que es interna.
+
+- **Coreografía (`otto_coreografia`, nivel 3):** recorre una matriz de "Listas y matrices", una fila por pose. Con 4 columnas mueve piernas y pies; con 6, las columnas 4 y 5 son los brazos. Usa `Otto._moveServos(ms, pose)` para las piernas, que llegan suave; los brazos van con `ottoBrazos` al empezar cada pose. Avisa si la matriz no tiene 4 o 6 columnas.
+- **Mover un servo (`otto_mover_servo`, nivel 3):** en piernas y pies usa `Otto._moveSingle(ángulo, n)`, con 0 = pierna izq., 1 = pierna der., 2 = pie izq., 3 = pie der.; en los brazos usa `ottoBrazo`. Respeta la calibración.
+- **Relajar / despertar (`otto_relajar`, nivel 2):** las ayudas `ottoRelajar()` y `ottoDespertar()` llaman a `detach`/`attachServos`, más los brazos si existen. `ottoBrazo()` vuelve a conectar el brazo solo si estaba relajado; para eso los pines se guardan en `ottoPinBrazoIzq/Der`.
+- **Velocidad máxima (`otto_velocidad`, nivel 3):** `enableServoLimit(°/s)`, 240 por defecto, o `disableServoLimit()`. Solo afecta piernas y pies, y el número se oculta con "quitar el límite".
+- **Animación de boca (`otto_boca_animacion`, nivel 2):** `putAnimationMouth` cuadro por cuadro (`ottoBocaAnimacion`): uuh 8, soñando 4, adivinando 6 y ola 10 cuadros, según `Gesturetable[4][10]`.
+- **Sonido deslizante (`otto_sonido_deslizante`, nivel 3):** `bendTones(a, b, prop, 18, 1)`. **Trampa:** `bendTones` usa enteros, y al subir con frecuencias de menos de 1/(prop−1) Hz se queda en un **ciclo infinito**. Por eso se limita de 100 a 5000 Hz.
+- **Reposo:** `otto_reposo` llama a `ottoReposo()`, que hace `Otto.home()` más `ottoBrazos(90, 90)` si hay brazos. Antes los brazos no volvían.
+- **Más opciones:** crusaito y aleteo hacia atrás (literal −1, por el choque de `BACKWARD`); inclinarse, sacudir la pierna y saltar con número de veces y velocidad (normal, lenta ×1,5, rápida ×0,7).
+- **Trampa de `home()`:** si Otto ya está en reposo, no se mueve, y además suelta los servos. La calibración hace `Otto.setRestState(false)` antes de `home()` para que se vea el ajuste nuevo; antes no se veía.
+
 ### Matriz LED y boca de Otto (MAX7219 8x8)
 
 - **Campo de dibujo general (`CampoDibujo(valor, opciones)`):**
@@ -543,6 +557,7 @@ Ojo: el ultrasonido trae 8/9 por defecto (pensado para Otto); **con la shield el
 | Calibración por canal del PCA9685: N de 4 a 6 a 2 a 4, canal libre en filas nuevas, menú "hombro (1)" que se actualiza al renombrar, guardar/abrir, avisos de canal repetido y pulsos iguales, hombro invertido (2400 → 600), caso sin calibración | ✅ en la interfaz; el caso `i2c` compila en uno y mega2560 |
 | Calibración de Otto: programa que solo calibra y guarda (Nano) + programa que saluda con brazos calibrados; ocultar brazos; guardar/abrir; nombre reservado `heart` | ✅ compilan en nano; ejemplo Otto humanoide sigue compilando |
 | Matriz LED + boca de Otto: caso fijo `matriz` (matriz girada 90° con espejo + boca orientación 2; dibujo, animación de 3 cuadros, texto fijo con tilde y ñ, texto de variable, punto, brillo, bocas, gesto) | ✅ compila en uno (48 % flash), también con el paquete de la app; editor 8×8 con Girar/Espejo probado; el editor 5×8 de la LCD sigue igual |
+| Otto completo: caso fijo `otto_todo` (coreografía de 6 columnas, mover un servo y un brazo, inclinarse ×2 lento, saltar ×3 rápido, crusaito hacia atrás, animación de boca, sonido deslizante, relajar/despertar, velocidad con y sin límite, reposo con brazos) + aviso de matriz de 5 columnas | ✅ compila en nano; 16 programas compilan |
 | `instalar-librerias.ps1` | ⬜ no probado (en este PC las librerías se instalaron una por una con el arduino-cli del IDE) |
 
 Versiones con las que se compiló (Linux, 26 sep): núcleo AVR 1.8.6, AFMotor-Shield-R4-Compatible 1.0.1,
@@ -566,7 +581,16 @@ El instalador ya está armado con todo lo de hoy:
 4. ✅ El puerto del CH340 aparece solo en el selector "Puerto".
 
 **B. Robots y módulos:**
-5. **Otto:** subir el "programa para calibrar" (bloque "calibración de Otto" solo, con "guardar") en cada robot y comprobar que otro programa sin el bloque queda derecho. **Marcar cada placa**, porque la calibración vive en la placa. Validar pines y ángulos de los brazos (arriba 160/20, abajo 20/160, saludar) y el sentido de caminar y girar.
+5. **Otto (funciones nuevas del 6 oct):**
+   - coreografía con una matriz de 6 columnas;
+   - mover un servo y un brazo;
+   - relajar (se pueden mover las piernas con la mano) y despertar;
+   - velocidad máxima (movimientos más suaves);
+   - animaciones de boca y sonido deslizante;
+   - reposo que también lleva los brazos al frente;
+   - crusaito y aleteo hacia atrás;
+   - los 13 gestos, los 8 bailes y los 19 sonidos, para ponerles nombres claros en español.
+   **Otto:** subir el "programa para calibrar" (bloque "calibración de Otto" solo, con "guardar") en cada robot y comprobar que otro programa sin el bloque queda derecho. **Marcar cada placa**, porque la calibración vive en la placa. Validar pines y ángulos de los brazos (arriba 160/20, abajo 20/160, saludar) y el sentido de caminar y girar.
 6. **Boca de Otto:** qué orientación (1–4) hace ver bien la sonrisa; que un dibujo propio y el texto salgan derechos con esa orientación; brillo cómodo; gestos con boca.
 7. **Matriz LED suelta (LedControl):** orientación y si necesita "espejo"; lectura del texto que pasa; animación.
 8. **PCA9685:** servos con fuente en V+; encontrar los pulsos de 0° y 180° de los servos del aula y probar un servo invertido.
@@ -574,7 +598,7 @@ El instalador ya está armado con todo lo de hoy:
 10. **I2C:** "buscar dispositivos" para saber si las LCD del aula son 0x27 o 0x3F.
 11. **Carro:** sentido de M1/M2 y comandos 'A'/'S' desde una app Bluetooth.
 
-**C.** ✅ Publicadas v0.2.0, v0.2.1 y v0.2.2. ✅ (6 oct) La app de Efraín pasó sola de 0.2.0 a 0.2.1 (descarga completa, porque su 0.2.0 no venía del Release; el título muestra "TecnoBloques 0.2.1"). ✅ 0.2.1 → 0.2.2: descarga diferencial en ≈10 s, instalación en ≈30 s, aviso "Bajando…" visible. **La cadena de actualización está probada.** Cuando pase el bloque A, quitar la nota "versión de prueba" de la siguiente versión e instalar en el aula.
+**C.** ✅ Publicadas v0.2.0, v0.2.1, v0.2.2 y v0.2.3 (Otto completo). La app de Efraín se actualiza sola. ✅ (6 oct) La app de Efraín pasó sola de 0.2.0 a 0.2.1 (descarga completa, porque su 0.2.0 no venía del Release; el título muestra "TecnoBloques 0.2.1"). ✅ 0.2.1 → 0.2.2: descarga diferencial en ≈10 s, instalación en ≈30 s, aviso "Bajando…" visible. **La cadena de actualización está probada.** Cuando pase el bloque A, quitar la nota "versión de prueba" de la siguiente versión e instalar en el aula.
 
 **D. Decisiones abiertas:**
 - confirmar con SENNOVA la titularidad y los colores de la marca;
@@ -607,7 +631,7 @@ Fase 2 ◐ App de escritorio para el aula (5 oct 2026):
              actualización automática (electron-updater), versión web con explicación.
           ✅ CH341SER.EXE en escritorio/recursos/drivers (el instalador lo ofrece).
           ⬜ Probar la carga con placas reales (Uno, Nano clon CH340, Mega) → próxima sesión.
-          ✅ Releases v0.2.0 y v0.2.1 publicados como versiones de prueba (6 oct).
+          ✅ Releases v0.2.0 a v0.2.3 publicados como versiones de prueba (6 oct).
           ✅ Actualización automática 0.2.0 → 0.2.1 comprobada en un PC (6 oct).
           ✅ 0.2.1 → 0.2.2 diferencial (≈10 s de descarga + ≈30 s de instalación).
           ⬜ Ligar los errores del compilador al bloque que los causa.

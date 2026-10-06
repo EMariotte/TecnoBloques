@@ -246,6 +246,42 @@ JS_MATRIZ = r"""() => {
   return { codigo: ultimo.codigo, avisos: ultimo.avisos.map(a => a.msg) };
 }"""
 
+JS_OTTO_TODO = r"""() => {
+  // Otto humanoide con todas las funciones nuevas: coreografía de 6 columnas, un servo, relajar, velocidad, animación, sonido deslizante
+  nuevoProyecto(); ponerNivel(3);
+  placaActual = 'nano'; document.getElementById('placa').value = 'nano';
+  const ws = espacio;
+  const n = (v) => ({ block: { type: 'math_number', fields: { NUM: v } } });
+  const cadena = (...bs) => bs.reduceRight((sig, b) => (sig ? Object.assign({}, b, { next: { block: sig } }) : b), null);
+  Blockly.serialization.blocks.append({ type: 'matriz_crear', x: 700, y: 20, fields: { NAME: 'baile', TIPO: 'int', F: 3, C: 6,
+    DATOS: '[[90,90,90,90,90,90],[60,120,90,90,160,20],[90,90,70,110,20,160]]' } }, ws);
+  Blockly.serialization.blocks.append({ type: 'matriz_crear', x: 700, y: 200, fields: { NAME: 'mala', TIPO: 'int', F: 2, C: 5, DATOS: '[[1,2,3,4,5],[1,2,3,4,5]]' } }, ws);
+  const prog = ws.getBlocksByType('programa')[0];
+  const setup = Blockly.serialization.blocks.append(cadena(
+    { type: 'otto_iniciar' }, { type: 'otto_brazos_iniciar' },
+    { type: 'otto_velocidad', fields: { A: 'LIM', V: 180 } }
+  ), ws);
+  prog.getInput('SETUP').connection.connect(setup.previousConnection);
+  const loop = Blockly.serialization.blocks.append(cadena(
+    { type: 'otto_coreografia', fields: { M: 'baile' }, inputs: { MS: n(400) } },
+    { type: 'otto_coreografia', fields: { M: 'mala' }, inputs: { MS: n(400) } },
+    { type: 'otto_mover_servo', fields: { S: '2' }, inputs: { A: n(70) } },
+    { type: 'otto_mover_servo', fields: { S: 'BD' }, inputs: { A: n(30) } },
+    { type: 'otto_pierna', fields: { MOV: 'bend', DIR: 'LEFT', T: '1.5' }, inputs: { N: n(2) } },
+    { type: 'otto_saltar', fields: { T: '0.7' }, inputs: { N: n(3) } },
+    { type: 'otto_baile', fields: { MOV: 'crusaito|-1', H: 'MEDIUM', T: '1000' }, inputs: { N: n(2) } },
+    { type: 'otto_boca_animacion', fields: { A: 'wave|10' } },
+    { type: 'otto_sonido_deslizante', fields: { P: '1.02' }, inputs: { A: n(2000), B: n(400) } },
+    { type: 'otto_relajar', fields: { A: 'R' } },
+    { type: 'otto_relajar', fields: { A: 'D' } },
+    { type: 'otto_velocidad', fields: { A: 'SIN' } },
+    { type: 'otto_reposo' }
+  ), ws);
+  prog.getInput('LOOP').connection.connect(loop.previousConnection);
+  actualizar();
+  return { codigo: ultimo.codigo, avisos: ultimo.avisos.map(a => a.msg) };
+}"""
+
 with sync_playwright() as p:
     nav = p.chromium.launch()
     pag = nav.new_page(viewport={'width': 1400, 'height': 860})
@@ -301,5 +337,9 @@ with sync_playwright() as p:
     d = SALIDA / 'matriz'; d.mkdir(exist_ok=True)
     (d / 'matriz.ino').write_text(r['codigo'], encoding='utf-8')
     print('MATRIZ avisos:', *r['avisos'], sep='\n   ')
+    r = pag.evaluate(JS_OTTO_TODO)
+    d = SALIDA / 'otto_todo'; d.mkdir(exist_ok=True)
+    (d / 'otto_todo.ino').write_text(r['codigo'], encoding='utf-8')
+    print('OTTO TODO avisos:', *r['avisos'], sep='\n   ')
     print('ERRORES:', *errores, sep='\n')
     nav.close()

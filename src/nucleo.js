@@ -535,6 +535,7 @@ function finalizarModulos() {
     G.aviso('Usas los brazos de Otto sin "iniciar brazos". Se asumieron los pines 6 y 7.', null, 'info');
   }
   if (Ard.calOtto_) definirCalibracionOtto();
+  definirAyudasOtto();
   if (f.bocaUsada && !f.bocaConfig) {
     configurarBoca('A3', 'A2', 'A1', '1', 4, null);
     G.aviso('Usas la boca de Otto sin "iniciar boca". Se asumieron los pines de Otto (DIN A3, CS A2, CLK A1), orientación 1 y brillo 4.', null, 'info');

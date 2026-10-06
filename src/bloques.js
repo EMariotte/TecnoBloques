@@ -1330,13 +1330,15 @@ function configurarBrazos(izq, der, b) {
   Ard.banderas_.brazosConfig = true;
   G.incluir('Servo', '#include <Servo.h>');
   G.incluir('EEPROM', '#include <EEPROM.h>');
-  G.global('ottoBrazos', 'Servo ottoBrazoIzq;\nServo ottoBrazoDer;\nint ottoTrimBrazos[2] = { 0, 0 };  // calibración de los brazos en grados: { izquierdo, derecho }');
+  G.global('ottoBrazos', `Servo ottoBrazoIzq;\nServo ottoBrazoDer;\nconst byte ottoPinBrazoIzq = ${izq}, ottoPinBrazoDer = ${der};\n` +
+    'int ottoTrimBrazos[2] = { 0, 0 };  // calibración de los brazos en grados: { izquierdo, derecho }');
   G.setup('ottoBrazos', `ottoBrazoIzq.attach(${izq});\nottoBrazoDer.attach(${der});\n` +
     `if (EEPROM.read(${EE_MARCA_BRAZOS}) == ${MARCA_BRAZOS}) {  // el robot tiene guardada la calibración de los brazos\n` +
     `  ottoTrimBrazos[0] = (int8_t) EEPROM.read(${EE_BRAZO_IZQ});\n  ottoTrimBrazos[1] = (int8_t) EEPROM.read(${EE_BRAZO_DER});\n}\nottoBrazos(90, 90);`);
   G.ayuda('ottoBrazo', 'void ottoBrazo(bool izquierdo, int grados) {\n' +
-    '  if (izquierdo) ottoBrazoIzq.write(constrain(grados + ottoTrimBrazos[0], 0, 180));\n' +
-    '  else ottoBrazoDer.write(constrain(grados + ottoTrimBrazos[1], 0, 180));\n}');
+    '  Servo &brazo = izquierdo ? ottoBrazoIzq : ottoBrazoDer;\n' +
+    '  if (!brazo.attached()) brazo.attach(izquierdo ? ottoPinBrazoIzq : ottoPinBrazoDer);  // por si Otto estaba relajado\n' +
+    '  brazo.write(constrain(grados + ottoTrimBrazos[izquierdo ? 0 : 1], 0, 180));\n}');
   G.ayuda('ottoBrazos', 'void ottoBrazos(int izq, int der) {\n  ottoBrazo(true, izq);\n  ottoBrazo(false, der);\n}');
   G.pin(izq, 'Otto brazo izquierdo', b); G.pin(der, 'Otto brazo derecho', b);
 }
@@ -1381,7 +1383,8 @@ function definirCalibracionOtto() {
   const c = Ard.calOtto_, f = Ard.banderas_;
   let s = `// Calibración de Otto (grados): pierna izq., pierna der., pie izq., pie der.\nOtto.setTrims(${c.YL}, ${c.YR}, ${c.RL}, ${c.RR});\n`;
   if (c.guardar) s += 'Otto.saveTrimsOnEEPROM();  // queda guardada en el robot: los otros programas la cargan solos\n';
-  s += 'Otto.home();';
+  // home() no se mueve si Otto ya está en reposo (y Otto.init + home lo dejan así): se fuerza para ver la calibración
+  s += 'Otto.setRestState(false);  // así home() vuelve a mover los servos con el ajuste nuevo\nOtto.home();';
   if (c.brazos && f.brazosConfig) {
     s += `\nottoTrimBrazos[0] = ${c.BI};  // brazo izquierdo\nottoTrimBrazos[1] = ${c.BD};  // brazo derecho\n`;
     if (c.guardar) s += `EEPROM.update(${EE_BRAZO_IZQ}, (byte) ottoTrimBrazos[0]);\nEEPROM.update(${EE_BRAZO_DER}, (byte) ottoTrimBrazos[1]);\n` +
@@ -1427,13 +1430,19 @@ bloque('otto_girar', COL.otto, function () {
   this.setInputsInline(true); sentencia(this);
 }, (b) => { ottoUsado(); return `Otto.turn(${G.val(b, 'N', O.NONE, '2')}, ${b.getFieldValue('T') === '1000' ? '2000' : b.getFieldValue('T') === '2000' ? '3000' : '1000'}, ${b.getFieldValue('DIR')});\n`; });
 bloque('otto_pierna', COL.otto, function () {
-  this.appendDummyInput().appendField('Otto').appendField(dd([['inclinarse', 'bend'], ['sacudir la pierna', 'shakeLeg']]), 'MOV')
+  this.appendValueInput('N').appendField('Otto').appendField(dd([['inclinarse', 'bend'], ['sacudir la pierna', 'shakeLeg']]), 'MOV')
     .appendField('hacia la').appendField(dd([['izquierda', 'LEFT'], ['derecha', 'RIGHT']]), 'DIR');
-  sentencia(this);
-}, (b) => { ottoUsado(); const m = b.getFieldValue('MOV'); return `Otto.${m}(1, ${m === 'bend' ? 1400 : 2000}, ${b.getFieldValue('DIR')});\n`; });
+  this.appendDummyInput().appendField('veces  velocidad').appendField(dd(VEL_RELATIVA), 'T');
+  this.setInputsInline(true); sentencia(this);
+}, (b) => {
+  ottoUsado();
+  const m = b.getFieldValue('MOV');
+  return `Otto.${m}(${G.val(b, 'N', O.NONE, '1')}, ${tiempoOtto(m === 'bend' ? 1400 : 2000, b.getFieldValue('T'))}, ${b.getFieldValue('DIR')});\n`;
+});
 bloque('otto_baile', COL.otto, function () {
   this.appendValueInput('N').appendField('Otto bailar').appendField(dd([
-    ['moonwalker ←', 'moonwalker|LEFT'], ['moonwalker →', 'moonwalker|RIGHT'], ['crusaito', 'crusaito|FORWARD'], ['aleteo', 'flapping|FORWARD'],
+    ['moonwalker ←', 'moonwalker|LEFT'], ['moonwalker →', 'moonwalker|RIGHT'], ['crusaito', 'crusaito|FORWARD'], ['crusaito hacia atrás', 'crusaito|-1'],
+    ['aleteo', 'flapping|FORWARD'], ['aleteo hacia atrás', 'flapping|-1'],
     ['balanceo', 'swing|'], ['balanceo en puntillas', 'tiptoeSwing|'], ['temblor', 'jitter|'], ['arriba y abajo', 'updown|'], ['giro ascendente', 'ascendingTurn|']
   ]), 'MOV');
   this.appendDummyInput().appendField('veces  tamaño').appendField(dd([['mediano', 'MEDIUM'], ['pequeño', 'SMALL'], ['grande', 'BIG']]), 'H')
@@ -1442,16 +1451,17 @@ bloque('otto_baile', COL.otto, function () {
 }, (b) => {
   ottoUsado();
   const [m, dir] = b.getFieldValue('MOV').split('|');
-  return `Otto.${m}(${G.val(b, 'N', O.NONE, '2')}, ${b.getFieldValue('T')}, ${b.getFieldValue('H')}${dir ? ', ' + dir : ''});\n`;
+  return `Otto.${m}(${G.val(b, 'N', O.NONE, '2')}, ${b.getFieldValue('T')}, ${b.getFieldValue('H')}${dir ? ', ' + dir : ''});${dir === '-1' ? '  // -1 = hacia atrás' : ''}\n`;
 });
 bloque('otto_saltar', COL.otto, function () {
-  this.appendDummyInput().appendField('Otto saltar');
-  sentencia(this);
-}, () => { ottoUsado(); return 'Otto.jump(1, 2000);\n'; });
+  this.appendValueInput('N').appendField('Otto saltar');
+  this.appendDummyInput().appendField('veces  velocidad').appendField(dd(VEL_RELATIVA), 'T');
+  this.setInputsInline(true); sentencia(this);
+}, (b) => { ottoUsado(); return `Otto.jump(${G.val(b, 'N', O.NONE, '1')}, ${tiempoOtto(2000, b.getFieldValue('T'))});\n`; });
 bloque('otto_reposo', COL.otto, function () {
   this.appendDummyInput().appendField('Otto posición de reposo');
   sentencia(this);
-}, () => { ottoUsado(); return 'Otto.home();\n'; });
+}, () => { ottoUsado(); Ard.banderas_.ottoReposo = true; return 'ottoReposo();\n'; });
 bloque('otto_sonido', COL.otto, function () {
   this.appendDummyInput().appendField('Otto sonido').appendField(dd([
     ['conexión', 'S_connection'], ['desconexión', 'S_disconnection'], ['botón', 'S_buttonPushed'], ['modo 1', 'S_mode1'], ['modo 2', 'S_mode2'],
@@ -1492,6 +1502,100 @@ bloque('otto_brazos', COL.otto, function () {
   }
   G.ayuda('ottoSaludar', 'void ottoSaludar(bool izquierdo) {\n  int arriba = izquierdo ? 160 : 20;\n  int medio = izquierdo ? 120 : 60;\n  for (int i = 0; i < 3; i++) {\n    ottoBrazo(izquierdo, arriba);\n    delay(250);\n    ottoBrazo(izquierdo, medio);\n    delay(250);\n  }\n  ottoBrazo(izquierdo, 90);\n}');
   return `ottoSaludar(${a === 'SAL_IZQ' ? 'true' : 'false'});\n`;
+});
+
+/* ---- Otto: más funciones de OttoDIYLib (coreografía, un servo, relajar, velocidad, animación, sonido deslizante) ---- */
+const VEL_RELATIVA = [['normal', '1'], ['lenta', '1.5'], ['rápida', '0.7']];
+const tiempoOtto = (base, factor) => Math.round(base * Number(factor || 1));
+/** Relajar/despertar y reposo dependen de si hay brazos: se escriben al final (finalizarModulos). */
+function definirAyudasOtto() {
+  const f = Ard.banderas_, brazos = f.brazosConfig;
+  if (f.ottoRelajar) {
+    G.ayuda('ottoRelajar', 'void ottoRelajar() {\n  Otto.detachServos();  // los servos dejan de hacer fuerza\n' +
+      (brazos ? '  ottoBrazoIzq.detach();\n  ottoBrazoDer.detach();\n' : '') + '}');
+    G.ayuda('ottoDespertar', 'void ottoDespertar() {\n  Otto.attachServos();\n' +
+      (brazos ? '  ottoBrazoIzq.attach(ottoPinBrazoIzq);\n  ottoBrazoDer.attach(ottoPinBrazoDer);\n' : '') + '}');
+  }
+  if (f.ottoReposo) {
+    G.ayuda('ottoReposo', 'void ottoReposo() {\n  Otto.home();  // piernas y pies a 90° (después los suelta)\n' +
+      (brazos ? '  ottoBrazos(90, 90);  // brazos al frente\n' : '') + '}');
+  }
+}
+bloque('otto_coreografia', COL.otto, function () {
+  this.appendDummyInput().appendField('Otto bailar la coreografía').appendField(new CampoLista('matriz', 'baile'), 'M');
+  this.appendValueInput('MS').appendField('con');
+  this.appendDummyInput().appendField('ms por pose');
+  this.setInputsInline(true); sentencia(this);
+  this.setTooltip('Usa una matriz de "Listas y matrices": cada fila es una pose y cada columna un servo, en grados. ' +
+    '4 columnas: pierna izq., pierna der., pie izq., pie der. Con 6 columnas, las dos últimas son los brazos (izq., der.). 90 = derecho.');
+}, (b) => {
+  ottoUsado();
+  const n = b.getFieldValue('M'), l = usarLista(b, n, 'matriz');
+  if (!l) return '';
+  if (l.c !== 4 && l.c !== 6) { G.aviso(`La coreografía necesita una matriz de 4 columnas (piernas y pies) o de 6 (con brazos); "${n}" tiene ${l.c}.`, b); return ''; }
+  if (l.c === 6) Ard.banderas_.brazosUsado = true;
+  Ard.banderas_.largoUsado = (Ard.banderas_.largoUsado || new Set()).add(n + ':filas');
+  const i = '_pose' + profundidad(b, 'otto_coreografia'), t = Ard.INDENT;
+  let s = `for (int ${i} = 0; ${i} < ${n}_filas; ${i}++) {  // una fila de "${n}" por pose\n`;
+  if (l.c === 6) s += `${t}ottoBrazos(${n}[${i}][4], ${n}[${i}][5]);  // columnas 4 y 5: brazos\n`;
+  s += `${t}int pose[4] = { ${n}[${i}][0], ${n}[${i}][1], ${n}[${i}][2], ${n}[${i}][3] };  // piernas y pies\n` +
+    `${t}Otto._moveServos(${G.val(b, 'MS', O.NONE, '500')}, pose);  // llega a la pose en ese tiempo\n}\n`;
+  return s;
+});
+const SERVOS_OTTO = [['pierna izquierda', '0'], ['pierna derecha', '1'], ['pie izquierdo', '2'], ['pie derecho', '3'], ['brazo izquierdo', 'BI'], ['brazo derecho', 'BD']];
+bloque('otto_mover_servo', COL.otto, function () {
+  this.appendValueInput('A').appendField('Otto mover').appendField(dd(SERVOS_OTTO), 'S').appendField('a');
+  this.appendDummyInput().appendField('grados');
+  this.setInputsInline(true); sentencia(this);
+  this.setTooltip('Mueve un solo servo de Otto (0 a 180; 90 = derecho). Respeta la calibración.');
+}, (b) => {
+  ottoUsado();
+  const s = b.getFieldValue('S'), a = G.val(b, 'A', O.NONE, '90');
+  if (s === 'BI' || s === 'BD') { Ard.banderas_.brazosUsado = true; return `ottoBrazo(${s === 'BI' ? 'true' : 'false'}, ${a});\n`; }
+  return `Otto._moveSingle(constrain(${a}, 0, 180), ${s});  // ${SERVOS_OTTO.find(x => x[1] === s)[0]}\n`;
+});
+bloque('otto_relajar', COL.otto, function () {
+  this.appendDummyInput().appendField('Otto').appendField(dd([['relajar los servos', 'R'], ['despertar los servos', 'D']]), 'A');
+  sentencia(this);
+  this.setTooltip('Relajado, Otto no hace fuerza: gasta menos batería, no zumba y se le pueden mover las piernas con la mano. Cualquier movimiento lo despierta.');
+}, (b) => { ottoUsado(); Ard.banderas_.ottoRelajar = true; return b.getFieldValue('A') === 'R' ? 'ottoRelajar();\n' : 'ottoDespertar();\n'; });
+Blockly.Blocks.otto_velocidad = {
+  init() {
+    this.setColour(COL.otto);
+    const self = this;
+    this.appendDummyInput().appendField('Otto').appendField(new Blockly.FieldDropdown([['limitar la velocidad de los servos a', 'LIM'], ['quitar el límite de velocidad', 'SIN']],
+      function (v) { setTimeout(() => { if (!self.isDeadOrDying()) { self.getField('V').setVisible(v === 'LIM'); self.getField('U').setVisible(v === 'LIM'); if (self.rendered) self.render(); } }, 0); return v; }), 'A')
+      .appendField(new Blockly.FieldNumber(240, 30, 1000, 10), 'V').appendField('°/s', 'U');
+    sentencia(this);
+    this.setTooltip('Con límite, las piernas y los pies se mueven más suave: cuida los engranajes y Otto se cae menos. 240 °/s es el valor de la librería.');
+  }
+};
+Ard.forBlock.otto_velocidad = (b) => {
+  ottoUsado();
+  return b.getFieldValue('A') === 'LIM' ? `Otto.enableServoLimit(${b.getFieldValue('V')});  // grados por segundo (piernas y pies)\n` : 'Otto.disableServoLimit();\n';
+};
+const ANIM_BOCA = [['uuh', 'littleUuh|8'], ['soñando', 'dreamMouth|4'], ['adivinando', 'adivinawi|6'], ['ola', 'wave|10']];
+bloque('otto_boca_animacion', COL.otto, function () {
+  this.appendDummyInput().appendField('Otto boca animación').appendField(dd(ANIM_BOCA), 'A');
+  sentencia(this);
+  this.setTooltip('Una de las animaciones de boca que trae Otto. Gira igual que las bocas (orientación de "iniciar boca").');
+}, (b) => {
+  bocaUsada();
+  const [a, n] = b.getFieldValue('A').split('|');
+  G.ayuda('ottoBocaAnimacion', 'void ottoBocaAnimacion(int animacion, int cuadros) {\n  for (int i = 0; i < cuadros; i++) {\n' +
+    '    Otto.putAnimationMouth(animacion, i);\n    delay(120);\n  }\n}');
+  return `ottoBocaAnimacion(${a}, ${n});\n`;
+});
+bloque('otto_sonido_deslizante', COL.otto, function () {
+  this.appendValueInput('A').appendField('Otto sonido deslizante de');
+  this.appendValueInput('B').appendField('Hz a');
+  this.appendDummyInput().appendField('Hz').appendField(dd([['normal', '1.02'], ['lento', '1.01'], ['rápido', '1.04']]), 'P');
+  this.setInputsInline(true); sentencia(this);
+  this.setTooltip('El tono sube o baja poco a poco, como una sirena. De 100 a 5000 Hz.');
+}, (b) => {
+  ottoUsado();
+  // Mínimo 100 Hz: bendTones usa enteros y, con frecuencias bajas, al subir se queda en un ciclo infinito
+  return `Otto.bendTones(constrain(${G.val(b, 'A', O.NONE, '880')}, 100, 5000), constrain(${G.val(b, 'B', O.NONE, '2093')}, 100, 5000), ${b.getFieldValue('P')}, 18, 1);\n`;
 });
 
 /* ---- Boca de Otto: matriz LED 8x8 (MAX7219) con las funciones de OttoDIYLib ---- */

@@ -258,10 +258,13 @@ const TOOLBOX = {
     ] },
     { kind: 'category', name: 'Otto humanoide', colour: COL.otto, contents: [
       B('otto_iniciar'), B('otto_brazos_iniciar'), B('otto_calibracion'), { kind: 'label', text: 'Moverse' },
-      B('otto_caminar', { inputs: { N: num(2) } }), B('otto_girar', { inputs: { N: num(2) } }), B('otto_pierna'),
-      B('otto_baile', { inputs: { N: num(2) } }), B('otto_saltar'), B('otto_reposo'), { kind: 'label', text: 'Brazos' }, B('otto_brazos'),
+      B('otto_caminar', { inputs: { N: num(2) } }), B('otto_girar', { inputs: { N: num(2) } }), B('otto_pierna', { inputs: { N: num(1) } }),
+      B('otto_baile', { inputs: { N: num(2) } }), B('otto_saltar', { inputs: { N: num(1) } }), B('otto_reposo'), B('otto_relajar'),
+      B('otto_mover_servo', { inputs: { A: num(90) } }), B('otto_coreografia', { inputs: { MS: num(500) } }), B('otto_velocidad'),
+      { kind: 'label', text: 'Brazos' }, B('otto_brazos'),
       { kind: 'label', text: 'Sonidos y gestos' }, B('otto_sonido'), B('otto_gesto'), B('otto_tono', { inputs: { F: num(440), D: num(200) } }),
-      { kind: 'label', text: 'Boca (matriz LED)' }, B('otto_boca_iniciar'), B('otto_boca'), B('otto_boca_dibujo'), B('otto_boca_borrar'),
+      B('otto_sonido_deslizante', { inputs: { A: num(880), B: num(2093) } }),
+      { kind: 'label', text: 'Boca (matriz LED)' }, B('otto_boca_iniciar'), B('otto_boca'), B('otto_boca_animacion'), B('otto_boca_dibujo'), B('otto_boca_borrar'),
       B('otto_boca_texto', { inputs: { V: txt('HOLA') } }), B('otto_boca_punto', { inputs: { X: num(3), Y: num(3) } }),
       B('otto_boca_brillo', { inputs: { V: num(4) } }),
       { kind: 'label', text: 'Sensor de distancia' }, B('ultrasonido')
@@ -295,6 +298,7 @@ const NIVEL_BLOQUE = {
   matriz_iniciar: 1, matriz_dibujo: 1, matriz_borrar: 1, otto_boca: 1, otto_boca_dibujo: 1, otto_boca_borrar: 1,
   matriz_animacion: 2, matriz_texto: 2, matriz_punto: 2, matriz_brillo: 2,
   otto_boca_iniciar: 2, otto_boca_texto: 2, otto_boca_punto: 2, otto_boca_brillo: 2,
+  otto_relajar: 2, otto_boca_animacion: 2, otto_coreografia: 3, otto_mover_servo: 3, otto_velocidad: 3, otto_sonido_deslizante: 3,
   // 3 · Inventor: funciones con parámetros, tipos, tiempo sin delay, C++
   controls_flow_statements: 3, math_single: 3, math_modulo: 3, math_constrain: 3, math_round: 3, es_valido: 3,
   text_length: 3, texto_a_numero: 3, fn_param: 3, pin_modo: 3, escribir_digital_valor: 3, pin_valor: 3,

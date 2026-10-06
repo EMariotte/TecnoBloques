@@ -1,6 +1,6 @@
 {
   "name": "tecnobloques",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "private": true,
   "description": "Editor de bloques en español para programar Arduino Uno, Nano y Mega con las librerías de la TecnoAcademia Tolima (SENA).",
   "main": "escritorio/main.js",

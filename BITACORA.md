@@ -363,3 +363,51 @@ Efraín reabrió la app 0.2.1:
 **La cadena de actualización automática quedó probada de punta a punta.** Para el aula significa que cada versión nueva llega sola a los PC en menos de un minuto, sin reinstalar.
 
 **Falta del bloque A** para quitar la etiqueta "versión de prueba" e instalar en el aula: probar el Uno R3 y el Nano clon (bootloader nuevo y antiguo).
+
+## 2026-10-06 — Otto humanoide: todas las funciones de OttoDIYLib v13
+
+**Pedido de Efraín:** comparar todas las funciones de la librería con las que usa TecnoBloques, solo para el Otto humanoide, e implementar todas las sugerencias.
+
+**Revisión:** la librería tiene 37 funciones públicas y TecnoBloques ya usaba 26, incluidos los 19 sonidos, los 13 gestos, los 8 bailes y las 31 bocas.
+
+**Error encontrado y corregido:** `Otto.home()` no se mueve si Otto ya está en reposo, así que el programa de calibración **no mostraba** el ajuste nuevo. Ahora se fuerza con `setRestState(false)`.
+
+**Bloques nuevos:**
+
+- coreografía con matrices (`_moveServos`, 4 o 6 columnas, con brazos);
+- mover un solo servo, piernas, pies o brazos (`_moveSingle`);
+- relajar y despertar los servos, incluidos los brazos;
+- velocidad máxima (`enableServoLimit` / `disableServoLimit`);
+- animaciones de boca (`putAnimationMouth`, 4 animaciones);
+- sonido deslizante (`bendTones`).
+
+**Mejoras a bloques existentes:**
+
+- el reposo también lleva los brazos al frente;
+- crusaito y aleteo hacia atrás;
+- inclinarse, sacudir la pierna y saltar con número de veces y velocidad.
+
+**Otra trampa encontrada:** `bendTones` se queda en un ciclo infinito con frecuencias bajas, así que se limita de 100 a 5000 Hz.
+
+**Prueba fija nueva `otto_todo`** (Nano). Los 16 programas compilan. Queda pendiente la validación de Efraín antes del commit.
+
+## 2026-10-06 — Cierre de la sesión: v0.2.3 publicada
+
+**Efraín validó** los bloques nuevos de Otto y aprobó el commit y la publicación de la **v0.2.3**, también como versión de prueba. Su app se actualiza sola.
+
+**Resumen del día:**
+
+- **Primera prueba con hardware real** (Mega 2560 clon CH340):
+  - la subida y el monitor serial funcionan;
+  - se corrigió el diagnóstico de la placa equivocada y se agregaron los intentos en vivo y el botón Cancelar;
+  - nuevo botón fijo "Monitor serial".
+- **Actualización automática probada** de punta a punta: 0.2.0 → 0.2.1 (descarga completa) → 0.2.2 (diferencial, unos 10 s más 30 s de instalación).
+  - aviso de descarga con porcentaje y registro en `%APPDATA%\TecnoBloques\registro-actualizacion.txt`;
+  - la versión se ve en el título de la ventana.
+- **Otto humanoide con todas las funciones de OttoDIYLib v13:**
+  - coreografía con matrices, mover un servo, relajar y despertar, velocidad máxima, animaciones de boca y sonido deslizante;
+  - reposo con brazos y opciones que faltaban;
+  - **dos errores corregidos:** la calibración no se veía por `home()`, y `bendTones` se colgaba con frecuencias bajas.
+- **16 programas de prueba** compilan con las librerías reales.
+
+**Próxima sesión:** probar el Uno R3 y el Nano clon (bootloader nuevo y antiguo). Si pasan, quitar la etiqueta "versión de prueba" e instalar en el aula. Después, los robots y módulos de la lista "Próxima sesión" de `CLAUDE.md`, empezando por Otto con todas sus funciones nuevas.
