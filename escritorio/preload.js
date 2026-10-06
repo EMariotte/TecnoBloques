@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('tbEscritorio', {
   puertos: () => ipcRenderer.invoke('tb:puertos'),
   preferirPuerto: (p) => ipcRenderer.invoke('tb:preferir-puerto', p),
   cancelar: () => ipcRenderer.invoke('tb:cancelar'),
+  alActualizacion: (fn) => { ipcRenderer.on('tb:actualizacion', (_e, d) => fn(d)); },
   /** datos = {codigo, fqbn, puerto, soloCompilar} → {ok, etapa, salida, memoria} */
   subir: (datos) => ipcRenderer.invoke('tb:subir', datos),
   alProgreso: (fn) => {

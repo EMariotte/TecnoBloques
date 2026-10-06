@@ -263,6 +263,12 @@ details.subir-detalle pre { max-height: 220px; overflow: auto; font-family: var(
   background: var(--ink); color: var(--bg); padding: 9px 16px; border-radius: 8px; box-shadow: var(--shadow); font-size: 13.5px; max-width: calc(100% - 32px);
 }
 #toast[hidden] { display: none; }
+#avisoActualizacion {
+  position: fixed; left: 16px; bottom: 16px; z-index: 900; max-width: min(360px, calc(100vw - 32px));
+  background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-left: 4px solid var(--accent);
+  border-radius: 8px; padding: 9px 12px; font-size: 13px; box-shadow: var(--shadow);
+}
+#avisoActualizacion[hidden] { display: none; }
 
 /* ---------- Blockly ---------- */
 .blocklyMainBackground { fill: var(--ws-bg) !important; stroke: none !important; }

@@ -3,6 +3,7 @@
 'use strict';
 const { app, BrowserWindow, ipcMain, session, shell, dialog, Menu } = require('electron');
 const path = require('path');
+const fs = require('fs');
 const { Arduino } = require('./arduino');
 
 const recursos = app.isPackaged ? process.resourcesPath : path.join(__dirname, 'recursos');
@@ -59,13 +60,38 @@ ipcMain.handle('tb:subir', async (e, datos) => {
 });
 
 /* ---------- Actualización automática desde GitHub Releases ---------- */
+// Registro de la actualización: %APPDATA%\TecnoBloques\registro-actualizacion.txt (se reinicia si pasa de 1 MB)
+function registro(nivel, ...partes) {
+  try {
+    const archivo = path.join(app.getPath('userData'), 'registro-actualizacion.txt');
+    if (fs.existsSync(archivo) && fs.statSync(archivo).size > 1048576) fs.writeFileSync(archivo, '');
+    const texto = partes.map(p => (p instanceof Error ? (p.stack || p.message) : typeof p === 'string' ? p : JSON.stringify(p))).join(' ');
+    fs.appendFileSync(archivo, `${new Date().toISOString()} [${nivel}] ${texto}\n`);
+  } catch (e) { /* sin permiso de escritura: no molestar */ }
+}
+/** Avisa al editor cómo va la actualización (muestra un aviso discreto abajo). */
+function avisarEditor(datos) { if (ventana && !ventana.isDestroyed()) ventana.webContents.send('tb:actualizacion', datos); }
+
 function buscarActualizacion() {
   if (!app.isPackaged) return;
   let autoUpdater;
-  try { ({ autoUpdater } = require('electron-updater')); } catch (e) { return; }
+  try { ({ autoUpdater } = require('electron-updater')); } catch (e) { registro('error', 'No se pudo cargar electron-updater', e); return; }
+  autoUpdater.logger = {
+    info: (...a) => registro('info', ...a), warn: (...a) => registro('aviso', ...a),
+    error: (...a) => registro('error', ...a), debug: () => {}
+  };
+  autoUpdater.disableWebInstaller = true;
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
+  registro('info', `TecnoBloques ${app.getVersion()} busca versiones nuevas`);
+  autoUpdater.on('update-available', (info) => avisarEditor({ estado: 'bajando', version: info.version, porcentaje: 0 }));
+  let ultimo = -1;
+  autoUpdater.on('download-progress', (p) => {
+    const pc = Math.floor(p.percent || 0);
+    if (pc !== ultimo) { ultimo = pc; avisarEditor({ estado: 'bajando', porcentaje: pc }); }
+  });
   autoUpdater.on('update-downloaded', async (info) => {
+    avisarEditor({ estado: 'lista', version: info.version });
     const r = await dialog.showMessageBox(ventana, {
       type: 'info', title: 'TecnoBloques', buttons: ['Reiniciar ahora', 'Más tarde'], defaultId: 0, cancelId: 1,
       message: `Hay una versión nueva de TecnoBloques (${info.version}).`,
@@ -73,8 +99,9 @@ function buscarActualizacion() {
     });
     if (r.response === 0) autoUpdater.quitAndInstall();
   });
-  autoUpdater.on('error', () => { /* sin internet o sin versiones publicadas: no molestar */ });
-  autoUpdater.checkForUpdates().catch(() => {});
+  // Sin internet o sin versiones publicadas: no se molesta al aprendiz, pero queda en el registro
+  autoUpdater.on('error', (e) => { registro('error', e); avisarEditor({ estado: 'error' }); });
+  autoUpdater.checkForUpdates().catch((e) => registro('error', e));
 }
 
 app.whenReady().then(() => {

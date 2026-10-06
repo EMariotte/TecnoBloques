@@ -386,6 +386,9 @@ Los bloques propios son `var_set`, `var_get`, `var_cambiar` y `bucle_para`; no s
 - **Monitor serial en la app:** sigue siendo Web Serial. `main.js` atiende `select-serial-port` y elige el puerto del selector (`preferirPuerto`), sin ventana del sistema.
 - **arduino-cli:** `ubicarArduino()` busca primero `resources/arduino` (empaquetada) o `escritorio/recursos/arduino` (desarrollo), luego `ARDUINO_CLI` y luego el del Arduino IDE 2. Los datos se apuntan con `ARDUINO_DIRECTORIES_DATA` y `ARDUINO_DIRECTORIES_USER`. La instalación es por usuario (`%LOCALAPPDATA%\Programs\TecnoBloques`), así que esas carpetas se pueden escribir.
 - **Versión en el título:** en la app, `document.title` es "TecnoBloques <versión>" (desde `tbEscritorio.info()`). Sirve para saber qué versión tiene cada PC.
+- **Aviso de actualización (0.2.2):** `main.js` manda `tb:actualizacion` ({estado: 'bajando'|'lista'|'error', version, porcentaje}). El editor muestra abajo a la izquierda "Bajando una versión nueva de TecnoBloques (x)… N %. Puedes seguir trabajando." (`#avisoActualizacion`, z-index 900: encima de Blockly y debajo de los diálogos).
+- **Registro de la actualización:** `%APPDATA%\TecnoBloques\registro-actualizacion.txt` (logger de electron-updater, se reinicia al pasar de 1 MB). Los errores ya no se pierden: se registran sin molestar al aprendiz.
+- **Descarga diferencial:** usa el `.blockmap` de la versión instalada **publicada**. Si la app instalada no viene de un Release (por ejemplo, un instalador armado a mano), el `sha512` no coincide y baja el instalador completo (≈176 MB): es normal y funciona.
 - **Actualización automática:** `electron-updater` revisa GitHub Releases (EMariotte/TecnoBloques) 5 s después de abrir, descarga sola y pregunta "Reiniciar ahora / Más tarde". Sin internet o sin versiones publicadas no muestra nada. El `.blockmap` permite bajar solo lo que cambió.
 - **Instalador:** NSIS de un clic, por usuario, con acceso directo en el escritorio y en español. Ofrece el driver CH340 solo en la primera instalación y solo si `escritorio/recursos/drivers/CH341SER.EXE` existe (ver el LEEME de esa carpeta). Pesa unos 175 MB, casi todo avr-gcc.
 - **Versión web (casa):** el botón "Subir a la placa" explica cómo seguir: guardar el proyecto para abrirlo en el aula o usar Arduino IDE.
@@ -571,7 +574,7 @@ El instalador ya está armado con todo lo de hoy:
 10. **I2C:** "buscar dispositivos" para saber si las LCD del aula son 0x27 o 0x3F.
 11. **Carro:** sentido de M1/M2 y comandos 'A'/'S' desde una app Bluetooth.
 
-**C.** ✅ Publicadas v0.2.0 y v0.2.1. ⬜ Confirmar que la app instalada de Efraín pasa sola de 0.2.0 a 0.2.1 (la versión se ve en el título de la ventana). Cuando pase el bloque A, quitar la nota "versión de prueba" de la siguiente versión e instalar en el aula.
+**C.** ✅ Publicadas v0.2.0, v0.2.1 y v0.2.2. ✅ (6 oct) La app de Efraín pasó sola de 0.2.0 a 0.2.1 (descarga completa, porque su 0.2.0 no venía del Release; el título muestra "TecnoBloques 0.2.1"). ⬜ Confirmar 0.2.1 → 0.2.2 con descarga diferencial (pocos MB) y el aviso "Bajando…". Cuando pase el bloque A, quitar la nota "versión de prueba" de la siguiente versión e instalar en el aula.
 
 **D. Decisiones abiertas:**
 - confirmar con SENNOVA la titularidad y los colores de la marca;
@@ -605,7 +608,8 @@ Fase 2 ◐ App de escritorio para el aula (5 oct 2026):
           ✅ CH341SER.EXE en escritorio/recursos/drivers (el instalador lo ofrece).
           ⬜ Probar la carga con placas reales (Uno, Nano clon CH340, Mega) → próxima sesión.
           ✅ Releases v0.2.0 y v0.2.1 publicados como versiones de prueba (6 oct).
-          ⬜ Confirmar la actualización automática 0.2.0 → 0.2.1 en un PC instalado.
+          ✅ Actualización automática 0.2.0 → 0.2.1 comprobada en un PC (6 oct).
+          ⬜ Confirmar 0.2.1 → 0.2.2 (diferencial + aviso de descarga).
           ⬜ Ligar los errores del compilador al bloque que los causa.
           ⬜ Publicar la versión web (GitHub Pages).
 

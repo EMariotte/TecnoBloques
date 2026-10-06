@@ -331,3 +331,23 @@ Efraín aprobó los cambios en la versión de desarrollo. Se rearma el instalado
 - Release **v0.2.0**, con el mismo código que la versión instalada.
 - Release **v0.2.1**, con un cambio visible para comprobar la actualización: la versión aparece en el título de la ventana ("TecnoBloques 0.2.1"), lo que además sirve para el soporte en el aula.
 - **Prueba pendiente:** que la app instalada de Efraín (0.2.0) muestre "Hay una versión nueva (0.2.1)" y se actualice.
+
+## 2026-10-06 — La actualización automática funciona (0.2.0 → 0.2.1) y versión 0.2.2
+
+**Prueba:**
+
+- Pasados 5 minutos, la app instalada no había mostrado nada. Al relanzarla con registro se vio esto:
+  1. encontró la 0.2.1 e intentó la **descarga diferencial** (1 MB de 176);
+  2. falló por `sha512 mismatch`, porque la 0.2.0 instalada venía del instalador del 5 oct y no del Release del 6;
+  3. **pasó sola a la descarga completa**.
+- Al terminar mostró "Hay una versión nueva…". Efraín eligió "Reiniciar ahora" y la app quedó en **0.2.1**: el título lo muestra.
+- **Lección:** la app trabajaba en silencio y se callaba los errores.
+
+**Hecho en 0.2.2:**
+
+- **Aviso discreto mientras descarga**, con el porcentaje: "Bajando una versión nueva… Puedes seguir trabajando".
+- **Registro de la actualización** en `%APPDATA%\TecnoBloques\registro-actualizacion.txt`.
+- **`disableWebInstaller`**, para quitar una advertencia del registro.
+- **`test/app.js` con su propia carpeta de datos:** la app solo permite una instancia, y antes la prueba se cerraba sola si la app instalada estaba abierta.
+
+Se publica la v0.2.2 para la segunda prueba de actualización, ahora diferencial.

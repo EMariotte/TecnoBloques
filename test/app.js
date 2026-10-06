@@ -12,7 +12,9 @@ fs.mkdirSync(SALIDA, { recursive: true });
 (async () => {
   // Si ELECTRON_RUN_AS_NODE está puesta (la pone VS Code en algunas terminales), Electron arranca como Node sin ventana
   const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'ELECTRON_RUN_AS_NODE'));
-  const app = await electron.launch({ args: [RAIZ], cwd: RAIZ, env });
+  // Carpeta de datos aparte: si la app instalada está abierta, la de prueba no choca con ella (una sola instancia)
+  const datos = path.join(require('os').tmpdir(), 'tecnobloques-prueba');
+  const app = await electron.launch({ args: [RAIZ, `--user-data-dir=${datos}`], cwd: RAIZ, env });
   const errores = [];
   const win = await app.firstWindow();
   win.on('pageerror', (e) => errores.push(String(e)));

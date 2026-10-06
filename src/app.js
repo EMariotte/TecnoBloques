@@ -1346,6 +1346,18 @@ function iniciar() {
     `Arduino IDE pide que el archivo esté en una carpeta con su mismo nombre (${nombreArchivoBase()}/${nombreArchivoBase()}.ino); el IDE te ofrece crearla al abrirlo.`));
   $('btnSubir').addEventListener('click', () => modalSubir());
   $('btnMonitor').addEventListener('click', abrirMonitor);
+  if (escritorio && escritorio.alActualizacion) {
+    // Aviso discreto mientras se baja una versión nueva (la ventana de "Reiniciar" la muestra la app al terminar)
+    let version = '';
+    escritorio.alActualizacion((d) => {
+      const aviso = $('avisoActualizacion');
+      if (d.version) version = d.version;
+      if (d.estado === 'bajando') {
+        aviso.hidden = false;
+        aviso.textContent = `Bajando una versión nueva de TecnoBloques${version ? ' (' + version + ')' : ''}… ${d.porcentaje || 0} %. Puedes seguir trabajando.`;
+      } else aviso.hidden = true;
+    });
+  }
   if (escritorio) {
     // La versión en el título de la ventana: así se sabe qué versión tiene cada PC del aula
     escritorio.info().then((i) => { document.title = `TecnoBloques ${i.version}`; }).catch(() => {});
