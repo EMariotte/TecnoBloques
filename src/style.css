@@ -184,6 +184,8 @@ details.subir-detalle pre { max-height: 220px; overflow: auto; font-family: var(
 .pestanas button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
 .pestanas .punto { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--line); margin-left: 6px; vertical-align: middle; }
 .pestanas .punto.on { background: var(--accent); }
+#btnMonitor .punto { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--line); margin-left: 7px; vertical-align: middle; }
+#btnMonitor .punto.on { background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 
 .vista-panel { display: grid; min-height: 0; }
 .vista-panel[hidden] { display: none; }

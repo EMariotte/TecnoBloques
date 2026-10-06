@@ -47,6 +47,7 @@ ipcMain.handle('tb:info', () => ({
   version: app.getVersion(), arduino: arduino.ubicacion ? arduino.ubicacion.origen : null, empaquetada: app.isPackaged
 }));
 ipcMain.handle('tb:puertos', () => arduino.puertos());
+ipcMain.handle('tb:cancelar', () => arduino.cancelar());
 ipcMain.handle('tb:preferir-puerto', (_e, p) => { puertoPreferido = p || null; return true; });
 ipcMain.handle('tb:subir', async (e, datos) => {
   if (ocupado) return { ok: false, etapa: 'ocupado', salida: 'Ya se está compilando o subiendo un programa.' };

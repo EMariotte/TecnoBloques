@@ -295,3 +295,29 @@ aprendiz no puede subir su programa sin el Arduino IDE.
 - **15 programas de prueba** que compilan con las librerías reales. Pruebas de interfaz y de la app con Playwright.
 
 **Próxima sesión (Efraín, en el ambiente con todas las placas):** probar con hardware según la lista "Próxima sesión" de `CLAUDE.md`, y solo después publicar el Release v0.2.0.
+
+## 2026-10-06 — Primera prueba con hardware: Arduino Mega 2560 (clon CH340)
+
+**Contexto:** Efraín conectó una Mega 2560 clon CH340 en COM7 (ya probada con el Arduino IDE), instaló `TecnoBloques-Setup-0.2.0.exe` y probó la app.
+
+**Funcionó:**
+
+- El selector muestra "COM7 · placa con chip CH340 (clon)", primero en la lista.
+- La subida tarda unos 4–6 s y termina en "¡Listo!".
+- El monitor serial recibe y **envía** con el ejemplo "Eco serial y LED".
+
+**Problemas encontrados y corregidos:**
+
+1. **Diagnóstico equivocado con la placa equivocada** (Uno elegida, Mega conectada). La app decía "No se pudo abrir COM7".
+   - **Causa:** avrdude reintenta 10 veces ("not in sync") y termina con "unable to open port", y la app revisaba primero el caso de puerto.
+   - **Ahora:** dice "La placa no responde" y muestra la placa elegida.
+2. **Casi un minuto de espera sin explicación.**
+   - **Ahora:** se ven los intentos en vivo ("La placa no contesta (intento 3 de 10)… ¿Elegiste la placa correcta?").
+   - **Botón Cancelar:** cierra el árbol de procesos con `taskkill /T`, porque si no, avrdude seguía ocupando el puerto. Probado: se cancela al intento 2 y enseguida se sube con la placa correcta en 3,9 s.
+3. **Volver a abrir el monitor serial.** Si un niño pulsaba "Cerrar" en "¡Listo!", no tenía cómo reabrirlo (en el nivel 1 el panel está escondido).
+   - **Ahora:** hay un botón fijo "Monitor serial" en la barra, que abre y conecta, con un punto verde.
+   - "¡Listo!" ofrece el monitor solo si el programa lo usa.
+
+Efraín aprobó los cambios en la versión de desarrollo. Se rearma el instalador (la misma 0.2.0, sin publicar).
+
+**Falta del bloque A:** Uno R3 y Nano clon (bootloader nuevo y antiguo).

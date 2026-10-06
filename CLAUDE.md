@@ -378,6 +378,9 @@ Los bloques propios son `var_set`, `var_get`, `var_cambiar` y `bucle_para`; no s
 
 - **Mismo editor:** la ventana carga `dist/TecnoBloques.html`. El editor detecta la app con `window.tbEscritorio` (lo expone `preload.js` con `contextIsolation`, sin Node en la página). Si no está, es la versión web.
 - **Puerto:** en la app aparece el selector **Puerto** (`#campoPuerto`). `refrescarPuertos()` llama a `arduino-cli board list` cada 3 s y al enfocar el selector, y se detiene mientras se sube. Ordena primero los USB y nombra los clones por VID (1a86 = CH340).
+- **Botón "Monitor serial"** en la barra (`abrirMonitor`): muestra el panel aunque se esté en la vista Bloques y se conecta. El punto se pone verde al conectar. "¡Listo!" ofrece el monitor solo si el código tiene `Serial.begin(`.
+- **Cancelar la subida:** `arduino.cancelar()` cierra el árbol de procesos con `taskkill /T /F` (si solo se cierra arduino-cli, avrdude sigue vivo y ocupa el puerto). El resultado es `etapa: 'cancelado'`.
+- **Placa equivocada:** avrdude reintenta 10 veces (≈55 s) y **termina con "unable to open port" aunque la causa sea "not in sync"**. Por eso `explicarError` revisa primero "not in sync/not responding" y después "puerto ocupado". Durante la subida, cada "attempt N of 10" se muestra en vivo con la placa elegida.
 - **Subir** (`subirPlaca`): avisa si la placa detectada no coincide con la elegida (y ofrece cambiarla), cierra el monitor serial si estaba conectado, compila (`compile --build-path` por placa, con caché en userData) y sube (`upload --input-dir`). Al terminar reconecta el monitor. Muestra el % de memoria y avisa si la RAM pasa del 75 %.
 - **Errores en español** (`explicarError` y `traducirErrorCpp` en app.js): librería faltante, programa muy grande o sin RAM, errores de C++ con número de línea y el texto de esa línea, puerto ocupado o inexistente, y placa que no responde (sugiere "Nano bootloader antiguo", otro cable y desconectar los pines 0 y 1). Siempre se puede abrir "Ver el mensaje completo". arduino-cli corre con `ARDUINO_LOCALE=en` para que los mensajes sean predecibles.
 - **Monitor serial en la app:** sigue siendo Web Serial. `main.js` atiende `select-serial-port` y elige el puerto del selector (`preferirPuerto`), sin ventana del sistema.
@@ -523,14 +526,14 @@ Ojo: el ultrasonido trae 8/9 por defecto (pensado para Otto); **con la shield el
 | Programa con TODOS los bloques del toolbox | ✅ compila en uno y mega2560 (sin warnings tras el fix de BACKWARD) |
 | Mis bloques: 2 bloques anidados (uno devuelve float y llama al otro con 2 parámetros), guardar → proyecto nuevo → borrar librería → reabrir proyecto | ✅ mismo código generado y compila |
 | Interfaz: categorías, crear variable, Mis bloques, modo texto, monitor, tema oscuro, 400 px | ✅ sin errores de JavaScript (Playwright + Chromium) |
-| Monitor serial con una placa real | ⬜ **no probado** (en la nube no hay USB) |
+| Monitor serial con una placa real | ✅ en la app con la Mega (6 oct); botón fijo "Monitor serial" en la barra |
 | `npm test` + `npm run compilar` en Windows 11 | ✅ los 8 programas compilan. `compilar.js` usa `ARDUINO_CLI`, o el arduino-cli que trae el Arduino IDE 2, o el del PATH |
 | Bloques nuevos de la LCD (20x4, 2 símbolos, cursor, borrar fila, desplazar) | ✅ compilan en uno y mega2560 sin warnings propios; guardar/abrir conserva los dibujos; editor probado con clics reales (claro y oscuro) |
 | Nombres de pines: 5 nombres usados en LED, botón, servo, PWM, DHT y un bloque propio, mezclando `13` y `LedRojo` | ✅ compila en uno; renombrar actualiza los bloques y deshacer lo revierte; avisos probados |
 | Niveles: 31 / 65 / 85 bloques (contando repetidos en dos categorías), clic real en el selector, tipos de variable y "definir bloque" en el nivel 2, proyecto de nivel 3 abierto en nivel 1 (no pierde nada y avisa), ejemplos, 400 px | ✅ sin errores de JavaScript |
 | App de escritorio (Electron 44.5.1, arduino-cli 1.5.1, núcleo AVR 1.8.8): abre, lista puertos, compila el carro (≈7 s; ≈3 s con caché) y Otto, error de puerto inexistente y error de C++ con línea, todo en español | ✅ en desarrollo y empaquetada (`win-unpacked`), sin errores de JavaScript |
 | Instalador `TecnoBloques-Setup-0.2.0.exe` (175 MB) | ✅ se arma; ⬜ falta ejecutarlo en un PC del aula |
-| **Subir a una placa real** desde la app | ⬜ **no probado** (en este PC solo hay puertos COM3/COM4 sin USB) |
+| **Subir a una placa real** desde la app (6 oct, Mega 2560 clon CH340 en COM7) | ✅ el selector la muestra como "COM7 · placa con chip CH340 (clon)"; sube en ≈4–6 s; "¡Listo!"; monitor serial recibe y **envía**; placa equivocada → "La placa no responde" con intentos en vivo y Cancelar (libera el puerto). Probado por Efraín con el instalador y la app |
 | Listas y matrices: caso fijo `listas` (melodía con "para cada", listas int/String/char/bool/float, lista de pines con nombre, matriz 3×4 recorrida con "contar con") | ✅ compila en uno; guardar/abrir igual; avisos de posición, lista inexistente, valor inválido y nombre repetido; editor de tabla con clics reales |
 | Librerías I2C: caso fijo `i2c` (buscar dispositivos + LCD + MPU6050 + PCA9685 calibrado; servo sigue la inclinación) | ✅ compila en uno (45 % flash) y mega2560, también con el arduino-cli del paquete de la app; sin choques falsos en A4/A5 y choque real detectado |
 | Calibración por canal del PCA9685: N de 4 a 6 a 2 a 4, canal libre en filas nuevas, menú "hombro (1)" que se actualiza al renombrar, guardar/abrir, avisos de canal repetido y pulsos iguales, hombro invertido (2400 → 600), caso sin calibración | ✅ en la interfaz; el caso `i2c` compila en uno y mega2560 |
@@ -553,10 +556,10 @@ El instalador ya está armado con todo lo de hoy:
 `%LOCALAPPDATA%\TecnoBloques-build\TecnoBloques-Setup-0.2.0.exe` (176 MB). Trae el driver CH340 y las 10 librerías. Si cambia `src/`, se rearma con `npm run instalador`.
 
 **A. La app y la carga (lo que bloquea la publicación):**
-1. Instalar en un PC del ambiente. SmartScreen mostrará "Más información" → "Ejecutar de todas formas". Aceptar el driver CH340.
-2. "Subir a la placa" en **Uno R3**, **Nano clon CH340** (probar "Nano" y "Nano bootloader antiguo") y **Mega**. Revisar el aviso "la placa no coincide", el % de memoria y los mensajes de error, por ejemplo con otro programa abierto en el puerto.
-3. **Monitor serial** en la app: con el ejemplo "Eco serial y LED", recibir y **enviar**. También que se cierre al subir y se vuelva a abrir.
-4. Que el puerto del CH340 aparezca solo en el selector "Puerto" (cada 3 s).
+1. ✅ (6 oct) Instalar en un PC: sin problemas.
+2. "Subir a la placa": ✅ **Mega 2560 clon CH340**. ⬜ **Uno R3** y ⬜ **Nano clon CH340** (probar "Nano" y "Nano bootloader antiguo"). El aviso "la placa no coincide" solo sale con placas originales: los clones CH340 no dicen qué placa son.
+3. ✅ **Monitor serial** en la app con "Eco serial y LED": recibe y envía, y se reabre con el botón de la barra.
+4. ✅ El puerto del CH340 aparece solo en el selector "Puerto".
 
 **B. Robots y módulos:**
 5. **Otto:** subir el "programa para calibrar" (bloque "calibración de Otto" solo, con "guardar") en cada robot y comprobar que otro programa sin el bloque queda derecho. **Marcar cada placa**, porque la calibración vive en la placa. Validar pines y ángulos de los brazos (arriba 160/20, abajo 20/160, saludar) y el sentido de caminar y girar.

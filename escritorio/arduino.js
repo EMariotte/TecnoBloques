@@ -1,7 +1,7 @@
 // TecnoBloques escritorio — compilar y subir con arduino-cli.
 // Módulo de Node sin Electron, para poder probarlo solo: node escritorio/prueba-arduino.js
 'use strict';
-const { spawn } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -49,12 +49,23 @@ class Arduino {
       try {
         p = spawn(this.ubicacion.cli, args.concat(['--no-color']), { env, windowsHide: true });
       } catch (e) { resolver({ codigo: -1, salida: e.message }); return; }
+      this.actual = p;
       const tomar = (d) => { const t = d.toString(); salida += t; if (alSalir) alSalir(t); };
       p.stdout.on('data', tomar);
       p.stderr.on('data', tomar);
       p.on('error', (e) => { salida += e.message; });
-      p.on('close', (codigo) => resolver({ codigo, salida }));
+      p.on('close', (codigo) => { if (this.actual === p) this.actual = null; resolver({ codigo, salida }); });
     });
+  }
+
+  /** Detiene lo que esté corriendo. En Windows se cierra el árbol completo: si no, avrdude sigue vivo y ocupa el puerto. */
+  cancelar() {
+    const p = this.actual;
+    if (!p) return false;
+    this.cancelado = true;
+    if (process.platform === 'win32') spawnSync('taskkill', ['/pid', String(p.pid), '/T', '/F'], { windowsHide: true });
+    else p.kill();
+    return true;
   }
 
   /** Puertos serie con lo que se sabe de la placa conectada. */
@@ -83,6 +94,7 @@ class Arduino {
   /** Escribe el boceto, compila y (si hay puerto) sube. `progreso` recibe {etapa, texto}. */
   async subir({ codigo, fqbn, puerto, soloCompilar }, progreso) {
     const aviso = (etapa, texto) => progreso && progreso({ etapa, texto });
+    this.cancelado = false;
     const carpeta = path.join(this.trabajo, 'TecnoBloques');
     const build = path.join(this.trabajo, 'build', fqbn.replace(/[^a-z0-9]+/gi, '_'));
     fs.mkdirSync(carpeta, { recursive: true });
@@ -92,11 +104,13 @@ class Arduino {
     aviso('compilar', '');
     const c = await this.correr(['compile', '--fqbn', fqbn, '--build-path', build, '--warnings', 'default', carpeta], (t) => aviso('compilar', t));
     const memoria = leerMemoria(c.salida);
+    if (this.cancelado) return { ok: false, etapa: 'cancelado', salida: c.salida, memoria };
     if (c.codigo !== 0) return { ok: false, etapa: 'compilar', salida: c.salida, memoria };
     if (soloCompilar || !puerto) return { ok: true, etapa: 'compilar', salida: c.salida, memoria };
 
     aviso('subir', '');
     const s = await this.correr(['upload', '-p', puerto, '--fqbn', fqbn, '--input-dir', build, carpeta], (t) => aviso('subir', t));
+    if (this.cancelado) return { ok: false, etapa: 'cancelado', salida: c.salida + '\n' + s.salida, memoria };
     return { ok: s.codigo === 0, etapa: 'subir', salida: c.salida + '\n' + s.salida, memoria };
   }
 }

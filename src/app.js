@@ -983,6 +983,13 @@ function uiSerial() {
   $('btnConectar').textContent = on ? 'Desconectar' : 'Conectar';
   $('baudios').disabled = on;
   $('puntoSerial').classList.toggle('on', on);
+  $('puntoMonitor').classList.toggle('on', on);
+  $('btnMonitor').title = on ? 'Monitor serial conectado' : 'Ver y enviar mensajes a la placa';
+}
+/** Botón de la barra: muestra el monitor (aunque se esté en la vista Bloques) y se conecta si hace falta. */
+function abrirMonitor() {
+  seleccionarPestana('serial');
+  if (!serial.conectado) conectarSerial();
 }
 function hora() { const d = new Date(); return d.toTimeString().slice(0, 8) + '.' + String(d.getMilliseconds()).padStart(3, '0'); }
 function recortarSalida() {
@@ -1181,11 +1188,18 @@ async function subirPlaca(forzar) {
   if (reconectar) await desconectarSerial(); // el puerto no se puede compartir con la carga
   puertos.ocupado = true;
   const etapa = el('p', { class: 'subir-etapa' }, 'Preparando tu programa…');
-  modal({ titulo: `Subir a ${placa().nombre}`, cuerpo: [etapa, el('div', { class: 'subir-barra' }, el('span')),
-    el('p', { class: 'muted' }, 'No desconectes la placa hasta que termine.')], botones: [] });
+  const pista = el('p', { class: 'muted' }, 'No desconectes la placa hasta que termine.');
+  modal({ titulo: `Subir a ${placa().nombre}`, cuerpo: [etapa, el('div', { class: 'subir-barra' }, el('span')), pista],
+    botones: [{ texto: 'Cancelar', accion: () => { etapa.textContent = 'Cancelando…'; if (escritorio.cancelar) escritorio.cancelar(); return false; } }] });
   const quitar = escritorio.alProgreso((m) => {
     if (m.etapa === 'compilar') etapa.textContent = 'Preparando tu programa…';
-    if (m.etapa === 'subir') etapa.textContent = `Subiendo a ${puerto}…`;
+    if (m.etapa !== 'subir') return;
+    // avrdude reintenta 10 veces si la placa no contesta (casi un minuto): se muestra el intento y la causa probable
+    const x = /attempt (\d+) of (\d+): not in sync/i.exec(m.texto || '');
+    if (x) {
+      etapa.textContent = `La placa no contesta (intento ${x[1]} de ${x[2]})…`;
+      pista.textContent = `¿Elegiste la placa correcta arriba? Ahora está "${placa().nombre}". Si no es esa, pulsa Cancelar y cámbiala.`;
+    } else if (!/no contesta|Cancelando/.test(etapa.textContent)) etapa.textContent = `Subiendo a ${puerto}…`;
   });
   let r;
   try { r = await escritorio.subir({ codigo: codigoActual(), fqbn: placa().fqbn, puerto }); }
@@ -1196,9 +1210,11 @@ async function subirPlaca(forzar) {
     const cuerpo = [el('p', null, 'Tu programa ya está en la placa.')];
     if (m.flash !== null && m.flash !== undefined) cuerpo.push(el('p', { class: 'subir-memoria' }, `Usa el ${m.flash} % de la memoria de programa y el ${m.ram} % de la memoria de variables.`));
     if (m.ram >= 75) cuerpo.push(el('p', null, el('b', null, 'Ojo: '), 'la memoria de variables está casi llena y la placa puede comportarse raro. Usa menos textos largos o variables.'));
-    modal({ titulo: '¡Listo!', cuerpo, botones: [
-      { texto: 'Abrir monitor serial', accion: () => { seleccionarPestana('serial'); setTimeout(conectarSerial, 300); } },
-      { texto: 'Cerrar', primario: true }] });
+    const usaSerial = /Serial\.begin\(/.test(codigoActual());
+    if (usaSerial && !reconectar) cuerpo.push(el('p', { class: 'muted' }, 'Puedes abrir el monitor serial cuando quieras con el botón «Monitor serial» de arriba.'));
+    modal({ titulo: '¡Listo!', cuerpo, botones: usaSerial && !reconectar
+      ? [{ texto: 'Abrir monitor serial', accion: () => setTimeout(abrirMonitor, 300) }, { texto: 'Cerrar', primario: true }]
+      : [{ texto: 'Cerrar', primario: true }] });
     if (reconectar) setTimeout(conectarSerial, 1500);
   } else {
     const ex = explicarError(r, puerto);
@@ -1209,6 +1225,7 @@ async function subirPlaca(forzar) {
 function explicarError(r, puerto) {
   const s = r.salida || '';
   if (r.etapa === 'sin-arduino') return { titulo: 'Falta el compilador', cuerpo: [el('p', null, 'Esta instalación no tiene el compilador de Arduino. Reinstala TecnoBloques.')] };
+  if (r.etapa === 'cancelado') return { titulo: 'Subida cancelada', cuerpo: [el('p', null, 'No se cambió nada en la placa. Revisa la placa y el puerto de arriba y vuelve a intentarlo.')] };
   if (r.etapa === 'ocupado') return { titulo: 'Espera un momento', cuerpo: [el('p', null, 'Ya se está subiendo un programa.')] };
   if (r.etapa === 'compilar') {
     const lib = /fatal error: ([\w]+)\.h: No such file/.exec(s);
@@ -1225,19 +1242,21 @@ function explicarError(r, puerto) {
         ? 'Revisa el C++ que escribiste a mano o en los bloques "C++ libre":' : 'El compilador encontró esto:'),
       errores.length ? el('ul', { class: 'subir-errores' }, errores) : el('p', null, 'Mira el mensaje completo abajo.')] };
   }
+  if (/not in sync|not responding|getsync|protocol error/i.test(s)) return placaNoResponde();
   if (/can't open device|cannot open port|unable to open port|Access is denied|Acceso denegado|ser_open/i.test(s)) {
     return { titulo: `No se pudo abrir ${puerto}`, cuerpo: [el('ul', null,
       el('li', null, 'Revisa que la placa siga conectada.'),
       el('li', null, 'Cierra el Arduino IDE u otro programa que esté usando el puerto.'),
       el('li', null, 'Si cambiaste la placa de USB, elige otra vez el puerto arriba.'))] };
   }
-  if (/not in sync|not responding|stk500|getsync|timeout|protocol error/i.test(s)) {
-    return { titulo: 'La placa no responde', cuerpo: [el('ul', null,
-      el('li', null, `Revisa que la placa elegida arriba sea la correcta. Si es un Nano clon, prueba "${(PLACAS.nano_old || {}).nombre || 'Nano (bootloader antiguo)'}".`),
-      el('li', null, 'Prueba otro cable USB: algunos solo cargan y no pasan datos.'),
-      el('li', null, 'Desconecta lo que esté en los pines 0 y 1 (por ejemplo un Bluetooth) mientras subes.'))] };
-  }
+  if (/stk500|timeout/i.test(s)) return placaNoResponde();
   return { titulo: 'No se pudo subir el programa', cuerpo: [el('p', null, 'Mira el mensaje completo abajo. Si se repite, desconecta y vuelve a conectar la placa.')] };
+}
+function placaNoResponde() {
+  return { titulo: 'La placa no responde', cuerpo: [el('ul', null,
+    el('li', null, el('b', null, 'Revisa que la placa elegida arriba sea la correcta'), ` (ahora: ${placa().nombre}). Si es un Nano clon, prueba "${(PLACAS.nano_old || {}).nombre || 'Nano (bootloader antiguo)'}".`),
+    el('li', null, 'Prueba otro cable USB: algunos solo cargan y no pasan datos.'),
+    el('li', null, 'Desconecta lo que esté en los pines 0 y 1 (por ejemplo un Bluetooth) mientras subes.'))] };
 }
 function traducirErrorCpp(m) {
   let x;
@@ -1326,6 +1345,7 @@ function iniciar() {
   $('btnIno').addEventListener('click', () => modalExportar('Descargar programa', nombreArchivoBase() + '.ino', codigoActual(), 'text/plain',
     `Arduino IDE pide que el archivo esté en una carpeta con su mismo nombre (${nombreArchivoBase()}/${nombreArchivoBase()}.ino); el IDE te ofrece crearla al abrirlo.`));
   $('btnSubir').addEventListener('click', () => modalSubir());
+  $('btnMonitor').addEventListener('click', abrirMonitor);
   if (escritorio) {
     $('campoPuerto').hidden = false;
     $('puerto').addEventListener('change', () => { guardarLocal(CLAVE_PUERTO, $('puerto').value); escritorio.preferirPuerto($('puerto').value); });
