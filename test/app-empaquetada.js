@@ -6,7 +6,9 @@ const path = require('path');
 (async () => {
   const dir = process.argv[2];
   const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'ELECTRON_RUN_AS_NODE'));
-  const app = await electron.launch({ executablePath: path.join(dir, 'TecnoBloques.exe'), env });
+  // Carpeta de datos aparte: si la app instalada está abierta, no choca con ella (una sola instancia)
+  const datos = path.join(require('os').tmpdir(), 'tecnobloques-prueba');
+  const app = await electron.launch({ executablePath: path.join(dir, 'TecnoBloques.exe'), args: [`--user-data-dir=${datos}`], env });
   const win = await app.firstWindow();
   const errores = [];
   win.on('pageerror', (e) => errores.push(String(e)));
