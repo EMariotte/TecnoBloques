@@ -58,6 +58,15 @@ ipcMain.handle('tb:subir', async (e, datos) => {
     return await arduino.subir(datos, (m) => { if (!e.sender.isDestroyed()) e.sender.send('tb:progreso', m); });
   } finally { ocupado = false; }
 });
+// Simulador TecnoCircuito: compila sin subir y devuelve el .hex (contrato con TecnoCircuito, sección 5).
+ipcMain.handle('tb:compilar-hex', async (e, datos) => {
+  if (ocupado) return { ok: false, etapa: 'ocupado', salida: 'Ya se está compilando o subiendo un programa.' };
+  if (!arduino.disponible()) return { ok: false, etapa: 'sin-arduino', salida: 'No se encontró arduino-cli.' };
+  ocupado = true;
+  try {
+    return await arduino.compilarHex(datos, (m) => { if (!e.sender.isDestroyed()) e.sender.send('tb:progreso', m); });
+  } finally { ocupado = false; }
+});
 
 /* ---------- Actualización automática desde GitHub Releases ---------- */
 // Registro de la actualización: %APPDATA%\TecnoBloques\registro-actualizacion.txt (se reinicia si pasa de 1 MB)

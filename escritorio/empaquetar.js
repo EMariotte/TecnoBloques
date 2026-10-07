@@ -14,6 +14,13 @@ if (!fs.existsSync(path.join(__dirname, 'recursos', 'arduino', 'arduino-cli.exe'
   console.error('Falta el paquete de Arduino. Corre primero: npm run preparar-arduino');
   process.exit(1);
 }
+// Un simulador en desarrollo nunca llega al aula: si el HTML trae la copia local de TecnoCircuito, no se empaqueta.
+// (Contrato con TecnoCircuito, «Mecanismo», punto 5. El simulador solo entra al instalador desde una etiqueta.)
+const html = fs.readFileSync(path.join(raiz, 'dist', 'TecnoBloques.html'), 'utf8');
+if (html.includes('window.TB_SIMULADOR_ORIGEN = "local"')) {
+  console.error('dist/TecnoBloques.html trae la copia LOCAL del simulador (npm run app:simulador). Arma con «node build.js» antes de empaquetar.');
+  process.exit(1);
+}
 const salida = path.join(process.env.LOCALAPPDATA || path.join(raiz, '..'), 'TecnoBloques-build');
 fs.rmSync(salida, { recursive: true, force: true });
 

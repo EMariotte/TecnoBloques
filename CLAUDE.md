@@ -1,7 +1,7 @@
 # CLAUDE.md — TecnoBloques
 
 > Memoria técnica del proyecto para Claude Code / Claude en Cowork.
-> Actualizado: 7 de octubre de 2026 · **Proyecto hermano iniciado: TecnoCircuito (simulador), ver la sección «Proyecto hermano».** Estado: **v0.2.5 publicada en GitHub Releases (7 oct): formato del proyecto listo para TecnoCircuito. La v0.2.4 fue la PRIMERA VERSIÓN PARA EL AULA. Subir y monitor serial probados con Uno R3 original, Nano clon CH340 y Mega 2560 clon CH340, más la actualización automática. Ya se puede instalar en los PC del aula. Falta: los robots y módulos en el ambiente (ver "Próxima sesión").**
+> Actualizado: 7 de octubre de 2026 · **Proyecto hermano TecnoCircuito (simulador): primera conexión hecha (7 oct), solo en desarrollo con `npm run app:simulador`; ver «Proyecto hermano».** Estado: **v0.2.5 publicada en GitHub Releases (7 oct): formato del proyecto listo para TecnoCircuito. La v0.2.4 fue la PRIMERA VERSIÓN PARA EL AULA. Subir y monitor serial probados con Uno R3 original, Nano clon CH340 y Mega 2560 clon CH340, más la actualización automática. Ya se puede instalar en los PC del aula. Falta: los robots y módulos en el ambiente (ver "Próxima sesión").**
 
 ---
 
@@ -16,7 +16,7 @@ Se entrega de **dos formas desde el mismo código** (`src/` → `dist/TecnoBloqu
 - **App de escritorio (aula):** Electron + arduino-cli embebido. Compila y sube sin internet. Instalador para Windows con actualización automática desde GitHub Releases.
 - **Página web (casa):** el mismo HTML sin compilador. Sirve para programar, guardar el proyecto y descargar el `.ino`.
 
-- **Sin simulador** (nada tipo Tinkercad o Wokwi). Solo el editor de bloques como motor para crear programas y subirlos.
+- **El simulador es un proyecto aparte:** TecnoCircuito (`..\TecnoCircuito`). TecnoBloques lo embebe y le entrega el `.hex`; hoy solo en desarrollo (`npm run app:simulador`), el instalador del aula sale sin él. Ver «Proyecto hermano».
 - Lo construye Efraín (instructor) junto con Claude. Los **usuarios finales son aprendices**, así que los textos de la interfaz son en español, cortos y sin jerga.
 - Autor: ver [`ABOUTME.md`](ABOUTME.md).
 
@@ -115,7 +115,7 @@ TecnoBloques/
 ├── build.js                  ← arma dist/TecnoBloques.html y dist/artefacto.html
 ├── escritorio/               ← APP DE ESCRITORIO (Electron)
 │   ├── main.js               ← ventana, IPC, Web Serial (elige el puerto), actualización automática
-│   ├── preload.js            ← puente seguro: window.tbEscritorio (info, puertos, subir, alProgreso…)
+│   ├── preload.js            ← puente seguro: window.tbEscritorio (info, puertos, subir, compilarHex, alProgreso…)
 │   ├── arduino.js            ← arduino-cli: board list, compile, upload (módulo Node sin Electron)
 │   ├── preparar-arduino.js   ← arma recursos/arduino (cli + núcleo AVR + librerías) para el instalador
 │   ├── empaquetar.js         ← corre electron-builder (salida en %LOCALAPPDATA%\TecnoBloques-build)
@@ -137,6 +137,7 @@ TecnoBloques/
 │   ├── app.js                ← abre la app Electron: puertos, compilar, errores en español (capturas)
 │   ├── app-empaquetada.js    ← lo mismo con la app ya empaquetada (win-unpacked)
 │   ├── placas.js             ← con placas reales: sube ejemplos, prueba el monitor y los errores (npm run test:placas)
+│   ├── simulador.js          ← la app con TecnoCircuito: compila y simula programas de bloques (npm run test:simulador)
 │   ├── instalar-librerias.ps1← núcleo AVR + librerías para arduino-cli (Windows)
 │   └── requirements.txt      ← playwright
 ├── marca/                    ← MARCA: generar.py (fuente única del dibujo), MARCA.md (guía),
@@ -170,6 +171,10 @@ npm run preparar-arduino         # una vez (con internet): baja arduino-cli + n�
 npm run app                      # abre la app en modo desarrollo
 npm run test:app                 # prueba la app con Playwright (puertos, compilar, errores)
 npm run test:placas -- uno:COM12:eco:monitor nano:COM5:otto   # con placas reales (ver el encabezado de test/placas.js)
+
+# Simulador TecnoCircuito (necesita ..\TecnoCircuito\prototipo\dist\tecnocircuito.js: npm run construir allá)
+npm run app:simulador            # la app con la copia local del simulador (pestaña «Circuito» y botón «Simular»)
+npm run test:simulador           # prueba la integración: compila programas de bloques y los simula (19 comprobaciones)
 npm run instalador               # arma %LOCALAPPDATA%\TecnoBloques-build\TecnoBloques-Setup-<versión>.exe
 npm run publicar                 # arma y sube el Release a GitHub (necesita GH_TOKEN; ver "Publicar una versión")
 ```
@@ -502,14 +507,23 @@ escritorio/main.js
 7. **Modo:** `'realista'` o `'ideal'`, más ajustes por no idealidad (`{caidaL293D: false, …}`). Las claves las define TecnoCircuito.
 8. **Errores:** si el simulador falla, el editor sigue. TecnoBloques envuelve cada llamada en `try/catch`.
 
-### Pendientes en TecnoBloques (antes de la etapa 0 del simulador)
+### Primera conexión (7 oct 2026) y pendientes en TecnoBloques
 
 - ✅ (0.2.5) **Conservar campos desconocidos del proyecto,** `creadoCon` y aviso de proyecto más nuevo. Ver «Proyecto (`.tbq.json`)».
 - ✅ (0.2.5) **Fixtures:** `.tbq.json` y `.hex` de cada caso en `test/salida`.
-- **IPC `tb:compilar-hex`:** compila como `subir` con `soloCompilar` y devuelve también el texto del `.hex`.
-- **Registro:** campo para el alias del aprendiz e IPC `tb:registrar`, que agrega líneas al archivo `.jsonl`.
-- **Revisión del contrato al arrancar** y botón «Simular» visible solo en la app.
-- **Scripts nuevos:** `test:simulador`, `simulador:local` y `simulador:fijo` (ver el mecanismo).
+- ✅ **IPC `tb:compilar-hex`** (`tbEscritorio.compilarHex({codigo, fqbn})` → `{ok, etapa, salida, memoria, hex}`): `arduino.compilarHex` compila como `subir` con `soloCompilar` y lee `<build>/TecnoBloques.ino.hex`.
+- ✅ **Revisión del contrato al arrancar:** `simulador.disponible` exige la app de escritorio, `compilarHex`, `TecnoCircuito.CONTRATO === CONTRATO_TC` (1) y la API. Si no, la pestaña y el botón no aparecen y el editor sigue igual.
+- ✅ **Interfaz (app.js, sección «Simulador TecnoCircuito»):**
+  - pestaña **«Circuito»** con el lienzo (`abrirLienzo()` lo crea con `extrasProyecto.circuito` al abrir, al crear un proyecto, al cargar un ejemplo y al cambiar de placa); con una placa que el simulador no tiene, la pestaña lo explica y «Simular» queda apagado;
+  - botón **«Simular»** en la barra y en la pestaña (`simular()`): compila, crea el simulador en modo realista y lo inicia; un error de C++ se explica con `explicarError`, igual que al subir; «Detener» lo cierra (`detenerSimulacion()`);
+  - **monitor pequeño** al pie de la pestaña (`#salidaSim`, `#formSim`), para ver el LED y escribirle al programa a la vez. El monitor serial de siempre también muestra la simulación (dice «Simulación»); conectar una placa real detiene la simulación;
+  - **línea de estado** «Simulando · 3,2 s · velocidad 100 %», que avisa si el programa cambió («pulsa Simular de nuevo»).
+- ✅ **El circuito se guarda en el proyecto:** `lienzo.alCambiar` lo pone en `extrasProyecto.circuito` y autoguarda. TecnoBloques no lo interpreta.
+- ✅ **Scripts:** `app:simulador` y `build:simulador` (`node build.js --simulador-local`) y `test:simulador`. `build.js` embebe la copia local solo con esa bandera (o una versión etiquetada en `node_modules/tecnocircuito`); el build normal y el instalador salen sin simulador.
+- ✅ **Seguro del instalador:** `empaquetar.js` se niega a empaquetar si el HTML trae `TB_SIMULADOR_ORIGEN = "local"`.
+- ⬜ **Registro:** campo para el alias del aprendiz e IPC `tb:registrar`, que agrega líneas al archivo `.jsonl`. Hoy los eventos quedan en memoria (`simulador.eventos`).
+- ⬜ **Contrato:** cuando TecnoCircuito agregue `sim.destruir()` y `sim.medidas()`, dejar de usar `_destruir()` y `_medidas()` (solo del prototipo).
+- ⬜ **Versión etiquetada:** cuando exista el repositorio de TecnoCircuito, depender de una etiqueta (`node_modules/tecnocircuito`) para que el simulador pueda llegar al instalador.
 
 ### Mecanismo para que ninguno rompa al otro
 
@@ -519,7 +533,7 @@ escritorio/main.js
 4. **Pruebas de contrato en los dos lados:**
    - TecnoCircuito guarda en `pruebas/fixtures/` proyectos `.tbq.json` y `.hex` generados por TecnoBloques. Se commitean, así que sus pruebas corren sin el proyecto hermano.
    - TecnoBloques tendrá `npm run test:simulador`: compila los programas de prueba, los corre en la versión fija del simulador con Node y comprueba que guardar y abrir conserva el circuito.
-5. **Trabajo en los dos a la vez.** `npm run simulador:local` instala `file:../TecnoCircuito` y `npm run simulador:fijo` vuelve a la etiqueta. **`empaquetar.js` se niega a armar el instalador si la dependencia no es una etiqueta.** Así un simulador en desarrollo nunca llega al aula.
+5. **Trabajo en los dos a la vez.** `npm run app:simulador` embebe la copia local (`..\TecnoCircuito\prototipo\dist\tecnocircuito.js`); el build normal no la lleva. **`empaquetar.js` se niega a armar el instalador si el HTML trae la copia local.** Así un simulador en desarrollo nunca llega al aula.
 6. **Versión congelada.** Mientras el simulador se use en un estudio con aprendices, la etiqueta queda fija. Se pueden publicar versiones de TecnoBloques, pero ninguna cambia esa etiqueta.
 7. **Documentación cruzada.** Todo cambio del contrato se anota en las dos bitácoras con el mismo título («Contrato N: …») y se actualiza esta sección.
 
@@ -646,6 +660,7 @@ Ojo: el ultrasonido trae 8/9 por defecto (pensado para Otto); **con la shield el
 | Calibración por canal del PCA9685: N de 4 a 6 a 2 a 4, canal libre en filas nuevas, menú "hombro (1)" que se actualiza al renombrar, guardar/abrir, avisos de canal repetido y pulsos iguales, hombro invertido (2400 → 600), caso sin calibración | ✅ en la interfaz; el caso `i2c` compila en uno y mega2560 |
 | Calibración de Otto: programa que solo calibra y guarda (Nano) + programa que saluda con brazos calibrados; ocultar brazos; guardar/abrir; nombre reservado `heart` | ✅ compilan en nano; ejemplo Otto humanoide sigue compilando |
 | Matriz LED + boca de Otto: caso fijo `matriz` (matriz girada 90° con espejo + boca orientación 2; dibujo, animación de 3 cuadros, texto fijo con tilde y ñ, texto de variable, punto, brillo, bocas, gesto) | ✅ compila en uno (48 % flash), también con el paquete de la app; editor 8×8 con Girar/Espejo probado; el editor 5×8 de la LCD sigue igual |
+| **Primera conexión con TecnoCircuito (7 oct):** `npm run test:simulador` en la app de escritorio: el ejemplo «Eco serial y LED» se compila con arduino-cli, se simula en un Web Worker y responde «Recibí: on» prendiendo el LED del circuito y el «L» de la placa; un programa de bloques `analogWrite(9, analogRead(A0) / 4)` sigue al potenciómetro (perilla 50 % → PWM 49,8 %; 20 % → 20,0 %); el circuito se guarda y vuelve al abrir; error de C++ explicado; con el Nano la pestaña lo explica | ✅ 19 de 19, sin errores de JavaScript. El build normal sigue sin simulador (pestaña oculta) y `npm test`, `test:ui` y `test:app` pasan |
 | Formato del proyecto (0.2.5): un proyecto con `circuito` y un campo inventado los conserva al abrir y guardar; nuevo proyecto y ejemplo los limpian; proyecto de la 9.0.0 abre con aviso; con un bloque desconocido explica el error y vuelve al proyecto anterior (21 bloques antes y después); los 16 casos dejan `.tbq.json` y `.hex` | ✅ `npm test`, `npm run compilar`, `test:ui` y `test:app` |
 | Otto completo: caso fijo `otto_todo` (coreografía de 6 columnas, mover un servo y un brazo, inclinarse ×2 lento, saltar ×3 rápido, crusaito hacia atrás, animación de boca, sonido deslizante, relajar/despertar, velocidad con y sin límite, reposo con brazos) + aviso de matriz de 5 columnas | ✅ compila en nano; 16 programas compilan |
 | `instalar-librerias.ps1` | ⬜ no probado (en este PC las librerías se instalaron una por una con el arduino-cli del IDE) |

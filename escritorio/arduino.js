@@ -113,6 +113,19 @@ class Arduino {
     if (this.cancelado) return { ok: false, etapa: 'cancelado', salida: c.salida + '\n' + s.salida, memoria };
     return { ok: s.codigo === 0, etapa: 'subir', salida: c.salida + '\n' + s.salida, memoria };
   }
+
+  /** Compila sin subir y devuelve también el programa en Intel HEX, para el simulador TecnoCircuito. */
+  async compilarHex({ codigo, fqbn }, progreso) {
+    const r = await this.subir({ codigo, fqbn, puerto: null, soloCompilar: true }, progreso);
+    if (!r.ok) return r;
+    const build = path.join(this.trabajo, 'build', fqbn.replace(/[^a-z0-9]+/gi, '_'));
+    try {
+      r.hex = fs.readFileSync(path.join(build, 'TecnoBloques.ino.hex'), 'utf8');
+    } catch (e) {
+      return { ok: false, etapa: 'compilar', salida: 'Se compiló, pero no apareció el .hex: ' + e.message, memoria: r.memoria };
+    }
+    return r;
+  }
 }
 
 function nombrePorVid(vid) {

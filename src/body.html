@@ -32,6 +32,7 @@
       <button type="button" class="btn" id="btnGuardar">Guardar</button>
       <button type="button" class="btn" id="btnIno">Descargar .ino</button>
       <button type="button" class="btn" id="btnMonitor" title="Ver y enviar mensajes a la placa">Monitor serial<span class="punto" id="puntoMonitor"></span></button>
+      <button type="button" class="btn" id="btnSimularBarra" title="Probar el programa en el circuito simulado" hidden>Simular</button>
       <button type="button" class="btn primario" id="btnSubir">Subir a la placa</button>
     </div>
   </header>
@@ -52,6 +53,7 @@
       <div class="pestanas" role="tablist">
         <button type="button" role="tab" id="tCodigo" aria-selected="true" aria-controls="pCodigo">Código C++</button>
         <button type="button" role="tab" id="tSerial" aria-selected="false" aria-controls="pSerial">Monitor serial<span class="punto" id="puntoSerial"></span></button>
+        <button type="button" role="tab" id="tCircuito" aria-selected="false" aria-controls="pCircuito" hidden>Circuito<span class="punto" id="puntoCircuito"></span></button>
       </div>
 
       <div class="vista-panel" id="pCodigo" role="tabpanel">
@@ -93,6 +95,23 @@
           </select>
           <button type="submit" class="btn chico" id="btnEnviar">Enviar</button>
         </form>
+      </div>
+      <div class="vista-panel" id="pCircuito" role="tabpanel" hidden>
+        <div class="herr">
+          <span class="estado" id="estadoSim">Arma el circuito y pulsa Simular</span>
+          <button type="button" class="btn chico primario" id="btnSimular">Simular</button>
+          <button type="button" class="btn chico" id="btnDetenerSim" disabled>Detener</button>
+        </div>
+        <div class="nota-serial" id="notaCircuito" hidden></div>
+        <ul id="fallasSim" aria-live="polite" hidden></ul>
+        <div id="lienzoCircuito" aria-label="Circuito"></div>
+        <div class="serial-sim">
+          <pre id="salidaSim" aria-live="polite" aria-label="Monitor serial de la simulación"></pre>
+          <form class="envio" id="formSim">
+            <input class="entrada" id="txtSim" placeholder="Mensaje para el programa simulado (Enter envía)" autocomplete="off" aria-label="Mensaje para el programa simulado">
+            <button type="submit" class="btn chico" id="btnEnviarSim">Enviar</button>
+          </form>
+        </div>
       </div>
     </section>
   </main>

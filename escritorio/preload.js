@@ -10,6 +10,8 @@ contextBridge.exposeInMainWorld('tbEscritorio', {
   alActualizacion: (fn) => { ipcRenderer.on('tb:actualizacion', (_e, d) => fn(d)); },
   /** datos = {codigo, fqbn, puerto, soloCompilar} → {ok, etapa, salida, memoria} */
   subir: (datos) => ipcRenderer.invoke('tb:subir', datos),
+  /** datos = {codigo, fqbn} → {ok, etapa, salida, memoria, hex}: compila sin subir, para el simulador */
+  compilarHex: (datos) => ipcRenderer.invoke('tb:compilar-hex', datos),
   alProgreso: (fn) => {
     const h = (_e, m) => fn(m);
     ipcRenderer.on('tb:progreso', h);

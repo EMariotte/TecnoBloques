@@ -10,11 +10,14 @@
     "test:ui": "python test/ui.py",
     "compilar": "node test/compilar.js",
     "app": "node build.js && electron .",
+    "app:simulador": "node build.js --simulador-local && electron .",
+    "build:simulador": "node build.js --simulador-local",
     "preparar-arduino": "node escritorio/preparar-arduino.js",
     "instalador": "node build.js && node escritorio/empaquetar.js",
     "publicar": "node build.js && node escritorio/empaquetar.js --publicar",
     "test:app": "node test/app.js",
-    "test:placas": "node test/placas.js"
+    "test:placas": "node test/placas.js",
+    "test:simulador": "node build.js --simulador-local && node test/simulador.js"
   },
   "devDependencies": {
     "blockly": "13.3.0",

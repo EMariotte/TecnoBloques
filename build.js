@@ -30,6 +30,29 @@ const fuentes = '<link rel="preconnect" href="https://fonts.googleapis.com"><lin
   '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@400;600&display=swap">';
 const esc = (s) => s.replace(/<\/script/gi, '<\\/script');
 
+// Simulador TecnoCircuito (proyecto hermano, ver «Proyecto hermano» en CLAUDE.md). Entra al HTML solo si:
+//   1) se pide la copia local en desarrollo:  node build.js --simulador-local  (npm run app:simulador)
+//   2) o está instalada una versión etiquetada: node_modules/tecnocircuito/dist/tecnocircuito.js
+// Sin eso, el HTML sale sin simulador (así sale hoy el instalador). empaquetar.js se niega a empaquetar la copia local.
+const SIM_LOCAL = path.join(__dirname, '..', 'TecnoCircuito', 'prototipo', 'dist', 'tecnocircuito.js');
+const SIM_ETIQUETA = path.join(__dirname, 'node_modules', 'tecnocircuito', 'dist', 'tecnocircuito.js');
+let simulador = '';
+let origenSimulador = 'ninguno';
+if (process.argv.includes('--simulador-local')) {
+  if (!fs.existsSync(SIM_LOCAL)) {
+    console.error('No encuentro ' + SIM_LOCAL + '. Ármalo con «npm run construir» en TecnoCircuito/prototipo.');
+    process.exit(1);
+  }
+  origenSimulador = 'local';
+  simulador = fs.readFileSync(SIM_LOCAL, 'utf8');
+} else if (fs.existsSync(SIM_ETIQUETA)) {
+  origenSimulador = 'etiqueta';
+  simulador = fs.readFileSync(SIM_ETIQUETA, 'utf8');
+}
+const simuladorJS = simulador
+  ? `<script>window.TB_SIMULADOR_ORIGEN = ${JSON.stringify(origenSimulador)};</script>\n<script>${esc(simulador)}</script>`
+  : '';
+
 fs.mkdirSync(path.join(__dirname, 'dist'), { recursive: true });
 
 // Versión local: funciona sin internet (las fuentes caen a las del sistema)
@@ -52,6 +75,7 @@ ${body}
 <script>${esc(R(BL + 'blockly_compressed.js'))}</script>
 <script>${esc(R(BL + 'blocks_compressed.js'))}</script>
 <script>${esc(R(BL + 'msg/es.js'))}</script>
+${simuladorJS}
 <script>${medioJS}</script>
 <script>
 ${esc(app)}
@@ -78,4 +102,4 @@ ${esc(app)}
 </script>
 `;
 fs.writeFileSync(path.join(__dirname, 'dist/artefacto.html'), artefacto);
-console.log('Blockly', VERSION, '· local', (local.length / 1024).toFixed(0) + ' KB', '· artefacto', (artefacto.length / 1024).toFixed(0) + ' KB');
+console.log('Blockly', VERSION, '· local', (local.length / 1024).toFixed(0) + ' KB', '· artefacto', (artefacto.length / 1024).toFixed(0) + ' KB', '· simulador:', origenSimulador);

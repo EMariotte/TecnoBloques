@@ -322,3 +322,16 @@ details.subir-detalle pre { max-height: 220px; overflow: auto; font-family: var(
   #nombreProyecto { width: 9em; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+/* ---------- Simulador TecnoCircuito (pestaña Circuito) ---------- */
+/* Columna flexible: los avisos ocultos no dejan filas vacías y el lienzo toma todo el alto que sobra. */
+#pCircuito { display: flex; flex-direction: column; min-height: 0; }
+#pCircuito > .herr, #pCircuito > .nota-serial, #fallasSim, .serial-sim { flex: none; }
+#lienzoCircuito { flex: 1 1 auto; min-height: 200px; overflow: hidden; }
+#fallasSim { list-style: none; margin: 0; padding: 8px 12px; display: grid; gap: 6px; border-bottom: 1px solid var(--line); }
+#fallasSim[hidden] { display: none; }
+#fallasSim li { padding: 7px 10px; border-radius: 8px; font-size: 13px; line-height: 1.4; background: var(--warn-soft); color: var(--ink); border: 1px solid var(--line); }
+.serial-sim { border-top: 1px solid var(--line); }
+#salidaSim { margin: 0; height: 7.5em; overflow: auto; padding: 8px 12px; background: var(--code-bg); color: var(--code-ink); font-family: var(--mono); font-size: 12px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; }
+#salidaSim:empty::before { content: "Monitor serial de la simulación: aquí sale lo que imprime el programa."; color: var(--muted); font-family: inherit; }
+#salidaSim .enviado { color: var(--accent); }

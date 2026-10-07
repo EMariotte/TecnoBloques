@@ -151,7 +151,10 @@ function esOscuro() {
   if (t === 'light') return false;
   return window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches;
 }
-function aplicarTema() { if (espacio) espacio.setTheme(esOscuro() ? TEMA_OSCURO : TEMA_CLARO); }
+function aplicarTema() {
+  if (espacio) espacio.setTheme(esOscuro() ? TEMA_OSCURO : TEMA_CLARO);
+  if (typeof simulador !== 'undefined' && simulador.lienzo) simulador.lienzo.ponerTema(esOscuro() ? 'oscuro' : 'claro');
+}
 
 /* ---------- Imágenes internas de Blockly (sin servidores externos) ---------- */
 const PREFIJO_MEDIA = 'tbmedia/';
@@ -739,9 +742,11 @@ function cambiarVista(v) {
 function seleccionarPestana(p) {
   $('tCodigo').setAttribute('aria-selected', String(p === 'codigo'));
   $('tSerial').setAttribute('aria-selected', String(p === 'serial'));
+  $('tCircuito').setAttribute('aria-selected', String(p === 'circuito'));
   $('pCodigo').hidden = p !== 'codigo';
   $('pSerial').hidden = p !== 'serial';
-  if (p === 'serial' && estado.vista === 'bloques') cambiarVista('dividido');
+  $('pCircuito').hidden = p !== 'circuito';
+  if ((p === 'serial' || p === 'circuito') && estado.vista === 'bloques') cambiarVista('dividido');
 }
 
 /* ---------- Proyectos ---------- */
@@ -799,6 +804,7 @@ function cargarProyecto(p, silencioso, sinRespaldo) {
     if (masNuevo) avisarProyectoNuevo(p, revisarVersiones);
     else revisarVersiones();
   }
+  abrirLienzo(); // el circuito del proyecto (si lo trae) en la pestaña Circuito
   programarActualizacion();
   return true;
 }
@@ -838,6 +844,7 @@ function nuevoProyecto() {
   espacio.clear();
   asegurarPrograma();
   $('nombreProyecto').value = 'Mi proyecto';
+  abrirLienzo();
   programarActualizacion();
 }
 function cargarXML(xml) {
@@ -1003,6 +1010,7 @@ function cargarEjemplo(ej) {
   cargarXML(ej.xml);
   ponerNivel(nivelNecesario(), { vista: true, aviso: true });
   refrescarPines();
+  abrirLienzo();
   programarActualizacion();
 }
 
@@ -1020,8 +1028,9 @@ const FINES = { '': '', '\\n': '\n', '\\r': '\r', '\\r\\n': '\r\n' };
 function notaSerial(html) { const n = $('notaSerial'); n.innerHTML = html; n.hidden = !html; }
 function uiSerial() {
   const on = serial.conectado;
-  $('estadoSerial').textContent = on ? `Conectado a ${$('baudios').value}` : 'Desconectado';
-  $('estadoSerial').classList.toggle('on', on);
+  const simulando = !on && typeof simulador !== 'undefined' && !!simulador.sim;
+  $('estadoSerial').textContent = on ? `Conectado a ${$('baudios').value}` : simulando ? 'Simulación' : 'Desconectado';
+  $('estadoSerial').classList.toggle('on', on || simulando);
   $('btnConectar').textContent = on ? 'Desconectar' : 'Conectar';
   $('baudios').disabled = on;
   $('puntoSerial').classList.toggle('on', on);
@@ -1109,6 +1118,7 @@ async function conectarSerial() {
     if (!$('puerto').value) { notaSerial('<b>Elige el puerto de la placa</b> en la barra de arriba (Puerto). Si no aparece, conéctala por USB.'); return; }
     await escritorio.preferirPuerto($('puerto').value);
   }
+  if (simulador.sim) { detenerSimulacion(); lineaEspecial('Simulación detenida: ahora el monitor usa la placa real.', 'sistema'); }
   try {
     const p = await navigator.serial.requestPort();
     await p.open({ baudRate: parseInt($('baudios').value, 10) });
@@ -1140,8 +1150,13 @@ async function desconectarSerial() {
   lineaEspecial('Desconectado.', 'sistema');
 }
 async function enviarSerial(texto) {
-  if (!serial.conectado || !serial.puerto || !serial.puerto.writable) { lineaEspecial('Conecta la placa para enviar mensajes.', 'sistema'); return; }
   const fin = FINES[$('finLinea').value] || '';
+  if (!serial.conectado && simulador.sim) { // simulando: el mensaje le llega al programa simulado
+    simulador.sim.serialEnviar(texto + fin);
+    lineaEspecial('→ ' + texto, 'enviado');
+    return;
+  }
+  if (!serial.conectado || !serial.puerto || !serial.puerto.writable) { lineaEspecial('Conecta la placa para enviar mensajes.', 'sistema'); return; }
   const w = serial.puerto.writable.getWriter();
   try {
     await w.write(new TextEncoder().encode(texto + fin));
@@ -1329,6 +1344,140 @@ function traducirErrorCpp(m) {
   return m;
 }
 
+/* ---------- Simulador TecnoCircuito (proyecto hermano; ver «Proyecto hermano» en CLAUDE.md) ---------- */
+// El paquete window.TecnoCircuito lo embebe build.js (copia local con --simulador-local, o una versión etiquetada).
+// Solo se ofrece en la app de escritorio, porque el .hex lo compila arduino-cli. El circuito se guarda en
+// extrasProyecto.circuito: TecnoBloques lo guarda y lo devuelve sin interpretarlo (formato del contrato, sección 4).
+const CONTRATO_TC = 1;
+const simulador = {
+  disponible: !!(escritorio && escritorio.compilarHex && window.TecnoCircuito && TecnoCircuito.CONTRATO === CONTRATO_TC &&
+    typeof TecnoCircuito.crearLienzo === 'function' && typeof TecnoCircuito.crearSimulador === 'function'),
+  lienzo: null,
+  sim: null,
+  codigo: '', // el C++ que se está simulando, para avisar si el programa cambió
+  compilando: false,
+  eventos: [], // registro de esta sesión (pendiente: alias del aprendiz y archivo .jsonl)
+  reloj: 0
+};
+function registrarEventoSim(ev) {
+  simulador.eventos.push(ev);
+  if (simulador.eventos.length > 2000) simulador.eventos.shift();
+}
+function notaCircuito(texto) { $('notaCircuito').textContent = texto || ''; $('notaCircuito').hidden = !texto; }
+/** Crea el lienzo con el circuito del proyecto actual (al abrir, al cambiar de proyecto o de placa). */
+function abrirLienzo() {
+  if (!simulador.disponible) return;
+  detenerSimulacion();
+  try { if (simulador.lienzo) simulador.lienzo.destruir(); } catch (e) { /* ya no estaba */ }
+  simulador.lienzo = null;
+  $('lienzoCircuito').innerHTML = '';
+  $('fallasSim').innerHTML = ''; $('fallasSim').hidden = true;
+  const placas = TecnoCircuito.PLACAS || [];
+  if (!placas.includes(placaActual)) {
+    const nombres = placas.map(k => (PLACAS[k] || {}).nombre || k).join(', ');
+    notaCircuito(`El simulador por ahora solo tiene: ${nombres}. Cambia la placa arriba para armar y simular el circuito.`);
+    uiSimulador();
+    return;
+  }
+  notaCircuito('');
+  try {
+    simulador.lienzo = TecnoCircuito.crearLienzo($('lienzoCircuito'), {
+      placa: placaActual, circuito: extrasProyecto.circuito || null, tema: esOscuro() ? 'oscuro' : 'claro', alEvento: registrarEventoSim
+    });
+    simulador.lienzo.alCambiar((c) => { extrasProyecto.circuito = c; autoguardar(); });
+  } catch (e) {
+    notaCircuito('No se pudo abrir el circuito: ' + e.message);
+  }
+  uiSimulador();
+}
+async function simular() {
+  if (!simulador.disponible || simulador.compilando) return;
+  seleccionarPestana('circuito');
+  if (!simulador.lienzo) return;
+  detenerSimulacion();
+  if (!estado.texto) actualizar(); // el código más reciente de los bloques
+  const codigo = codigoActual();
+  simulador.compilando = true;
+  uiSimulador('Preparando tu programa…');
+  let r;
+  try { r = await escritorio.compilarHex({ codigo, fqbn: placa().fqbn }); }
+  catch (e) { r = { ok: false, etapa: 'app', salida: e.message }; }
+  simulador.compilando = false;
+  if (!r.ok || !r.hex) {
+    uiSimulador();
+    const ex = explicarError(r, '');
+    modal({ titulo: ex.titulo, cuerpo: ex.cuerpo.concat([el('details', { class: 'subir-detalle' }, el('summary', null, 'Ver el mensaje completo'), el('pre', null, r.salida || ''))]) });
+    return;
+  }
+  try {
+    const sim = TecnoCircuito.crearSimulador({ lienzo: simulador.lienzo, placa: placaActual, hex: r.hex, modo: 'realista', alEvento: registrarEventoSim });
+    sim.alSerial((t) => { agregarSalida(t); salidaSim(t); });
+    $('salidaSim').textContent = '';
+    sim.alFalla((f) => {
+      $('fallasSim').append(el('li', null, f.mensaje));
+      $('fallasSim').hidden = false;
+      mostrarToast(f.mensaje);
+    });
+    sim.alEstado(() => uiSimulador());
+    if (serial.conectado) await desconectarSerial(); // el monitor muestra la simulación
+    $('fallasSim').innerHTML = ''; $('fallasSim').hidden = true;
+    simulador.sim = sim;
+    simulador.codigo = codigo;
+    lineaEspecial('Simulación: aquí sale lo que imprime el programa simulado, y lo que envíes le llega a él.', 'sistema');
+    sim.iniciar();
+  } catch (e) {
+    modal({ titulo: 'No se pudo simular', cuerpo: [el('p', null, e.message)] });
+  }
+  uiSimulador();
+}
+/** Monitor pequeño de la pestaña Circuito: así se ve el circuito y se escribe al programa a la vez. */
+function salidaSim(texto, clase) {
+  const s = $('salidaSim');
+  const t = String(texto).replace(/\0/g, '').replace(/\r\n?/g, '\n');
+  if (clase) s.append(el('span', { class: clase }, t));
+  else s.append(t);
+  while (s.childNodes.length > 400) s.removeChild(s.firstChild);
+  s.scrollTop = s.scrollHeight;
+}
+function enviarSim(texto) {
+  if (!simulador.sim) { mostrarToast('Pulsa «Simular» primero.'); return; }
+  const fin = FINES[$('finLinea').value] || '';
+  simulador.sim.serialEnviar(texto + fin);
+  salidaSim('→ ' + texto + '\n', 'enviado');
+  lineaEspecial('→ ' + texto, 'enviado');
+}
+function detenerSimulacion() {
+  const sim = simulador.sim;
+  if (!sim) return;
+  simulador.sim = null;
+  try { if (sim._destruir) sim._destruir(); else sim.detener(); } catch (e) { /* ya estaba detenida */ }
+  uiSimulador();
+  uiSerial();
+}
+/** Estado de la pestaña Circuito, del botón de la barra y del monitor mientras se simula. */
+function uiSimulador(texto) {
+  if (!simulador.disponible) return;
+  const corriendo = !!simulador.sim;
+  $('btnSimular').disabled = simulador.compilando || !simulador.lienzo;
+  $('btnSimular').textContent = corriendo ? 'Simular de nuevo' : 'Simular';
+  $('btnDetenerSim').disabled = !corriendo;
+  $('puntoCircuito').classList.toggle('on', corriendo);
+  let t = texto;
+  if (!t) {
+    if (!simulador.lienzo) t = 'Sin simulador para esta placa';
+    else if (!corriendo) t = 'Arma el circuito y pulsa Simular';
+    else {
+      const m = simulador.sim._medidas ? simulador.sim._medidas() : null;
+      t = 'Simulando' + (m ? ` · ${(m.msSimulados / 1000).toFixed(1).replace('.', ',')} s · velocidad ${Math.round(m.velocidad * 100)} %` : '');
+      if (codigoActual() !== simulador.codigo) t += ' · cambiaste el programa: pulsa «Simular de nuevo»';
+    }
+  }
+  $('estadoSim').textContent = t;
+  if (corriendo) uiSerial();
+  clearInterval(simulador.reloj);
+  if (corriendo) simulador.reloj = setInterval(() => { if (simulador.sim) uiSimulador(); }, 500);
+}
+
 /* ---------- Arranque ---------- */
 function iniciar() {
   const sel = $('placa');
@@ -1391,8 +1540,28 @@ function iniciar() {
   refrescarPines();
   actualizar();
 
+  // ---- Simulador (solo si hay paquete TecnoCircuito, contrato compatible y app de escritorio) ----
+  if (simulador.disponible) {
+    $('tCircuito').hidden = false;
+    $('btnSimularBarra').hidden = false;
+    $('tCircuito').addEventListener('click', () => seleccionarPestana('circuito'));
+    $('btnSimular').addEventListener('click', simular);
+    $('btnSimularBarra').addEventListener('click', simular);
+    $('btnDetenerSim').addEventListener('click', detenerSimulacion);
+    $('formSim').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const t = $('txtSim').value;
+      if (t === '' && $('finLinea').value === '') return;
+      enviarSim(t);
+      $('txtSim').value = '';
+    });
+    if (!simulador.lienzo) abrirLienzo();
+  } else if (window.TecnoCircuito && TecnoCircuito.CONTRATO !== CONTRATO_TC) {
+    console.warn(`TecnoCircuito trae el contrato ${TecnoCircuito.CONTRATO} y TecnoBloques espera el ${CONTRATO_TC}: el simulador queda apagado.`);
+  }
+
   // ---- Controles ----
-  sel.addEventListener('change', () => { placaActual = sel.value; refrescarPines(); programarActualizacion(); mostrarToast('Placa: ' + placa().nombre); });
+  sel.addEventListener('change', () => { placaActual = sel.value; refrescarPines(); abrirLienzo(); programarActualizacion(); mostrarToast('Placa: ' + placa().nombre); });
   $('nombreProyecto').addEventListener('input', programarActualizacion);
   document.querySelectorAll('#vistas button').forEach(b => b.addEventListener('click', () => cambiarVista(b.dataset.vista)));
   document.querySelectorAll('#niveles button').forEach(b => b.addEventListener('click', () => ponerNivel(b.dataset.nivel, { vista: true, aviso: true })));

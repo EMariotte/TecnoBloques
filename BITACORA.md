@@ -483,3 +483,33 @@ Efraín preguntó si TecnoCircuito necesita guardar el `.hex` y pidió un están
 **Fixtures:** `npm test` deja el `.tbq.json` de cada caso y `npm run compilar` deja el `.hex` al lado, en `test/salida/<caso>/`. Los 16 casos los tienen.
 
 **Pruebas:** `npm test` (con las pruebas nuevas del formato), `npm run compilar` (16 de 16), `test:ui`, `test:app`, app empaquetada y placas reales.
+
+## 2026-10-07 — Contrato 1: primera conexión con TecnoCircuito
+
+Anotado con el mismo título en las dos bitácoras. Efraín validó en la práctica el PWM y la lectura analógica del prototipo 3, y pidió conectar por primera vez las dos páginas.
+
+**Qué se hizo en TecnoBloques** (detalle en «Proyecto hermano» de `CLAUDE.md`):
+
+- **Embeber el simulador solo en desarrollo:** `npm run app:simulador` arma con `--simulador-local` y mete `..\TecnoCircuito\prototipo\dist\tecnocircuito.js`. El build normal y el instalador salen sin simulador, y `empaquetar.js` se niega a empaquetar la copia local.
+- **IPC `tb:compilar-hex`:** compila el C++ de los bloques con arduino-cli y devuelve el `.hex`.
+- **Pestaña «Circuito»** con el lienzo del proyecto, botón **«Simular»** (en la barra y en la pestaña) y un **monitor pequeño** para ver el LED y escribirle al programa a la vez. El monitor serial de siempre también muestra la simulación.
+- **El circuito se guarda en el `.tbq.json`** y vuelve al abrir el proyecto.
+- **Revisión del contrato al arrancar:** sin paquete compatible, la pestaña y el botón no aparecen.
+
+**Prueba nueva `npm run test:simulador`: 19 de 19.**
+
+- El ejemplo «Eco serial y LED» se compila, se simula en un Web Worker y responde «Recibí: on», prendiendo el LED del circuito.
+- Un programa de bloques con el potenciómetro en A0 y el LED en el pin 9 da PWM al 49,8 % con la perilla en la mitad y al 20,0 % en el 20 %.
+- El circuito se guarda en el proyecto y vuelve al abrirlo.
+- Un error de C++ se explica en español, y con el Nano la pestaña explica que el simulador solo tiene el Uno.
+
+**Hallazgos:**
+
+- **El serial perdía las tildes** («Recibí» salía «RecibÃ­»). Se corrigió en TecnoCircuito.
+- **El monitor estaba en otra pestaña,** así que el aprendiz no podía ver el LED y escribir a la vez. Por eso se agregó el monitor pequeño.
+- **Faltan en el contrato `sim.destruir()` y `sim.medidas()`.** Hoy se usan las versiones del prototipo.
+- **El panel dejaba el lienzo bajito,** porque los avisos ocultos no ocupan filas de la cuadrícula. Se pasó a una columna flexible.
+
+**Las pruebas de siempre pasan** con el build normal: `npm test`, `test:ui` y `test:app`. La pestaña «Circuito» queda oculta.
+
+**Pendientes:** el registro con el alias de TecnoRuta, `destruir()` y `medidas()` en el contrato, y depender de una versión etiquetada para que el simulador llegue al instalador.
