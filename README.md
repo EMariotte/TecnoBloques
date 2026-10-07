@@ -66,6 +66,7 @@ npm run compilar       # compila ese C++ con arduino-cli (ver test/instalar-libr
 npm run preparar-arduino   # una vez: arduino-cli + núcleo AVR + librerías para el instalador
 npm run app                # abre la app
 npm run test:app           # prueba la app (puertos, compilar, mensajes de error)
+npm run test:placas -- uno:COM12:eco:monitor   # con una placa real: sube, monitor serial y errores
 npm run instalador         # arma el instalador de Windows
 ```
 

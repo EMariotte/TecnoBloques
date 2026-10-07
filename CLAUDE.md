@@ -1,7 +1,7 @@
 # CLAUDE.md — TecnoBloques
 
 > Memoria técnica del proyecto para Claude Code / Claude en Cowork.
-> Actualizado: 7 de octubre de 2026 · **Proyecto hermano iniciado: TecnoCircuito (simulador), ver la sección «Proyecto hermano».** Estado: **v0.2.3 publicada en GitHub Releases como VERSIÓN DE PRUEBA. Probado con hardware: Mega 2560 clon CH340 (subir, monitor serial) y la actualización automática (0.2.0 → 0.2.1 → 0.2.2, diferencial ≈10 s). Otto humanoide usa todas las funciones de OttoDIYLib. Falta: Uno R3, Nano clon y los robots y módulos en el ambiente (ver "Próxima sesión"). No instalar en los PC del aula hasta probar el Uno y el Nano.**
+> Actualizado: 7 de octubre de 2026 · **Proyecto hermano iniciado: TecnoCircuito (simulador), ver la sección «Proyecto hermano».** Estado: **v0.2.4 publicada en GitHub Releases: PRIMERA VERSIÓN PARA EL AULA (7 oct). Subir y monitor serial probados con Uno R3 original, Nano clon CH340 y Mega 2560 clon CH340, más la actualización automática. Ya se puede instalar en los PC del aula. Falta: los robots y módulos en el ambiente (ver "Próxima sesión").**
 
 ---
 
@@ -136,6 +136,7 @@ TecnoBloques/
 │   ├── compilar.js           ← compila con arduino-cli los .ino generados
 │   ├── app.js                ← abre la app Electron: puertos, compilar, errores en español (capturas)
 │   ├── app-empaquetada.js    ← lo mismo con la app ya empaquetada (win-unpacked)
+│   ├── placas.js             ← con placas reales: sube ejemplos, prueba el monitor y los errores (npm run test:placas)
 │   ├── instalar-librerias.ps1← núcleo AVR + librerías para arduino-cli (Windows)
 │   └── requirements.txt      ← playwright
 ├── marca/                    ← MARCA: generar.py (fuente única del dibujo), MARCA.md (guía),
@@ -168,6 +169,7 @@ npm run compilar
 npm run preparar-arduino         # una vez (con internet): baja arduino-cli + núcleo AVR + librerías (≈310 MB)
 npm run app                      # abre la app en modo desarrollo
 npm run test:app                 # prueba la app con Playwright (puertos, compilar, errores)
+npm run test:placas -- uno:COM12:eco:monitor nano:COM5:otto   # con placas reales (ver el encabezado de test/placas.js)
 npm run instalador               # arma %LOCALAPPDATA%\TecnoBloques-build\TecnoBloques-Setup-<versión>.exe
 npm run publicar                 # arma y sube el Release a GitHub (necesita GH_TOKEN; ver "Publicar una versión")
 ```
@@ -382,7 +384,7 @@ De las 37 funciones públicas se usan todas menos `oscillateServos` (queda para 
 
 - **Vistas** Bloques / Dividido / C++ (`cambiarVista`) y **pestañas** Código C++ / Monitor serial.
 - **Modo texto** (`entrarModoTexto` / `salirModoTexto`): convierte el panel en un `<textarea>` y pone un velo sobre los bloques. Al volver, si hubo cambios, ofrece "Seguir editando", "Copiar mi código y volver" o "Descartar y volver".
-- **Monitor serial** (`conectarSerial`, `leerBucle`, `enviarSerial`): usa Web Serial. Tiene baudios, hora, autodesplazamiento, fin de línea (ninguno, `\n`, `\r`, `\r\n`), historial con ↑/↓ y eco de lo enviado. Toma sola la velocidad de `Serial.begin(N)` del programa hasta que la persona la cambie a mano. Da mensajes claros cuando no hay Web Serial, cuando el visor lo bloquea o cuando el puerto está ocupado (Arduino IDE abierto).
+- **Monitor serial** (`conectarSerial`, `leerBucle`, `enviarSerial`): usa Web Serial. Tiene baudios, hora, autodesplazamiento, fin de línea (ninguno, `\n`, `\r`, `\r\n`), historial con ↑/↓ y eco de lo enviado. Toma sola la velocidad de `Serial.begin(N)` del programa hasta que la persona la cambie a mano. Da mensajes claros cuando no hay Web Serial, cuando el visor lo bloquea o cuando el puerto está ocupado (Arduino IDE abierto). `limpiarSerial()` quita los caracteres nulos (el Uno original manda unos 40 al reiniciarse y se veían como espacios) y une `\r\n` aunque el `\r` y el `\n` lleguen en trozos distintos (antes salía una línea en blanco de más); guarda el estado en `serial.trasCR`.
 - **Diálogos:** `Blockly.dialog.setAlert/setConfirm/setPrompt` se reemplazan por un modal propio, porque `prompt()` y `confirm()` no funcionan dentro de artefactos ni en algunos visores.
 - **Imágenes de Blockly** (papelera, zoom, comillas): se usa `media: 'tbmedia/'` y un MutationObserver que cambia esas rutas por data URIs (`window.TB_MEDIA`, que genera `build.js`). No depende de servidores externos ni de rutas `file://`.
 - **Tema:** tokens CSS claro/oscuro, que respetan `prefers-color-scheme` y `data-theme`, y dos temas de Blockly (`TEMA_CLARO` y `TEMA_OSCURO`) que se cambian solos.
@@ -411,7 +413,7 @@ De las 37 funciones públicas se usan todas menos `oscillateServos` (queda para 
 
 1. Sube `version` en `package.json` (por ejemplo 0.2.0 → 0.2.1). Las apps instaladas solo se actualizan si la versión es mayor.
 2. `npm test`, `npm run compilar` y `npm run test:app`.
-3. `npm run instalador` y prueba el `.exe`.
+3. `npm run instalador` y prueba el `.exe`: `node test/app-empaquetada.js "%LOCALAPPDATA%\TecnoBloques-build\win-unpacked"` y, con placas conectadas, `TB_EXE=<win-unpacked>\TecnoBloques.exe npm run test:placas -- …`.
 4. Crea el Release `v<versión>` en GitHub con estos 3 archivos: `TecnoBloques-Setup-<versión>.exe`, `TecnoBloques-Setup-<versión>.exe.blockmap` y `latest.yml`. Se puede hacer con `gh release create v<versión> <archivos> --title … --notes …`, o con `npm run publicar` y `GH_TOKEN`.
 
 ### Marca (`marca/`)
@@ -618,7 +620,7 @@ Ojo: el ultrasonido trae 8/9 por defecto (pensado para Otto); **con la shield el
 | Niveles: 31 / 65 / 85 bloques (contando repetidos en dos categorías), clic real en el selector, tipos de variable y "definir bloque" en el nivel 2, proyecto de nivel 3 abierto en nivel 1 (no pierde nada y avisa), ejemplos, 400 px | ✅ sin errores de JavaScript |
 | App de escritorio (Electron 44.5.1, arduino-cli 1.5.1, núcleo AVR 1.8.8): abre, lista puertos, compila el carro (≈7 s; ≈3 s con caché) y Otto, error de puerto inexistente y error de C++ con línea, todo en español | ✅ en desarrollo y empaquetada (`win-unpacked`), sin errores de JavaScript |
 | Instalador `TecnoBloques-Setup-0.2.0.exe` (175 MB) | ✅ se arma; ⬜ falta ejecutarlo en un PC del aula |
-| **Subir a una placa real** desde la app (6 oct, Mega 2560 clon CH340 en COM7) | ✅ el selector la muestra como "COM7 · placa con chip CH340 (clon)"; sube en ≈4–6 s; "¡Listo!"; monitor serial recibe y **envía**; placa equivocada → "La placa no responde" con intentos en vivo y Cancelar (libera el puerto). Probado por Efraín con el instalador y la app |
+| **Subir a una placa real** desde la app (6 oct, Mega 2560 clon CH340 en COM7) | ✅ el selector la muestra como "COM7 · placa con chip CH340 (clon)"; sube en ≈4–6 s; "¡Listo!"; monitor serial recibe y **envía**; placa equivocada → "La placa no responde" con intentos en vivo y Cancelar (libera el puerto). Probado por Efraín con el instalador y la app. **7 oct (Claude con `test/placas.js`):** Uno R3 original (COM12, detectado como "Arduino UNO") y Nano clon CH340 (COM5) suben en ≈6–12 s el eco, el carro y Otto; el monitor recibe y envía en los dos; elegir Mega con el Uno conectado da "La placa no coincide"; el Nano clon del aula usa el **cargador nuevo** ("Arduino Nano"); con "bootloader antiguo" da "La placa no responde" tras los 10 intentos en vivo (14 a 57 s) |
 | Listas y matrices: caso fijo `listas` (melodía con "para cada", listas int/String/char/bool/float, lista de pines con nombre, matriz 3×4 recorrida con "contar con") | ✅ compila en uno; guardar/abrir igual; avisos de posición, lista inexistente, valor inválido y nombre repetido; editor de tabla con clics reales |
 | Librerías I2C: caso fijo `i2c` (buscar dispositivos + LCD + MPU6050 + PCA9685 calibrado; servo sigue la inclinación) | ✅ compila en uno (45 % flash) y mega2560, también con el arduino-cli del paquete de la app; sin choques falsos en A4/A5 y choque real detectado |
 | Calibración por canal del PCA9685: N de 4 a 6 a 2 a 4, canal libre en filas nuevas, menú "hombro (1)" que se actualiza al renombrar, guardar/abrir, avisos de canal repetido y pulsos iguales, hombro invertido (2400 → 600), caso sin calibración | ✅ en la interfaz; el caso `i2c` compila en uno y mega2560 |
@@ -637,13 +639,12 @@ Uso de memoria: carro en Uno usa 36 % de flash y 29 % de RAM. El programa con to
 
 ### Próxima sesión: prueba con hardware en el ambiente (Efraín, con todas las placas)
 
-**Publicado (6 oct, decisión de Efraín):** v0.2.0 y v0.2.1 como **versiones de prueba** en GitHub Releases, para probar la actualización automática antes de llevar la app al aula. **Regla nueva: no instalar en los PC del aula hasta probar el Uno R3 y el Nano** (bloque A).
-El instalador ya está armado con todo lo de hoy:
-`%LOCALAPPDATA%\TecnoBloques-build\TecnoBloques-Setup-0.2.0.exe` (176 MB). Trae el driver CH340 y las 10 librerías. Si cambia `src/`, se rearma con `npm run instalador`.
+**Publicado:** v0.2.0 a v0.2.3 como versiones de prueba (6 oct) y **v0.2.4 como primera versión para el aula (7 oct)**, después de pasar el bloque A.
+El instalador está en `%LOCALAPPDATA%\TecnoBloques-build\TecnoBloques-Setup-0.2.4.exe` (176 MB) y en el Release v0.2.4 de GitHub. Trae el driver CH340 y las 10 librerías. Si cambia `src/`, se rearma con `npm run instalador`.
 
 **A. La app y la carga (lo que bloquea la publicación):**
 1. ✅ (6 oct) Instalar en un PC: sin problemas.
-2. "Subir a la placa": ✅ **Mega 2560 clon CH340**. ⬜ **Uno R3** y ⬜ **Nano clon CH340** (probar "Nano" y "Nano bootloader antiguo"). El aviso "la placa no coincide" solo sale con placas originales: los clones CH340 no dicen qué placa son.
+2. "Subir a la placa": ✅ **Mega 2560 clon CH340**, ✅ **Uno R3** y ✅ **Nano clon CH340** (7 oct; este Nano usa el cargador nuevo, otros clones pueden traer el antiguo). El aviso "la placa no coincide" solo sale con placas originales: los clones CH340 no dicen qué placa son.
 3. ✅ **Monitor serial** en la app con "Eco serial y LED": recibe y envía, y se reabre con el botón de la barra.
 4. ✅ El puerto del CH340 aparece solo en el selector "Puerto".
 
@@ -665,7 +666,7 @@ El instalador ya está armado con todo lo de hoy:
 10. **I2C:** "buscar dispositivos" para saber si las LCD del aula son 0x27 o 0x3F.
 11. **Carro:** sentido de M1/M2 y comandos 'A'/'S' desde una app Bluetooth.
 
-**C.** ✅ Publicadas v0.2.0, v0.2.1, v0.2.2 y v0.2.3 (Otto completo). La app de Efraín se actualiza sola. ✅ (6 oct) La app de Efraín pasó sola de 0.2.0 a 0.2.1 (descarga completa, porque su 0.2.0 no venía del Release; el título muestra "TecnoBloques 0.2.1"). ✅ 0.2.1 → 0.2.2: descarga diferencial en ≈10 s, instalación en ≈30 s, aviso "Bajando…" visible. **La cadena de actualización está probada.** Cuando pase el bloque A, quitar la nota "versión de prueba" de la siguiente versión e instalar en el aula.
+**C.** ✅ Publicadas v0.2.0, v0.2.1, v0.2.2 y v0.2.3 (Otto completo). La app de Efraín se actualiza sola. ✅ (6 oct) La app de Efraín pasó sola de 0.2.0 a 0.2.1 (descarga completa, porque su 0.2.0 no venía del Release; el título muestra "TecnoBloques 0.2.1"). ✅ 0.2.1 → 0.2.2: descarga diferencial en ≈10 s, instalación en ≈30 s, aviso "Bajando…" visible. **La cadena de actualización está probada.** **El bloque A pasó el 7 oct** y se publicó la **v0.2.4 sin la nota de prueba**. Para instalar en el aula: bajar `TecnoBloques-Setup-0.2.4.exe` del Release en cada PC. Las apps que ya tengan una 0.2.x se actualizan solas.
 
 **D. Decisiones abiertas:**
 - confirmar con SENNOVA la titularidad y los colores de la marca;
@@ -698,8 +699,9 @@ Fase 2 ◐ App de escritorio para el aula (5 oct 2026):
              errores en español, monitor serial con el puerto elegido, instalador NSIS,
              actualización automática (electron-updater), versión web con explicación.
           ✅ CH341SER.EXE en escritorio/recursos/drivers (el instalador lo ofrece).
-          ⬜ Probar la carga con placas reales (Uno, Nano clon CH340, Mega) → próxima sesión.
+          ✅ Carga y monitor con placas reales: Mega clon (6 oct), Uno R3 y Nano clon CH340 (7 oct).
           ✅ Releases v0.2.0 a v0.2.3 publicados como versiones de prueba (6 oct).
+          ✅ v0.2.4: primera versión para el aula (7 oct).
           ✅ Actualización automática 0.2.0 → 0.2.1 comprobada en un PC (6 oct).
           ✅ 0.2.1 → 0.2.2 diferencial (≈10 s de descarga + ≈30 s de instalación).
           ⬜ Ligar los errores del compilador al bloque que los causa.

@@ -434,3 +434,33 @@ En TecnoCircuito se hizo un prototipo del cableado: una placa, una resistencia y
 - **`crearLienzo` recibe `alEvento`,** así el cableado se registra aunque el aprendiz nunca simule.
 
 Para TecnoBloques no cambia nada de lo que ya está hecho. Al integrar el lienzo, hay que pasarle `alEvento` a `crearLienzo` y no solo a `crearSimulador`.
+
+## 2026-10-07 — Bloque A completo: Uno R3 y Nano clon con placas reales
+
+Efraín conectó un Uno y un Nano clon al PC. Claude manejó la app de escritorio con Playwright, como lo haría un aprendiz: elegir placa y puerto, subir, abrir el monitor y enviar mensajes.
+
+- **Los puertos estaban al revés de lo anotado:** la app mostró el Uno original en COM12 («Arduino UNO», VID 2341) y el Nano clon en COM5 («placa con chip CH340»).
+- **Uno R3:** sube el eco, el carro y Otto en 6 a 12 s. El monitor recibe y envía. Elegir «Mega 2560» con el Uno conectado da «La placa no coincide», como se esperaba con una placa original.
+- **Nano clon CH340:** sube con «Arduino Nano», o sea que trae el **cargador nuevo**. Con «bootloader antiguo» da «La placa no responde» después de los 10 intentos, que se ven en vivo.
+- **Tres arreglos en `src/app.js`:**
+  - el Uno original manda unos 40 caracteres nulos al reiniciarse, y el monitor los mostraba como espacios que corrían el primer mensaje a la derecha. `limpiarSerial()` los quita;
+  - cuando el `\r` y el `\n` llegaban en trozos distintos, salía una línea en blanco de más. Ahora se unen aunque lleguen separados;
+  - «La placa no responde» sugería probar «Nano (bootloader antiguo)» aunque ya estuviera elegido. Ahora sugiere la otra opción del Nano.
+- **Prueba nueva `test/placas.js` (`npm run test:placas`):** sube ejemplos a placas reales, prueba el monitor y los mensajes de error, y guarda capturas. Sirve para cada versión y para el Uno R4.
+- `npm test` y `npm run test:app` pasan sin errores.
+
+**Con esto el bloque A está completo.** La siguiente versión puede salir sin la nota «versión de prueba» e instalarse en el aula, cuando Efraín lo autorice.
+
+## 2026-10-07 — v0.2.4 publicada: primera versión para el aula
+
+**Efraín autorizó la publicación** después de pasar el bloque A.
+
+- **Qué trae:** los arreglos del monitor serial (caracteres nulos del Uno original y línea en blanco de más) y la sugerencia correcta cuando un Nano no responde. Es la primera versión **sin la nota «versión de prueba»**.
+- **Pruebas antes de publicar:**
+  - `npm test`: sin errores y sin bloques sin nivel;
+  - `npm run compilar`: los 16 programas compilan;
+  - `npm run test:app` y `test/app-empaquetada.js`: sin errores; la app empaquetada dice «TecnoBloques 0.2.4»;
+  - `test/placas.js` con la **app empaquetada** (nueva variable `TB_EXE`): el Uno R3 y el Nano clon suben, el monitor recibe y envía, y el Nano con «bootloader antiguo» da el mensaje correcto.
+- **Release v0.2.4** en GitHub con el instalador (176 MB), su `.blockmap` y `latest.yml`. Las apps instaladas con una 0.2.x se actualizan solas.
+
+**Siguiente:** instalar en los PC del aula y empezar el bloque B (robots y módulos en el ambiente).

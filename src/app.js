@@ -977,7 +977,7 @@ function refrescarPines() {
 }
 
 /* ---------- Monitor serial (Web Serial) ---------- */
-const serial = { puerto: null, lector: null, bucle: null, conectado: false, inicioLinea: true, historial: [], posHist: -1 };
+const serial = { puerto: null, lector: null, bucle: null, conectado: false, inicioLinea: true, trasCR: false, historial: [], posHist: -1 };
 const FINES = { '': '', '\\n': '\n', '\\r': '\r', '\\r\\n': '\r\n' };
 function notaSerial(html) { const n = $('notaSerial'); n.innerHTML = html; n.hidden = !html; }
 function uiSerial() {
@@ -1000,17 +1000,30 @@ function recortarSalida() {
   const s = $('salidaSerial');
   while (s.childNodes.length > 4000) s.removeChild(s.firstChild);
 }
+/** Quita los caracteres nulos (el Uno original los manda al reiniciarse y se veían como espacios) y deja
+ *  \r, \n y \r\n como un solo salto, aunque el \r y el \n lleguen en trozos distintos. */
+function limpiarSerial(texto) {
+  let limpio = '';
+  for (const ch of texto) {
+    if (ch === '\0') continue;
+    if (ch === '\r') { limpio += '\n'; serial.trasCR = true; continue; }
+    if (ch === '\n' && serial.trasCR) { serial.trasCR = false; continue; }
+    serial.trasCR = false;
+    limpio += ch;
+  }
+  return limpio;
+}
 function agregarSalida(texto) {
   const s = $('salidaSerial');
   const conHora = $('chkHora').checked;
   let buf = '';
-  for (const ch of texto) {
+  for (const ch of limpiarSerial(texto)) {
     if (serial.inicioLinea && conHora && ch !== '\n') { if (buf) s.append(buf); buf = ''; s.append(el('span', { class: 'ts' }, hora() + ' → ')); }
     serial.inicioLinea = false;
     buf += ch;
     if (ch === '\n') serial.inicioLinea = true;
   }
-  if (buf) s.append(buf.replace(/\r(?!\n)/g, '\n').replace(/\r\n/g, '\n'));
+  if (buf) s.append(buf);
   recortarSalida();
   if ($('chkAuto').checked) s.scrollTop = s.scrollHeight;
 }
@@ -1061,7 +1074,7 @@ async function conectarSerial() {
   try {
     const p = await navigator.serial.requestPort();
     await p.open({ baudRate: parseInt($('baudios').value, 10) });
-    serial.puerto = p; serial.conectado = true; serial.inicioLinea = true;
+    serial.puerto = p; serial.conectado = true; serial.inicioLinea = true; serial.trasCR = false;
     notaSerial('');
     uiSerial();
     const info = p.getInfo ? p.getInfo() : {};
@@ -1257,8 +1270,12 @@ function explicarError(r, puerto) {
   return { titulo: 'No se pudo subir el programa', cuerpo: [el('p', null, 'Mira el mensaje completo abajo. Si se repite, desconecta y vuelve a conectar la placa.')] };
 }
 function placaNoResponde() {
+  // Con un Nano se sugiere la otra opción de cargador; con otra placa, las dos (quizá es un Nano)
+  const otra = placaActual === 'nano' ? `prueba "${PLACAS.nano_old.nombre}"`
+    : placaActual === 'nano_old' ? `prueba "${PLACAS.nano.nombre}"`
+      : `prueba "${PLACAS.nano.nombre}" o "${PLACAS.nano_old.nombre}"`;
   return { titulo: 'La placa no responde', cuerpo: [el('ul', null,
-    el('li', null, el('b', null, 'Revisa que la placa elegida arriba sea la correcta'), ` (ahora: ${placa().nombre}). Si es un Nano clon, prueba "${(PLACAS.nano_old || {}).nombre || 'Nano (bootloader antiguo)'}".`),
+    el('li', null, el('b', null, 'Revisa que la placa elegida arriba sea la correcta'), ` (ahora: ${placa().nombre}). Si es un Nano, ${otra}.`),
     el('li', null, 'Prueba otro cable USB: algunos solo cargan y no pasan datos.'),
     el('li', null, 'Desconecta lo que esté en los pines 0 y 1 (por ejemplo un Bluetooth) mientras subes.'))] };
 }
