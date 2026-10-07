@@ -475,9 +475,9 @@ escritorio/main.js
 1. **Distribución:** TecnoCircuito entrega `dist/tecnocircuito.js`, un IIFE sin dependencias externas que define `window.TecnoCircuito`. Se commitea ya construido en cada etiqueta, así que instalarlo desde GitHub no compila nada. Encaja con `build.js`, que concatena scripts sin módulos.
 2. **API:** `VERSION` (semver), `CONTRATO` (entero), `PLACAS`, `crearLienzo(…)` y `crearSimulador(…)`. Las firmas completas están en `CONTRATO.md`.
 3. **Placas:** se usan las mismas claves de `PLACAS` de `nucleo.js`: `uno`, `nano`, `nano_old` y `mega`. Si la placa no está en `TecnoCircuito.PLACAS`, «Simular» se desactiva con un mensaje.
-4. **Circuito:** `proyecto.circuito = {formato: 1, componentes: […], cables: […]}`. TecnoBloques lo guarda y lo devuelve tal cual.
+4. **Circuito:** `proyecto.circuito = {formato: 1, placa, componentes: […], cables: […], protoboard}`. TecnoBloques lo guarda y lo devuelve tal cual. Cada pin físico tiene nombre propio (`placa.GND1`, no `placa.GND`), los cables pueden traer `puntos` (sus dobleces) y la placa está fija en el origen.
 5. **Programa:** el `.hex` va como texto Intel HEX, leído de la carpeta de compilación de arduino-cli.
-6. **Eventos:** el paquete emite `{t, origen, tipo, datos}`. TecnoBloques agrega `alias`, `sesion` y las dos versiones, suma sus propios eventos del editor (`origen: 'editor'`) y escribe JSON Lines.
+6. **Eventos:** el paquete emite `{t, origen, tipo, datos}`. Los del cableado salen por el `alEvento` de `crearLienzo`, aunque el aprendiz nunca simule, y los de la simulación por el `alEvento` de `crearSimulador`. TecnoBloques agrega `alias`, `sesion` y las dos versiones, suma sus propios eventos del editor (`origen: 'editor'`) y escribe JSON Lines.
 7. **Modo:** `'realista'` o `'ideal'`, más ajustes por no idealidad (`{caidaL293D: false, …}`). Las claves las define TecnoCircuito.
 8. **Errores:** si el simulador falla, el editor sigue. TecnoBloques envuelve cada llamada en `try/catch`.
 

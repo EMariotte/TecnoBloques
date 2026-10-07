@@ -423,3 +423,14 @@ Efraín reabrió la app 0.2.1:
 - **Hallazgo:** `proyectoActual()` arma el proyecto campo por campo, así que hoy borraría el circuito al guardar. Queda como el primer pendiente en TecnoBloques.
 - **Mecanismo de sincronización:** número de contrato, etiqueta fija, revisión al arrancar, pruebas de contrato en los dos lados, scripts para trabajar con el simulador local e instalador que se niega a empaquetar un simulador que no sea de una etiqueta.
 - La carpeta `TecnoCircuitos/` con el `CLAUDE.md`, la bitácora y el contrato del proyecto nuevo se preparó aquí para moverla a `..\TecnoCircuito`. Está en `.gitignore`.
+
+## 2026-10-07 — Contrato 1: ajustes del prototipo 0
+
+En TecnoCircuito se hizo un prototipo del cableado: una placa, una resistencia y un LED, sin simulación. Al probarlo salieron cuatro ajustes al contrato. Efraín los aceptó y ya están en `..\TecnoCircuito\CONTRATO.md`. El contrato sigue en borrador y no sube el número.
+
+- **Cada pin físico tiene nombre propio** (`GND1`, `GND2` y `GND3` en el Uno).
+- **Los cables pueden traer `puntos`,** que son sus dobleces.
+- **La placa queda fija en el origen,** y las coordenadas quedan definidas.
+- **`crearLienzo` recibe `alEvento`,** así el cableado se registra aunque el aprendiz nunca simule.
+
+Para TecnoBloques no cambia nada de lo que ya está hecho. Al integrar el lienzo, hay que pasarle `alEvento` a `crearLienzo` y no solo a `crearSimulador`.
