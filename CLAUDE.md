@@ -1,7 +1,7 @@
 # CLAUDE.md — TecnoBloques
 
 > Memoria técnica del proyecto para Claude Code / Claude en Cowork.
-> Actualizado: 6 de octubre de 2026 (cierre de sesión) · Estado: **v0.2.3 publicada en GitHub Releases como VERSIÓN DE PRUEBA. Probado con hardware: Mega 2560 clon CH340 (subir, monitor serial) y la actualización automática (0.2.0 → 0.2.1 → 0.2.2, diferencial ≈10 s). Otto humanoide usa todas las funciones de OttoDIYLib. Falta: Uno R3, Nano clon y los robots y módulos en el ambiente (ver "Próxima sesión"). No instalar en los PC del aula hasta probar el Uno y el Nano.**
+> Actualizado: 7 de octubre de 2026 · **Proyecto hermano iniciado: TecnoCircuito (simulador), ver la sección «Proyecto hermano».** Estado: **v0.2.3 publicada en GitHub Releases como VERSIÓN DE PRUEBA. Probado con hardware: Mega 2560 clon CH340 (subir, monitor serial) y la actualización automática (0.2.0 → 0.2.1 → 0.2.2, diferencial ≈10 s). Otto humanoide usa todas las funciones de OttoDIYLib. Falta: Uno R3, Nano clon y los robots y módulos en el ambiente (ver "Próxima sesión"). No instalar en los PC del aula hasta probar el Uno y el Nano.**
 
 ---
 
@@ -434,6 +434,73 @@ De las 37 funciones públicas se usan todas menos `oscillateServos` (queda para 
 
 ---
 
+## Proyecto hermano: TecnoCircuito (simulador)
+
+> Iniciado el 7 de octubre de 2026. Repositorio propio `EMariotte/TecnoCircuito`, en la carpeta hermana `..\TecnoCircuito`.
+> **La fuente única del contrato entre los dos es `..\TecnoCircuito\CONTRATO.md`.** Esta sección lo resume desde el lado de TecnoBloques. Antes de cambiar algo de la tabla «Quién hace qué», lee ese archivo.
+
+TecnoCircuito es un simulador de circuitos con microcontrolador: avr8js ejecuta el `.hex`, un solucionador eléctrico propio (análisis nodal modificado con Newton-Raphson) calcula el circuito y los dibujos salen de @wokwi/elements. Todo es MIT o propio, así que TecnoBloques sigue en Apache 2.0. **Solo simula en la app de escritorio,** porque necesita el `.hex` que compila arduino-cli. En la versión web solo habrá cableado y documentación.
+
+### Quién hace qué
+
+| TecnoCircuito (paquete) | TecnoBloques (app) |
+|---|---|
+| Motor eléctrico, avr8js, modelos de componentes y lienzo con protoboard | Botón «Simular», panel del simulador y compilación del `.hex` |
+| Define el formato del circuito | Guarda el circuito dentro del `.tbq.json` **sin interpretarlo** |
+| Emite eventos por una función (`alEvento`) | Agrega el alias del aprendiz y escribe el registro en disco |
+| Recibe el modo (realista o ideal) | Decide el modo y se lo pasa |
+| No toca el disco, la red ni Electron | Es el único que habla con Node por IPC |
+
+### Cómo se conectan
+
+```
+TecnoBloques                                          TecnoCircuito
+package.json   "tecnocircuito": "github:EMariotte/TecnoCircuito#vX.Y.Z"   (etiqueta fija)
+build.js       embebe node_modules/tecnocircuito/dist/tecnocircuito.js    (IIFE: window.TecnoCircuito)
+
+src/app.js (página)                                   window.TecnoCircuito
+  proyecto.circuito  ── circuito ──────────────────►  crearLienzo(elemento, {placa, circuito})
+  hex de la app      ── placa, circuito, hex, modo ►  crearSimulador({…, alEvento})
+  monitor serial     ◄── texto serial, fallas ──────  sim.alSerial(fn), sim.alFalla(fn)
+  registro           ◄── eventos ───────────────────  alEvento(evento)
+        │ preload.js (window.tbEscritorio)
+        ▼
+escritorio/main.js
+  tb:compilar-hex  →  arduino.js compila y lee <build>/TecnoBloques.ino.hex
+  tb:registrar     →  %APPDATA%\TecnoBloques\registros\<alias>-<fecha>.jsonl
+```
+
+### Contrato 1 (resumen)
+
+1. **Distribución:** TecnoCircuito entrega `dist/tecnocircuito.js`, un IIFE sin dependencias externas que define `window.TecnoCircuito`. Se commitea ya construido en cada etiqueta, así que instalarlo desde GitHub no compila nada. Encaja con `build.js`, que concatena scripts sin módulos.
+2. **API:** `VERSION` (semver), `CONTRATO` (entero), `PLACAS`, `crearLienzo(…)` y `crearSimulador(…)`. Las firmas completas están en `CONTRATO.md`.
+3. **Placas:** se usan las mismas claves de `PLACAS` de `nucleo.js`: `uno`, `nano`, `nano_old` y `mega`. Si la placa no está en `TecnoCircuito.PLACAS`, «Simular» se desactiva con un mensaje.
+4. **Circuito:** `proyecto.circuito = {formato: 1, componentes: […], cables: […]}`. TecnoBloques lo guarda y lo devuelve tal cual.
+5. **Programa:** el `.hex` va como texto Intel HEX, leído de la carpeta de compilación de arduino-cli.
+6. **Eventos:** el paquete emite `{t, origen, tipo, datos}`. TecnoBloques agrega `alias`, `sesion` y las dos versiones, suma sus propios eventos del editor (`origen: 'editor'`) y escribe JSON Lines.
+7. **Modo:** `'realista'` o `'ideal'`, más ajustes por no idealidad (`{caidaL293D: false, …}`). Las claves las define TecnoCircuito.
+8. **Errores:** si el simulador falla, el editor sigue. TecnoBloques envuelve cada llamada en `try/catch`.
+
+### Pendientes en TecnoBloques (antes de la etapa 0 del simulador)
+
+- **Conservar campos desconocidos del proyecto.** Hoy `proyectoActual()` arma el proyecto campo por campo, así que **borraría `circuito` al guardar**. Hay que guardar el proyecto cargado y mezclarlo al guardar. Prueba: abrir un proyecto con `circuito` y un campo inventado, guardarlo y compararlo.
+- **IPC `tb:compilar-hex`:** compila como `subir` con `soloCompilar` y devuelve también el texto del `.hex`.
+- **Registro:** campo para el alias del aprendiz e IPC `tb:registrar`, que agrega líneas al archivo `.jsonl`.
+- **Revisión del contrato al arrancar** y botón «Simular» visible solo en la app.
+- **Scripts nuevos:** `test:simulador`, `simulador:local` y `simulador:fijo` (ver el mecanismo).
+
+### Mecanismo para que ninguno rompa al otro
+
+1. **Contrato con número.** Un cambio que rompe la compatibilidad sube `CONTRATO` en uno y la versión mayor del paquete. Los cambios compatibles solo suben la menor o el parche.
+2. **Versión fija.** TecnoBloques depende de una etiqueta (`#v1.2.0`), nunca de una rama. Se actualiza a propósito: cambiar la etiqueta, `npm install`, pruebas y un commit `chore: TecnoCircuito v1.2.0`.
+3. **Revisión al arrancar.** Si `TecnoCircuito.CONTRATO` no es el que espera TecnoBloques (constante `CONTRATO_TC`), se oculta «Simular» y el editor funciona normal.
+4. **Pruebas de contrato en los dos lados:**
+   - TecnoCircuito guarda en `pruebas/fixtures/` proyectos `.tbq.json` y `.hex` generados por TecnoBloques. Se commitean, así que sus pruebas corren sin el proyecto hermano.
+   - TecnoBloques tendrá `npm run test:simulador`: compila los programas de prueba, los corre en la versión fija del simulador con Node y comprueba que guardar y abrir conserva el circuito.
+5. **Trabajo en los dos a la vez.** `npm run simulador:local` instala `file:../TecnoCircuito` y `npm run simulador:fijo` vuelve a la etiqueta. **`empaquetar.js` se niega a armar el instalador si la dependencia no es una etiqueta.** Así un simulador en desarrollo nunca llega al aula.
+6. **Versión congelada.** Mientras el simulador se use en un estudio con aprendices, la etiqueta queda fija. Se pueden publicar versiones de TecnoBloques, pero ninguna cambia esa etiqueta.
+7. **Documentación cruzada.** Todo cambio del contrato se anota en las dos bitácoras con el mismo título («Contrato N: …») y se actualiza esta sección.
+
 ## Decisiones técnicas fijas y trampas conocidas (no revertir sin justificación)
 
 ```
@@ -607,6 +674,7 @@ El instalador ya está armado con todo lo de hoy:
 - firma digital del instalador.
 
 **E. Lo siguiente en desarrollo, en orden sugerido:**
+0. **TecnoCircuito (decidido el 7 oct 2026):** de octubre a diciembre de 2026 el desarrollo se concentra en el simulador, en su propio repositorio. Antes de su etapa 0, TecnoBloques necesita los cambios de «Pendientes en TecnoBloques» de la sección «Proyecto hermano». Los puntos 1 y 2 de esta lista ya están hechos (v0.2.3).
 1. Otto **coreografía con matrices** (`_moveServos`, una fila por pose).
 2. Otto relajar/despertar (`detachServos`) y velocidad máxima (`enableServoLimit`).
 3. **Ejemplos y retos por nivel**, sobre todo para el nivel 1.
@@ -638,6 +706,9 @@ Fase 2 ◐ App de escritorio para el aula (5 oct 2026):
           ⬜ Publicar la versión web (GitHub Pages).
 
 Fase 2b ✅ Base del sistema de bloques: nombres de pines (#define) y niveles 1·2·3.
+
+Fase 2c ◐ TecnoCircuito (simulador, proyecto hermano, iniciado el 7 oct 2026): oct–dic 2026
+          etapas 0, 1 y 3 reducida en su repositorio; integración por el contrato 1.
 
 Fase 3 ⬜ Uno R4 (cuando lleguen): perfil de placa + núcleo arduino:renesas_uno en el
           instalador. arduino-cli ya sabe cargar el R4 (DFU / toque a 1200 baudios).

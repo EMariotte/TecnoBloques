@@ -411,3 +411,15 @@ Efraín reabrió la app 0.2.1:
 - **16 programas de prueba** compilan con las librerías reales.
 
 **Próxima sesión:** probar el Uno R3 y el Nano clon (bootloader nuevo y antiguo). Si pasan, quitar la etiqueta "versión de prueba" e instalar en el aula. Después, los robots y módulos de la lista "Próxima sesión" de `CLAUDE.md`, empezando por Otto con todas sus funciones nuevas.
+
+## 2026-10-07 — Proyecto hermano iniciado: TecnoCircuito
+
+**Decisión de Efraín:** el simulador de circuitos se hace como **proyecto independiente**, con su propio repositorio (`EMariotte/TecnoCircuito`), su `CLAUDE.md` y su bitácora. Lo que queda de 2026 se dedica a construir y validar su parte técnica.
+
+- **Viabilidad:** avr8js y @wokwi/elements son MIT, y el solucionador eléctrico es propio, así que TecnoBloques sigue en Apache 2.0. La app ya compila con una carpeta de compilación propia, así que el `.hex` que necesita el simulador ya existe.
+- **Alcance técnico de 2026:** etapa 0 (bases, lienzo con protoboard, registro de eventos), etapa 1 (chip y circuito DC: LED, botón, potenciómetro, zumbador, monitor serial) y etapa 3 reducida (shield L293D, motor DC, servo, reinicio por consumo). Los módulos (LCD, DHT11, MPU6050…) pasan a 2027.
+- **Por qué un repositorio aparte:** TecnoBloques depende de una etiqueta fija del simulador. Así se pueden publicar arreglos de TecnoBloques sin cambiar el simulador, que debe quedar congelado durante su uso en el aula.
+- **Contrato 1 (borrador):** IIFE `window.TecnoCircuito` embebido por `build.js`, mismas claves de placa, circuito guardado sin interpretar dentro del `.tbq.json`, `.hex` por un IPC nuevo y eventos que TecnoBloques escribe en disco. Arquitectura en la sección «Proyecto hermano» de `CLAUDE.md`.
+- **Hallazgo:** `proyectoActual()` arma el proyecto campo por campo, así que hoy borraría el circuito al guardar. Queda como el primer pendiente en TecnoBloques.
+- **Mecanismo de sincronización:** número de contrato, etiqueta fija, revisión al arrancar, pruebas de contrato en los dos lados, scripts para trabajar con el simulador local e instalador que se niega a empaquetar un simulador que no sea de una etiqueta.
+- La carpeta `TecnoCircuitos/` con el `CLAUDE.md`, la bitácora y el contrato del proyecto nuevo se preparó aquí para moverla a `..\TecnoCircuito`. Está en `.gitignore`.

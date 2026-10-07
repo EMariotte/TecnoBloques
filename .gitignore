@@ -24,3 +24,6 @@ escritorio/recursos/arduino/
 escritorio/recursos/drivers/*.exe
 escritorio/recursos/drivers/*.EXE
 release/
+
+# Proyecto hermano preparado aquí para moverlo a ..\TecnoCircuito (no se sube con TecnoBloques)
+TecnoCircuitos/
