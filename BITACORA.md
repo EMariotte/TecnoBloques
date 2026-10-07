@@ -464,3 +464,22 @@ Efraín conectó un Uno y un Nano clon al PC. Claude manejó la app de escritori
 - **Release v0.2.4** en GitHub con el instalador (176 MB), su `.blockmap` y `latest.yml`. Las apps instaladas con una 0.2.x se actualizan solas.
 
 **Siguiente:** instalar en los PC del aula y empezar el bloque B (robots y módulos en el ambiente).
+
+## 2026-10-07 — Contrato 1: formato del proyecto y fixtures (v0.2.5)
+
+Efraín preguntó si TecnoCircuito necesita guardar el `.hex` y pidió un estándar de guardado que sirva al simulador y para abrir un proyecto en otro computador.
+
+**Revisión:** el simulador necesita el `.hex` en memoria al pulsar «Simular», y TecnoBloques lo compila en ese momento (contrato, sección 5). Lo que TecnoCircuito pedía guardar como archivo eran las **fixtures** de sus pruebas.
+
+**Decisión: no se guarda el `.hex` en el proyecto.** Se desactualiza al cambiar un bloque, depende del compilador y de las librerías de cada PC, y pesa más que el resto del archivo. La fuente del programa son los bloques (o el C++ a mano).
+
+**Estándar de guardado (formato 1)**, documentado en «Proyecto (`.tbq.json`)» de `CLAUDE.md` y en el `CONTRATO.md` de TecnoCircuito:
+
+- **Campos desconocidos se conservan** (`extrasProyecto`). Antes, cualquier versión borraba el `circuito` al guardar. Sale ahora, antes de que exista el primer circuito, para que los PC del aula ya lo tengan cuando llegue el simulador.
+- **`creadoCon`:** la versión de TecnoBloques que guardó. `build.js` inyecta `window.TB_VERSION`, así también funciona en la versión web.
+- **Proyecto de una versión más nueva:** abre con aviso; si trae bloques desconocidos, el error lo explica y pide actualizar.
+- **Arreglo de paso:** si un proyecto no abría, el espacio quedaba vacío y el autoguardado podía pisar el trabajo. Ahora vuelve al proyecto anterior.
+
+**Fixtures:** `npm test` deja el `.tbq.json` de cada caso y `npm run compilar` deja el `.hex` al lado, en `test/salida/<caso>/`. Los 16 casos los tienen.
+
+**Pruebas:** `npm test` (con las pruebas nuevas del formato), `npm run compilar` (16 de 16), `test:ui`, `test:app`, app empaquetada y placas reales.

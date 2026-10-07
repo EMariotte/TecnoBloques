@@ -1,7 +1,7 @@
 # CLAUDE.md — TecnoBloques
 
 > Memoria técnica del proyecto para Claude Code / Claude en Cowork.
-> Actualizado: 7 de octubre de 2026 · **Proyecto hermano iniciado: TecnoCircuito (simulador), ver la sección «Proyecto hermano».** Estado: **v0.2.4 publicada en GitHub Releases: PRIMERA VERSIÓN PARA EL AULA (7 oct). Subir y monitor serial probados con Uno R3 original, Nano clon CH340 y Mega 2560 clon CH340, más la actualización automática. Ya se puede instalar en los PC del aula. Falta: los robots y módulos en el ambiente (ver "Próxima sesión").**
+> Actualizado: 7 de octubre de 2026 · **Proyecto hermano iniciado: TecnoCircuito (simulador), ver la sección «Proyecto hermano».** Estado: **v0.2.5 publicada en GitHub Releases (7 oct): formato del proyecto listo para TecnoCircuito. La v0.2.4 fue la PRIMERA VERSIÓN PARA EL AULA. Subir y monitor serial probados con Uno R3 original, Nano clon CH340 y Mega 2560 clon CH340, más la actualización automática. Ya se puede instalar en los PC del aula. Falta: los robots y módulos en el ambiente (ver "Próxima sesión").**
 
 ---
 
@@ -130,10 +130,10 @@ TecnoBloques/
 │   ├── style.css             ← diseño (tokens claro/oscuro)
 │   └── body.html             ← marcado de la página
 ├── test/
-│   ├── prueba.py             ← carga los 3 ejemplos y guarda el .ino de cada uno
-│   ├── prueba_todo.py        ← todos los bloques en un programa + flujo de Mis bloques
+│   ├── prueba.py             ← carga los 3 ejemplos y guarda el .ino y el .tbq.json de cada uno
+│   ├── prueba_todo.py        ← todos los bloques en un programa + flujo de Mis bloques + formato del proyecto
 │   ├── ui.py                 ← clics reales en la interfaz + capturas (claro, oscuro, celular)
-│   ├── compilar.js           ← compila con arduino-cli los .ino generados
+│   ├── compilar.js           ← compila con arduino-cli los .ino generados y deja el .hex al lado
 │   ├── app.js                ← abre la app Electron: puertos, compilar, errores en español (capturas)
 │   ├── app-empaquetada.js    ← lo mismo con la app ya empaquetada (win-unpacked)
 │   ├── placas.js             ← con placas reales: sube ejemplos, prueba el monitor y los errores (npm run test:placas)
@@ -375,10 +375,29 @@ De las 37 funciones públicas se usan todas menos `oscillateServos` (queda para 
 - Exportar e importar: archivo `.tblib.json` (`{app:'TecnoBloques-libreria', bloques}`).
 - En una llamada, el clic derecho ofrece **Traer la definición para editarla**, que la copia al programa.
 
-### Proyecto (`.tbq.json`)
+### Proyecto (`.tbq.json`) — estándar de guardado (formato 1, desde la 0.2.5)
 
-`{app:'TecnoBloques', version:1, nombre, placa, bloques:<workspace JSON>, embebidos:{…}, texto:<C++ a mano|null>, guardado}`.
-`embebidos` lleva una copia de los bloques propios que usa el programa, así el proyecto abre en otro PC sin la librería. Al abrir, si Mis bloques tiene una versión distinta, pregunta cuál usar.
+Un solo archivo JSON lleva todo lo necesario para **abrir el proyecto en otro computador** y, cuando exista, **simularlo**:
+
+| Campo | Qué es | Quién lo define |
+|---|---|---|
+| `app` | siempre `"TecnoBloques"` (así se reconoce el archivo) | TecnoBloques |
+| `version` | **formato del archivo** (`FORMATO_PROYECTO`, hoy 1). Sube solo si cambia el significado de un campo, no al agregar uno | TecnoBloques |
+| `nombre`, `placa`, `nivel` | nombre, clave de `PLACAS` y nivel 1–3 | TecnoBloques |
+| `bloques` | el espacio de bloques serializado (**fuente del programa**) | TecnoBloques |
+| `embebidos` | copia de los bloques propios que usa, para abrir sin la librería | TecnoBloques |
+| `texto` | el C++ escrito a mano, o `null` (si existe, **es** el programa) | TecnoBloques |
+| `circuito` | el montaje: componentes y cables (opcional) | **TecnoCircuito** (`CONTRATO.md`, sección 4) |
+| `creadoCon` | versión de TecnoBloques que guardó (`TB_VERSION`, la inyecta `build.js`) | TecnoBloques |
+| `guardado` | fecha y hora ISO | TecnoBloques |
+
+**Reglas:**
+- **Una sola fuente de verdad:** los bloques (o `texto`). El C++ generado y el `.hex` **no se guardan**: se calculan al abrir y al simular, porque dependen de la versión del generador, del compilador y de las librerías, y un `.hex` guardado se desactualiza en cuanto se cambia un bloque.
+- **Campos desconocidos se conservan:** `cargarProyecto` guarda en `extrasProyecto` todo campo que no esté en `CAMPOS_PROYECTO`, y `proyectoActual()` los devuelve tal cual. Así una versión que aún no conoce `circuito` no lo borra. `nuevoProyecto` y `cargarEjemplo` los limpian.
+- **Proyecto de una versión más nueva** (`proyectoMasNuevo`: `version` mayor o `creadoCon` mayor que la app): se abre con el aviso «Este proyecto es de una versión más nueva». Si trae bloques que esta versión no conoce, el error lo explica y pide actualizar.
+- **Si un proyecto no abre, se vuelve al anterior** (`cargarProyecto(previo, true, true)`), así el autoguardado no queda vacío ni se pierde el trabajo.
+- Al abrir, si Mis bloques tiene una versión distinta de un bloque embebido, pregunta cuál usar.
+- **Fixtures para TecnoCircuito:** `npm test` deja `test/salida/<caso>/<caso>.tbq.json` y `npm run compilar` deja `<caso>.hex` al lado. Las pruebas del formato están en `prueba_todo.py` (`JS_CAMPOS` y `JS_NUEVO`).
 
 ### Interfaz
 
@@ -485,7 +504,8 @@ escritorio/main.js
 
 ### Pendientes en TecnoBloques (antes de la etapa 0 del simulador)
 
-- **Conservar campos desconocidos del proyecto.** Hoy `proyectoActual()` arma el proyecto campo por campo, así que **borraría `circuito` al guardar**. Hay que guardar el proyecto cargado y mezclarlo al guardar. Prueba: abrir un proyecto con `circuito` y un campo inventado, guardarlo y compararlo.
+- ✅ (0.2.5) **Conservar campos desconocidos del proyecto,** `creadoCon` y aviso de proyecto más nuevo. Ver «Proyecto (`.tbq.json`)».
+- ✅ (0.2.5) **Fixtures:** `.tbq.json` y `.hex` de cada caso en `test/salida`.
 - **IPC `tb:compilar-hex`:** compila como `subir` con `soloCompilar` y devuelve también el texto del `.hex`.
 - **Registro:** campo para el alias del aprendiz e IPC `tb:registrar`, que agrega líneas al archivo `.jsonl`.
 - **Revisión del contrato al arrancar** y botón «Simular» visible solo en la app.
@@ -626,6 +646,7 @@ Ojo: el ultrasonido trae 8/9 por defecto (pensado para Otto); **con la shield el
 | Calibración por canal del PCA9685: N de 4 a 6 a 2 a 4, canal libre en filas nuevas, menú "hombro (1)" que se actualiza al renombrar, guardar/abrir, avisos de canal repetido y pulsos iguales, hombro invertido (2400 → 600), caso sin calibración | ✅ en la interfaz; el caso `i2c` compila en uno y mega2560 |
 | Calibración de Otto: programa que solo calibra y guarda (Nano) + programa que saluda con brazos calibrados; ocultar brazos; guardar/abrir; nombre reservado `heart` | ✅ compilan en nano; ejemplo Otto humanoide sigue compilando |
 | Matriz LED + boca de Otto: caso fijo `matriz` (matriz girada 90° con espejo + boca orientación 2; dibujo, animación de 3 cuadros, texto fijo con tilde y ñ, texto de variable, punto, brillo, bocas, gesto) | ✅ compila en uno (48 % flash), también con el paquete de la app; editor 8×8 con Girar/Espejo probado; el editor 5×8 de la LCD sigue igual |
+| Formato del proyecto (0.2.5): un proyecto con `circuito` y un campo inventado los conserva al abrir y guardar; nuevo proyecto y ejemplo los limpian; proyecto de la 9.0.0 abre con aviso; con un bloque desconocido explica el error y vuelve al proyecto anterior (21 bloques antes y después); los 16 casos dejan `.tbq.json` y `.hex` | ✅ `npm test`, `npm run compilar`, `test:ui` y `test:app` |
 | Otto completo: caso fijo `otto_todo` (coreografía de 6 columnas, mover un servo y un brazo, inclinarse ×2 lento, saltar ×3 rápido, crusaito hacia atrás, animación de boca, sonido deslizante, relajar/despertar, velocidad con y sin límite, reposo con brazos) + aviso de matriz de 5 columnas | ✅ compila en nano; 16 programas compilan |
 | `instalar-librerias.ps1` | ⬜ no probado (en este PC las librerías se instalaron una por una con el arduino-cli del IDE) |
 
@@ -702,6 +723,7 @@ Fase 2 ◐ App de escritorio para el aula (5 oct 2026):
           ✅ Carga y monitor con placas reales: Mega clon (6 oct), Uno R3 y Nano clon CH340 (7 oct).
           ✅ Releases v0.2.0 a v0.2.3 publicados como versiones de prueba (6 oct).
           ✅ v0.2.4: primera versión para el aula (7 oct).
+          ✅ v0.2.5: formato del proyecto estándar (campos conservados, creadoCon) y fixtures (7 oct).
           ✅ Actualización automática 0.2.0 → 0.2.1 comprobada en un PC (6 oct).
           ✅ 0.2.1 → 0.2.2 diferencial (≈10 s de descarga + ≈30 s de instalación).
           ⬜ Ligar los errores del compilador al bloque que los causa.

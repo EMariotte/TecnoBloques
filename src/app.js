@@ -745,35 +745,71 @@ function seleccionarPestana(p) {
 }
 
 /* ---------- Proyectos ---------- */
+// Formato del archivo .tbq.json (ver "Proyecto" en CLAUDE.md). Sube solo si cambia el significado de un campo.
+const FORMATO_PROYECTO = 1;
+const TB_VERSION = window.TB_VERSION || '0.0.0';
+const CAMPOS_PROYECTO = ['app', 'version', 'nombre', 'placa', 'nivel', 'bloques', 'embebidos', 'texto', 'creadoCon', 'guardado'];
+// Campos que esta versión no conoce (por ejemplo "circuito", de TecnoCircuito): se guardan de vuelta tal cual
+let extrasProyecto = {};
+/** -1, 0 o 1 al comparar dos versiones "0.2.10" con "0.2.9". Sin versión cuenta como 0. */
+function compararVersiones(a, b) {
+  const x = String(a || '0').split('.').map(n => parseInt(n, 10) || 0), y = String(b || '0').split('.').map(n => parseInt(n, 10) || 0);
+  for (let i = 0; i < Math.max(x.length, y.length); i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0) ? 1 : -1; }
+  return 0;
+}
+/** ¿El proyecto se hizo con una versión de TecnoBloques más nueva que esta? */
+function proyectoMasNuevo(p) {
+  return (p.version || 1) > FORMATO_PROYECTO || compararVersiones(p.creadoCon, TB_VERSION) > 0;
+}
 function proyectoActual() {
   const lib = leerLibreria();
   const usados = {};
   (ultimo.externos || []).forEach(n => { const d = embebidos[n] || lib[n]; if (d) usados[n] = d; });
-  return {
-    app: 'TecnoBloques', version: 1, nombre: $('nombreProyecto').value, placa: placaActual, nivel: nivelActual,
+  return Object.assign({}, extrasProyecto, {
+    app: 'TecnoBloques', version: FORMATO_PROYECTO, nombre: $('nombreProyecto').value, placa: placaActual, nivel: nivelActual,
     bloques: Blockly.serialization.workspaces.save(espacio), embebidos: usados,
-    texto: estado.texto ? $('editor').value : null, guardado: new Date().toISOString()
-  };
+    texto: estado.texto ? $('editor').value : null, creadoCon: TB_VERSION, guardado: new Date().toISOString()
+  });
 }
 let autoTimer = null;
 function autoguardar() { clearTimeout(autoTimer); autoTimer = setTimeout(() => { if (espacio) guardarLocal(CLAVE_AUTO, proyectoActual()); }, 600); }
-function cargarProyecto(p, silencioso) {
+function cargarProyecto(p, silencioso, sinRespaldo) {
   if (!p || p.app !== 'TecnoBloques' || !p.bloques) return 'Ese archivo no es un proyecto de TecnoBloques.';
   if (estado.texto) salirModoTexto(true);
+  const previo = proyectoActual(); // si este no abre, se vuelve al anterior (el autoguardado no queda vacío)
+  const masNuevo = proyectoMasNuevo(p);
   embebidos = p.embebidos || {};
+  extrasProyecto = {};
+  Object.keys(p).forEach(k => { if (!CAMPOS_PROYECTO.includes(k)) extrasProyecto[k] = p[k]; });
   if (p.placa && PLACAS[p.placa]) { placaActual = p.placa; $('placa').value = p.placa; }
   if ([1, 2, 3].includes(p.nivel)) ponerNivel(p.nivel, { vista: !silencioso, aviso: !silencioso });
   $('nombreProyecto').value = p.nombre || 'Mi proyecto';
   Blockly.Events.disable();
   try { espacio.clear(); } finally { Blockly.Events.enable(); }
   try { Blockly.serialization.workspaces.load(p.bloques, espacio); }
-  catch (e) { return 'No se pudo abrir el proyecto: ' + e.message; }
+  catch (e) {
+    if (!sinRespaldo) cargarProyecto(previo, true, true);
+    if (masNuevo) return `Este proyecto se hizo con TecnoBloques ${p.creadoCon || 'más nuevo'} y usa bloques que esta versión (${TB_VERSION}) no conoce. Actualiza TecnoBloques para abrirlo.`;
+    return 'No se pudo abrir el proyecto: ' + e.message;
+  }
   asegurarPrograma();
   encuadrar();
   if (p.texto) setTimeout(() => entrarModoTexto(p.texto, ''), 200);
-  if (!silencioso) revisarVersiones();
+  if (!silencioso) {
+    if (masNuevo) avisarProyectoNuevo(p, revisarVersiones);
+    else revisarVersiones();
+  }
   programarActualizacion();
   return true;
+}
+/** El proyecto viene de una versión más nueva: se abre igual, pero puede faltar algo. Luego sigue `despues`. */
+function avisarProyectoNuevo(p, despues) {
+  setTimeout(() => modal({
+    titulo: 'Este proyecto es de una versión más nueva',
+    cuerpo: [el('p', null, `Se hizo con TecnoBloques ${p.creadoCon || 'más nuevo'} y aquí tienes la ${TB_VERSION}. Puede que algo no funcione igual.`),
+      el('p', null, 'Pídele al instructor que actualice TecnoBloques en este computador.')],
+    botones: [{ texto: 'Entendido', primario: true, accion: () => { setTimeout(despues, 60); } }]
+  }), 60);
 }
 /** Si Mis bloques tiene una versión distinta de un bloque que trae el proyecto, pregunta cuál usar. */
 function revisarVersiones() {
@@ -798,6 +834,7 @@ function asegurarPrograma() {
 function nuevoProyecto() {
   if (estado.texto) salirModoTexto(true);
   embebidos = {};
+  extrasProyecto = {};
   espacio.clear();
   asegurarPrograma();
   $('nombreProyecto').value = 'Mi proyecto';
@@ -960,6 +997,7 @@ const EJEMPLOS = [
 function cargarEjemplo(ej) {
   if (estado.texto) salirModoTexto(true);
   embebidos = {};
+  extrasProyecto = {};
   placaActual = ej.placa; $('placa').value = ej.placa;
   $('nombreProyecto').value = ej.nombre;
   cargarXML(ej.xml);

@@ -6,6 +6,13 @@ RAIZ = pathlib.Path(__file__).resolve().parent.parent
 SALIDA = RAIZ / 'test' / 'salida'
 SALIDA.mkdir(exist_ok=True)
 
+
+def guardar(pag, ruta_ino, codigo):
+    """Guarda el .ino y, al lado, el proyecto .tbq.json tal como lo guarda el editor (fixtures de TecnoCircuito)."""
+    ruta_ino.write_text(codigo, encoding='utf-8')
+    proyecto = pag.evaluate("() => JSON.stringify(proyectoActual(), null, 1)")
+    ruta_ino.with_suffix('.tbq.json').write_text(proyecto, encoding='utf-8')
+
 with sync_playwright() as p:
     nav = p.chromium.launch()
     pag = nav.new_page(viewport={'width': 1400, 'height': 860})
@@ -24,7 +31,7 @@ with sync_playwright() as p:
         }}""")
         resultados[info['id']] = info
         (SALIDA / info['id']).mkdir(exist_ok=True)
-        (SALIDA / info['id'] / (info['id'] + '.ino')).write_text(info['codigo'], encoding='utf-8')
+        guardar(pag, SALIDA / info['id'] / (info['id'] + '.ino'), info['codigo'])
         pag.wait_for_timeout(300)
         pag.screenshot(path=str(SALIDA / f"{info['id']}.png"))
     # Otras placas para el ejemplo del carro
@@ -37,7 +44,7 @@ with sync_playwright() as p:
         }}""")
         nombre = 'carro_' + placa
         (SALIDA / nombre).mkdir(exist_ok=True)
-        (SALIDA / nombre / (nombre + '.ino')).write_text(info['codigo'], encoding='utf-8')
+        guardar(pag, SALIDA / nombre / (nombre + '.ino'), info['codigo'])
         resultados[nombre] = {'placa': placa, 'avisos': info['avisos']}
     json.dump({k: {'placa': v.get('placa'), 'avisos': v['avisos']} for k, v in resultados.items()}, sys.stdout, indent=1, ensure_ascii=False)
     print('\nERRORES:', *errores, sep='\n')

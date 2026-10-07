@@ -23,7 +23,9 @@ const iconos = `<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;b
   '<meta name="theme-color" content="#00304D">';
 const body = R('src/body.html').replace('<!--SIMBOLO-->', simbolo);
 const app = ['src/nucleo.js', 'src/bloques.js', 'src/app.js'].map(R).join('\n');
-const medioJS = `window.TB_MEDIA = ${JSON.stringify(media)};`;
+// La versión de la app va en la página: el proyecto la guarda en "creadoCon" (también en la versión web)
+const VERSION_TB = require('./package.json').version;
+const medioJS = `window.TB_MEDIA = ${JSON.stringify(media)}; window.TB_VERSION = ${JSON.stringify(VERSION_TB)};`;
 const fuentes = '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>' +
   '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@400;600&display=swap">';
 const esc = (s) => s.replace(/<\/script/gi, '<\\/script');

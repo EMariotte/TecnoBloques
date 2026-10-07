@@ -5,6 +5,13 @@ from playwright.sync_api import sync_playwright
 RAIZ = pathlib.Path(__file__).resolve().parent.parent
 SALIDA = RAIZ / 'test' / 'salida'
 
+
+def guardar(pag, ruta_ino, codigo):
+    """Guarda el .ino y, al lado, el proyecto .tbq.json tal como lo guarda el editor (fixtures de TecnoCircuito)."""
+    ruta_ino.write_text(codigo, encoding='utf-8')
+    proyecto = pag.evaluate("() => JSON.stringify(proyectoActual(), null, 1)")
+    ruta_ino.with_suffix('.tbq.json').write_text(proyecto, encoding='utf-8')
+
 JS_TODO = r"""(placa) => {
   nuevoProyecto();
   placaActual = placa; document.getElementById('placa').value = placa;
@@ -282,6 +289,41 @@ JS_OTTO_TODO = r"""() => {
   return { codigo: ultimo.codigo, avisos: ultimo.avisos.map(a => a.msg) };
 }"""
 
+# Un proyecto con campos que esta versión no conoce (el circuito de TecnoCircuito) los conserva al guardar
+JS_CAMPOS = r"""() => {
+  cargarEjemplo(EJEMPLOS[2]); actualizar();
+  const p = proyectoActual();
+  p.circuito = { formato: 1, placa: 'uno', componentes: [{ id: 'led1', tipo: 'led', x: 380, y: -100, rot: 0, props: { color: 'rojo' } }],
+    cables: [{ de: 'placa.D13', a: 'led1.anodo', color: 'naranja', puntos: [[125, -20.35]] }], protoboard: null };
+  p.campoInventado = { a: [1, 2, { b: 'ñ' }] };
+  const texto = JSON.stringify(p);
+  const ok = cargarProyecto(JSON.parse(texto), true);
+  const q = proyectoActual();
+  const conserva = JSON.stringify(q.circuito) === JSON.stringify(p.circuito) && JSON.stringify(q.campoInventado) === JSON.stringify(p.campoInventado);
+  nuevoProyecto();
+  const limpioAlNuevo = !('circuito' in proyectoActual());
+  cargarProyecto(JSON.parse(texto), true); cargarEjemplo(EJEMPLOS[0]);
+  const limpioAlEjemplo = !('circuito' in proyectoActual());
+  return { ok, conserva, limpioAlNuevo, limpioAlEjemplo, creadoCon: q.creadoCon, version: q.version, tb: TB_VERSION,
+    comparar: [compararVersiones('0.2.10', '0.2.9'), compararVersiones('0.2.4', '0.2.4'), compararVersiones('', '0.2.4'), compararVersiones('1.0', '0.9.9')] };
+}"""
+# Un proyecto de una versión más nueva: se abre con aviso; si trae bloques desconocidos, el error lo explica
+JS_NUEVO = r"""async () => {
+  cargarEjemplo(EJEMPLOS[2]); actualizar();
+  const p = proyectoActual();
+  p.creadoCon = '9.0.0';
+  cerrarModal(false);
+  const ok = cargarProyecto(JSON.parse(JSON.stringify(p)), false);
+  await new Promise(r => setTimeout(r, 200));
+  const titulo = document.getElementById('modalTitulo').textContent;
+  cerrarModal(false);
+  p.bloques.blocks.blocks.push({ type: 'bloque_del_futuro', x: 0, y: 0 });
+  const antes = espacio.getAllBlocks(false).length;
+  const error = cargarProyecto(JSON.parse(JSON.stringify(p)), false);
+  cerrarModal(false);
+  return { ok, titulo, error, bloquesAntes: antes, bloquesDespues: espacio.getAllBlocks(false).length, nombre: $('nombreProyecto').value };
+}"""
+
 with sync_playwright() as p:
     nav = p.chromium.launch()
     pag = nav.new_page(viewport={'width': 1400, 'height': 860})
@@ -296,18 +338,18 @@ with sync_playwright() as p:
     for placa in ['uno', 'mega']:
         r = pag.evaluate(JS_TODO, placa)
         d = SALIDA / f'todo_{placa}'; d.mkdir(exist_ok=True)
-        (d / f'todo_{placa}.ino').write_text(r['codigo'], encoding='utf-8')
+        guardar(pag, d / f'todo_{placa}.ino', r['codigo'])
         print(placa, 'omitidos:', r['omitidos'])
         print(' avisos:', *r['avisos'], sep='\n  ')
     pag.screenshot(path=str(SALIDA / 'todo.png'))
     r = pag.evaluate(JS_MIS)
     d = SALIDA / 'misbloques'; d.mkdir(exist_ok=True)
-    (d / 'misbloques.ino').write_text(r['codigo'], encoding='utf-8')
+    guardar(pag, d / 'misbloques.ino', r['codigo'])
     print('MIS BLOQUES lib:', r['lib'], 'embebidos:', r['embebidos'], 'mismo codigo tras reabrir:', r['igual'])
     print(' avisos:', r['avisos'])
     r = pag.evaluate(JS_PINES)
     d = SALIDA / 'pines'; d.mkdir(exist_ok=True)
-    (d / 'pines.ino').write_text(r['codigo'], encoding='utf-8')
+    guardar(pag, d / 'pines.ino', r['codigo'])
     print('PINES opciones:', r['opciones'])
     print(' avisos:', r['avisos'])
     # Renombrar un pin cambia los bloques que lo usan; deshacer lo devuelve
@@ -320,26 +362,28 @@ with sync_playwright() as p:
     print(' renombrar LedRojo->LedVerde:', tras, '| deshacer:', deshecho)
     r = pag.evaluate(JS_LISTAS)
     d = SALIDA / 'listas'; d.mkdir(exist_ok=True)
-    (d / 'listas.ino').write_text(r['codigo'], encoding='utf-8')
+    guardar(pag, d / 'listas.ino', r['codigo'])
     print('LISTAS avisos:', r['avisos'], '| igual tras reabrir:', r['igualTrasAbrir'])
     print(' avisos de error:', *r['avisosError'], sep='\n   ')
     for placa in ['uno', 'mega']:
         r = pag.evaluate(JS_I2C, placa)
         d = SALIDA / f'i2c_{placa}'; d.mkdir(exist_ok=True)
-        (d / f'i2c_{placa}.ino').write_text(r['codigo'], encoding='utf-8')
+        guardar(pag, d / f'i2c_{placa}.ino', r['codigo'])
         print(f'I2C {placa} avisos:', r['avisos'])
     for nombre, solo in (('otto_calibrar', True), ('otto_calibrado', False)):
         r = pag.evaluate(JS_OTTO_CAL, solo)
         d = SALIDA / nombre; d.mkdir(exist_ok=True)
-        (d / f'{nombre}.ino').write_text(r['codigo'], encoding='utf-8')
+        guardar(pag, d / f'{nombre}.ino', r['codigo'])
         print(f'{nombre} avisos:', r['avisos'])
     r = pag.evaluate(JS_MATRIZ)
     d = SALIDA / 'matriz'; d.mkdir(exist_ok=True)
-    (d / 'matriz.ino').write_text(r['codigo'], encoding='utf-8')
+    guardar(pag, d / 'matriz.ino', r['codigo'])
     print('MATRIZ avisos:', *r['avisos'], sep='\n   ')
     r = pag.evaluate(JS_OTTO_TODO)
     d = SALIDA / 'otto_todo'; d.mkdir(exist_ok=True)
-    (d / 'otto_todo.ino').write_text(r['codigo'], encoding='utf-8')
+    guardar(pag, d / 'otto_todo.ino', r['codigo'])
     print('OTTO TODO avisos:', *r['avisos'], sep='\n   ')
+    print('CAMPOS DEL PROYECTO:', pag.evaluate(JS_CAMPOS))
+    print('PROYECTO MAS NUEVO:', pag.evaluate(JS_NUEVO))
     print('ERRORES:', *errores, sep='\n')
     nav.close()

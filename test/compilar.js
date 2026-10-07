@@ -1,10 +1,12 @@
 // Compila con arduino-cli los .ino que generan las pruebas (test/salida/<nombre>/<nombre>.ino).
+// Deja también <nombre>.hex al lado: con el .tbq.json son las fixtures de TecnoCircuito (ver CONTRATO.md).
 // Requisitos: arduino-cli (en el PATH, en la variable ARDUINO_CLI o dentro del Arduino IDE 2 en Windows),
 // núcleo arduino:avr y las librerías de test/instalar-librerias.ps1.
 // Uso: npm test   (genera los .ino)   y luego   npm run compilar
 const { execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 
 const IDE_CLI = path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Arduino IDE', 'resources', 'app', 'lib', 'backend', 'resources', 'arduino-cli.exe');
 const CLI = process.env.ARDUINO_CLI || (fs.existsSync(IDE_CLI) ? IDE_CLI : 'arduino-cli');
@@ -34,7 +36,10 @@ for (const [nombre, fqbn] of Object.entries(FQBN)) {
   const dir = path.join(salida, nombre);
   if (!fs.existsSync(path.join(dir, nombre + '.ino'))) { console.log(`- ${nombre}: no generado, se omite`); continue; }
   try {
-    const out = execFileSync(CLI, ['compile', '--fqbn', fqbn, '--warnings', 'default', dir], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'tb-hex-'));
+    const out = execFileSync(CLI, ['compile', '--fqbn', fqbn, '--warnings', 'default', '--output-dir', tmp, dir], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    fs.copyFileSync(path.join(tmp, nombre + '.ino.hex'), path.join(dir, nombre + '.hex'));
+    fs.rmSync(tmp, { recursive: true, force: true });
     const uso = out.split('\n').filter(l => /Sketch uses|El sketch usa|Global variables|Las variables/.test(l)).join(' | ');
     console.log(`✔ ${nombre} (${fqbn}) ${uso}`);
   } catch (e) {
