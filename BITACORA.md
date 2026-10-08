@@ -588,3 +588,22 @@ Con esto, el flujo del aula queda probado de punta a punta:
 ```
 bloques → simulación → imagen SVG (evidencia) → netlist → placa en KiCad
 ```
+
+## 2026-10-08 — Contrato 1: servo y energía del USB
+
+- TecnoCircuito agrega la pieza Tecno **`servo`** (`GND`, `VCC`, `SIG`; `modelo` sg90 o mg90s) y la no idealidad **`limiteUSB`**: el 5V baja con la corriente, un golpe de corriente reinicia la placa y más de 500 mA sostenidos abren el fusible y la apagan.
+- Fallas nuevas por `alEvento`: `servo_alimentacion`, `reinicio_usb` y `fusible_usb`. El evento `reinicio_placa` empieza a emitirse (motivo `boton` o `energia_usb`) y sirve para el registro del estudio.
+- Aquí no hubo que cambiar código: «Simular» con modo realista ya pasa la clave nueva, y el panel muestra las fallas como las demás. Para usar el servo en un programa de bloques se usan los bloques de servo que ya existen (librería Servo).
+
+## 2026-10-08 — Validación humana del servo y de la energía del USB (Efraín)
+
+- Efraín probó en la app de escritorio los **dos modelos, SG90 y MG90S**, y escribió **dos programas propios** para validar cada situación descrita: el servo siguiendo al programa y los errores y límites de energía. **Aprobado:** «realmente funciona».
+- Siguen pendientes las medidas con hardware para ajustar los valores de partida: la corriente de cada servo, el 5V con servos y con cuántos servos se reinicia el Uno en el PC del aula (`prototipo/LEEME.md`, «Validar el servo y la energía del USB»).
+
+**Cierre de la sesión del 8 oct:**
+1. explicación e implementación de la netlist de KiCad, y el arreglo del solape con la plantilla «Arduino Uno Shield»;
+2. esquema del circuito y fixtures, con la prueba del contrato en los dos proyectos;
+3. validación humana del flujo completo, de bloques a KiCad;
+4. servo SG90/MG90S como pieza Tecno y energía del USB, también validados.
+
+Lo siguiente: la shield L293D y el motor DC (T3).
