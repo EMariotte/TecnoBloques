@@ -732,21 +732,85 @@ $('editor').addEventListener('keydown', (e) => {
 $('editor').addEventListener('input', () => autoguardar());
 
 /* ---------- Vistas y pestañas ---------- */
+// Vistas: bloques · dividido (bloques y panel) · codigo (solo el panel) · circuito (solo el circuito, si hay simulador).
+// En las vistas de «solo panel», la pestaña y la vista van juntas: elegir la pestaña Circuito pasa a la vista Circuito.
+let pestanaActual = 'codigo';
 function cambiarVista(v) {
+  if (v === 'circuito' && !simulador.disponible) v = 'dividido';
   estado.vista = v;
   $('principal').dataset.vista = v;
   document.querySelectorAll('#vistas button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.vista === v)));
+  if (v === 'circuito') ponerPestanas('circuito');
+  else if (v === 'codigo' && pestanaActual === 'circuito') ponerPestanas('codigo');
+  $('btnAmpliarCircuito').textContent = v === 'circuito' ? 'Reducir' : 'Ampliar';
+  $('btnAmpliarCircuito').title = v === 'circuito' ? 'Volver a ver los bloques al lado' : 'Ver solo el circuito, en toda la ventana';
   setTimeout(() => { if (espacio) Blockly.svgResize(espacio); }, 30);
-  guardarLocal(CLAVE_PREF, { vista: v });
+  guardarPreferencias({ vista: v });
 }
-function seleccionarPestana(p) {
+function ponerPestanas(p) {
+  pestanaActual = p;
   $('tCodigo').setAttribute('aria-selected', String(p === 'codigo'));
   $('tSerial').setAttribute('aria-selected', String(p === 'serial'));
   $('tCircuito').setAttribute('aria-selected', String(p === 'circuito'));
   $('pCodigo').hidden = p !== 'codigo';
   $('pSerial').hidden = p !== 'serial';
   $('pCircuito').hidden = p !== 'circuito';
+}
+function seleccionarPestana(p) {
+  ponerPestanas(p);
   if ((p === 'serial' || p === 'circuito') && estado.vista === 'bloques') cambiarVista('dividido');
+  else if (estado.vista === 'circuito' && p !== 'circuito') cambiarVista('codigo');
+  else if (estado.vista === 'codigo' && p === 'circuito') cambiarVista('circuito');
+}
+function guardarPreferencias(cambios) {
+  guardarLocal(CLAVE_PREF, Object.assign({}, leerLocal(CLAVE_PREF) || {}, cambios));
+}
+
+/* ---------- Divisor entre los bloques y el panel: se arrastra para agrandar el circuito o el código ---------- */
+const ANCHO_PANEL_MIN = 320, ANCHO_BLOQUES_MIN = 280, ANCHO_DIVISOR = 6;
+let anchoPanel = null; // px; null = el 40 % de siempre
+function ponerAnchoPanel(px) {
+  const p = $('principal');
+  anchoPanel = px ? Math.round(Math.max(ANCHO_PANEL_MIN, Math.min(px, p.clientWidth - ANCHO_BLOQUES_MIN - ANCHO_DIVISOR))) : null;
+  if (anchoPanel) p.style.setProperty('--ancho-panel', anchoPanel + 'px');
+  else p.style.removeProperty('--ancho-panel');
+}
+function iniciarDivisor(guardado) {
+  const d = $('divisor'), p = $('principal');
+  let arrastre = null, cuadro = 0;
+  const reacomodar = () => { cuadro = 0; if (espacio) Blockly.svgResize(espacio); };
+  const terminar = () => { reacomodar(); guardarPreferencias({ anchoPanel }); };
+  if (guardado) ponerAnchoPanel(guardado);
+  d.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    d.setPointerCapture(e.pointerId);
+    arrastre = { derecha: p.getBoundingClientRect().right };
+    d.classList.add('arrastrando'); p.classList.add('redimensionando');
+  });
+  d.addEventListener('pointermove', (e) => {
+    if (!arrastre) return;
+    ponerAnchoPanel(arrastre.derecha - e.clientX - ANCHO_DIVISOR / 2);
+    if (!cuadro) cuadro = requestAnimationFrame(reacomodar);
+  });
+  const soltar = () => {
+    if (!arrastre) return;
+    arrastre = null;
+    d.classList.remove('arrastrando'); p.classList.remove('redimensionando');
+    terminar();
+  };
+  d.addEventListener('pointerup', soltar);
+  d.addEventListener('pointercancel', soltar);
+  d.addEventListener('dblclick', () => { ponerAnchoPanel(null); terminar(); });
+  d.addEventListener('keydown', (e) => {
+    const paso = e.key === 'ArrowLeft' ? 40 : e.key === 'ArrowRight' ? -40 : 0;
+    if (!paso) return;
+    e.preventDefault();
+    ponerAnchoPanel($('panel').getBoundingClientRect().width + paso);
+    terminar();
+  });
+  // Si la ventana se achica, el panel no puede dejar los bloques sin espacio.
+  window.addEventListener('resize', () => { if (anchoPanel) ponerAnchoPanel(anchoPanel); });
 }
 
 /* ---------- Proyectos ---------- */
@@ -1450,9 +1514,27 @@ function detenerSimulacion() {
   const sim = simulador.sim;
   if (!sim) return;
   simulador.sim = null;
-  try { if (sim._destruir) sim._destruir(); else sim.detener(); } catch (e) { /* ya estaba detenida */ }
+  // Contrato 1: destruir() detiene y libera el Worker. Los paquetes anteriores solo tenían _destruir().
+  try { if (sim.destruir) sim.destruir(); else if (sim._destruir) sim._destruir(); else sim.detener(); } catch (e) { /* ya estaba detenida */ }
   uiSimulador();
   uiSerial();
+}
+/** El circuito como imagen SVG (lienzo.exportarSVG, contrato 1): para la documentación del proyecto o una evidencia en TecnoRuta. */
+function guardarImagenCircuito() {
+  const lienzo = simulador.lienzo;
+  if (!lienzo || typeof lienzo.exportarSVG !== 'function') { mostrarToast('Esta versión del simulador no guarda imágenes.'); return; }
+  const svg = lienzo.exportarSVG();
+  const nombre = nombreArchivoBase() + '-circuito.svg';
+  const vista = el('img', { class: 'vista-imagen', alt: 'Vista previa del circuito', src: 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg) });
+  modal({
+    titulo: 'Guardar imagen del circuito',
+    cuerpo: [el('p', null, 'Es una imagen SVG: se ve nítida a cualquier tamaño y se puede pegar en Word, en una presentación o subir a TecnoRuta como evidencia.'),
+      vista, el('p', { class: 'muted' }, 'Archivo: ', el('code', null, nombre))],
+    botones: [
+      { texto: 'Descargar', primario: true, accion: () => { descargar(nombre, svg, 'image/svg+xml'); return false; } },
+      { texto: 'Cerrar' }
+    ]
+  });
 }
 /** Estado de la pestaña Circuito, del botón de la barra y del monitor mientras se simula. */
 function uiSimulador(texto) {
@@ -1461,13 +1543,14 @@ function uiSimulador(texto) {
   $('btnSimular').disabled = simulador.compilando || !simulador.lienzo;
   $('btnSimular').textContent = corriendo ? 'Simular de nuevo' : 'Simular';
   $('btnDetenerSim').disabled = !corriendo;
+  $('btnImagenCircuito').disabled = !simulador.lienzo;
   $('puntoCircuito').classList.toggle('on', corriendo);
   let t = texto;
   if (!t) {
     if (!simulador.lienzo) t = 'Sin simulador para esta placa';
     else if (!corriendo) t = 'Arma el circuito y pulsa Simular';
     else {
-      const m = simulador.sim._medidas ? simulador.sim._medidas() : null;
+      const s = simulador.sim, m = s.medidas ? s.medidas() : s._medidas ? s._medidas() : null; // medidas(): contrato 1
       t = 'Simulando' + (m ? ` · ${(m.msSimulados / 1000).toFixed(1).replace('.', ',')} s · velocidad ${Math.round(m.velocidad * 100)} %` : '');
       if (codigoActual() !== simulador.codigo) t += ' · cambiaste el programa: pulsa «Simular de nuevo»';
     }
@@ -1535,6 +1618,7 @@ function iniciar() {
   if (auto) ok = cargarProyecto(auto, true) === true;
   if (!ok) nuevoProyecto();
   const pref = leerLocal(CLAVE_PREF);
+  iniciarDivisor(pref && pref.anchoPanel);
   cambiarVista(pref && pref.vista ? pref.vista : (window.innerWidth < 760 || nivelActual === 1 ? 'bloques' : 'dividido'));
   ponerNivel(nivelActual);
   refrescarPines();
@@ -1543,11 +1627,14 @@ function iniciar() {
   // ---- Simulador (solo si hay paquete TecnoCircuito, contrato compatible y app de escritorio) ----
   if (simulador.disponible) {
     $('tCircuito').hidden = false;
+    $('vCircuito').hidden = false;
+    $('btnAmpliarCircuito').addEventListener('click', () => cambiarVista(estado.vista === 'circuito' ? 'dividido' : 'circuito'));
     $('btnSimularBarra').hidden = false;
     $('tCircuito').addEventListener('click', () => seleccionarPestana('circuito'));
     $('btnSimular').addEventListener('click', simular);
     $('btnSimularBarra').addEventListener('click', simular);
     $('btnDetenerSim').addEventListener('click', detenerSimulacion);
+    $('btnImagenCircuito').addEventListener('click', guardarImagenCircuito);
     $('formSim').addEventListener('submit', (e) => {
       e.preventDefault();
       const t = $('txtSim').value;

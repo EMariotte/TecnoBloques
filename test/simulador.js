@@ -80,7 +80,7 @@ const LIENZO = "document.querySelector('#lienzoCircuito .tecnocircuito').shadowR
   await win.locator('#btnSimularBarra').click();
   const arranco = await esperar(() => simulador.sim && /Escribe on u off/.test($('salidaSerial').textContent));
   revisar(arranco, 'compila con arduino-cli, simula y el monitor muestra «Escribe on u off»');
-  const hilo = await win.evaluate(() => simulador.sim && simulador.sim._medidas().hilo);
+  const hilo = await win.evaluate(() => simulador.sim && simulador.sim.medidas().hilo);
   revisar(hilo === 'worker', `el chip corre en un Web Worker dentro de la app (${hilo})`);
   revisar(await win.evaluate(() => $('estadoSerial').textContent === 'Simulación' && !$('pCircuito').hidden), 'el monitor dice «Simulación» y se ve la pestaña Circuito');
   await win.locator('#txtSim').fill('on'); // el monitor pequeño de la pestaña Circuito
@@ -117,7 +117,7 @@ const LIENZO = "document.querySelector('#lienzoCircuito .tecnocircuito').shadowR
     }, T2(posicion));
     if (posicion === 0.5) revisar(/analogWrite\(9, constrain\(analogRead\(A0\) \/ 4, 0, 255\)\)/.test(codigo), 'los bloques generan analogWrite(9, … analogRead(A0) / 4 …)');
     await win.locator('#btnSimularBarra').click();
-    const listo = await esperar(() => simulador.sim && simulador.sim._medidas().msSimulados > 800);
+    const listo = await esperar(() => simulador.sim && simulador.sim.medidas().msSimulados > 800);
     const m = await win.evaluate(() => simulador.sim && simulador.sim._mediciones());
     const util = m && m.pwm ? m.pwm.D9 || 0 : 0;
     const esperado = Math.floor(Math.min(1023, Math.round(posicion * 1024)) / 4) / 255;
@@ -128,7 +128,7 @@ const LIENZO = "document.querySelector('#lienzoCircuito .tecnocircuito').shadowR
   }
 
   // 4. El circuito se guarda en el proyecto: un cambio en el lienzo llega a proyectoActual() y vuelve al abrir
-  await win.evaluate(`${LIENZO}.querySelector('[data-tipo="led"]').click()`);
+  await win.evaluate(`${LIENZO}.querySelector('[data-accion="agregar"][data-tipo="led"]').click()`);
   await win.waitForTimeout(300);
   const guardado = await win.evaluate(() => {
     const p = JSON.parse(JSON.stringify(proyectoActual()));
@@ -140,6 +140,48 @@ const LIENZO = "document.querySelector('#lienzoCircuito .tecnocircuito').shadowR
   });
   revisar(guardado.antes === 4 && guardado.despues === 4 && guardado.pot, `agregar un LED en el lienzo se guarda en el proyecto y vuelve al abrirlo (${guardado.antes} → ${guardado.despues} piezas)`);
   revisar(guardado.vacio, 'un proyecto nuevo empieza sin circuito');
+
+  // 4b. Agrandar el circuito: el divisor, la vista «Circuito» y el botón «Ampliar»
+  await win.evaluate(() => { cambiarVista('dividido'); seleccionarPestana('circuito'); });
+  await win.waitForTimeout(200);
+  const ancho = () => win.evaluate(() => Math.round($('panel').getBoundingClientRect().width));
+  const antesDivisor = await ancho();
+  const caja = await win.locator('#divisor').boundingBox();
+  await win.mouse.move(caja.x + caja.width / 2, caja.y + 200);
+  await win.mouse.down();
+  await win.mouse.move(caja.x + caja.width / 2 - 200, caja.y + 200, { steps: 8 });
+  await win.mouse.up();
+  const despuesDivisor = await ancho();
+  const guardadoDivisor = await win.evaluate(() => leerLocal(CLAVE_PREF).anchoPanel);
+  revisar(Math.abs(despuesDivisor - antesDivisor - 200) <= 4 && guardadoDivisor === despuesDivisor,
+    `arrastrar el divisor agranda el panel del circuito (${antesDivisor} → ${despuesDivisor} px) y se recuerda`);
+  await win.locator('#btnAmpliarCircuito').click();
+  await win.waitForTimeout(200);
+  const ampliado = await win.evaluate(() => ({
+    vista: estado.vista, bloques: getComputedStyle($('zonaBloques')).display, boton: $('btnAmpliarCircuito').textContent,
+    lleno: Math.abs($('panel').getBoundingClientRect().width - $('principal').getBoundingClientRect().width) < 2,
+  }));
+  revisar(ampliado.vista === 'circuito' && ampliado.bloques === 'none' && ampliado.lleno && ampliado.boton === 'Reducir',
+    '«Ampliar» deja solo el circuito en toda la ventana y el botón pasa a «Reducir»');
+  await win.screenshot({ path: path.join(SALIDA, 'sim_4_circuito_ampliado.png') });
+  await win.locator('#tCodigo').click();
+  const conCodigo = await win.evaluate(() => estado.vista);
+  await win.locator('#vCircuito').click();
+  const deNuevo = await win.evaluate(() => ({ vista: estado.vista, pestana: !$('pCircuito').hidden }));
+  revisar(conCodigo === 'codigo' && deNuevo.vista === 'circuito' && deNuevo.pestana,
+    'en la vista de solo panel, la pestaña C++ pasa a la vista C++ y el botón «Circuito» vuelve al circuito');
+  await win.locator('#btnAmpliarCircuito').click();
+  await win.locator('#divisor').dblclick();
+  revisar(await win.evaluate(() => estado.vista === 'dividido' && leerLocal(CLAVE_PREF).anchoPanel === null),
+    '«Reducir» vuelve a la vista dividida y el doble clic en el divisor devuelve el tamaño normal');
+
+  // 4c. Guardar el circuito como imagen SVG (lienzo.exportarSVG, contrato 1)
+  await win.locator('#btnImagenCircuito').click();
+  const imagen = await esperar(() => !$('modal').hidden && document.querySelector('#modalCuerpo .vista-imagen') &&
+    document.querySelector('#modalCuerpo .vista-imagen').naturalWidth > 100);
+  revisar(imagen, `«Guardar imagen» muestra la vista previa del SVG («${await win.evaluate(() => $('modalTitulo').textContent)}»)`);
+  await win.screenshot({ path: path.join(SALIDA, 'sim_5_imagen.png') });
+  await win.evaluate(() => cerrarModal(false));
 
   // 5. Programa con error: se explica igual que al subir
   await win.evaluate(() => { entrarModoTexto('void setup() { velocidad = 3; }\nvoid loop() {}\n', ''); });

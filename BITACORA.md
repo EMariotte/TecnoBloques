@@ -513,3 +513,39 @@ Anotado con el mismo título en las dos bitácoras. Efraín validó en la práct
 **Las pruebas de siempre pasan** con el build normal: `npm test`, `test:ui` y `test:app`. La pestaña «Circuito» queda oculta.
 
 **Pendientes:** el registro con el alias de TecnoRuta, `destruir()` y `medidas()` en el contrato, y depender de una versión etiquetada para que el simulador llegue al instalador.
+
+## 2026-10-07 — Contrato 1: medidas(), destruir() y exportarSVG()
+
+Anotado con el mismo título en las dos bitácoras. Lo pidió Efraín al revisar las dos páginas conectadas.
+
+- **Contrato:** TecnoBloques ya usa `sim.medidas()` y `sim.destruir()`. Si el paquete es anterior, sigue con los nombres del prototipo (`_medidas`, `_destruir`).
+- **Agrandar el circuito:**
+  - un **divisor** entre los bloques y el panel, que se arrastra con el mouse o se mueve con las flechas. El doble clic devuelve el tamaño normal, y el ancho se recuerda en las preferencias (`anchoPanel`);
+  - la **vista «Circuito»**, al lado de Bloques, Dividido y C++, deja solo el circuito en toda la ventana. Aparece solo si hay simulador;
+  - el botón **«Ampliar» / «Reducir»** en la pestaña Circuito entra y sale de esa vista;
+  - en las vistas de solo panel, la pestaña y la vista van juntas: la pestaña C++ pasa a la vista C++, y la pestaña Circuito a la vista Circuito.
+- **«Guardar imagen»** en la pestaña Circuito: vista previa del SVG (`lienzo.exportarSVG()`) y descarga de `<proyecto>-circuito.svg`, para la documentación del proyecto o una evidencia en TecnoRuta.
+- **Pruebas:** `npm test`, `test:ui` y `test:app` sin errores. `test:simulador` pasa 24 de 24, con 5 comprobaciones nuevas: divisor, «Ampliar», vista C++ y Circuito, «Reducir» con doble clic e imagen.
+
+## 2026-10-07 — Contrato 1: botón, colores y entradas (T1 y T2)
+
+Anotado con el mismo título en las dos bitácoras. El simulador ya tiene completas las tareas T1 (botón y entrada flotante) y T2 (ruido del ADC y entrada analógica al aire).
+
+- **Pieza nueva `pulsador`** en el lienzo («+ Botón»). Se presiona con el mouse mientras se simula.
+- **Colores de cable:** 10, en el orden del código de colores, con las teclas 0 a 9.
+- **Evento nuevo `boton_pulsado`** (`{ id, ms }`), que llega por el mismo `alEvento` del lienzo.
+- **Para TecnoBloques no cambia nada:** guarda el circuito sin interpretarlo y anota los eventos que le lleguen. `test:simulador` pasa 24 de 24 con el paquete nuevo, que ya muestra «+ Botón».
+
+## 2026-10-07 — Contrato 1: protoboard
+
+Anotado con el mismo título en las dos bitácoras. El simulador tiene ahora una media protoboard de 400 puntos (prototipo 4).
+
+- **Cómo funciona:** las piezas se encajan en sus huecos al soltarlas, la tira unida por dentro se ilumina al pasar el mouse, y las piezas encajadas se mueven con la protoboard.
+- **Formato:** el circuito trae el campo `protoboard` (`{ tipo: "media", x, y }` o `null`), y cada pieza encajada un campo `en` con qué pata va en qué hueco.
+- **El lienzo agrupa las piezas en un menú «+ Agregar».** La prueba `test/simulador.js` ahora agrega el LED con el ítem del menú (`[data-accion="agregar"][data-tipo="led"]`).
+- **Para TecnoBloques no cambia nada más:** guarda el circuito sin interpretarlo. `test:simulador` pasa 24 de 24.
+
+## 2026-10-07 — TecnoCircuito publicado
+
+- Efraín dio por validado el prototipo del simulador. El repositorio **https://github.com/EMariotte/TecnoCircuito** quedó público (Apache 2.0), con la historia de los prototipos en sus commits.
+- TecnoBloques sigue usando la copia local con `npm run app:simulador`. **Falta** la primera etiqueta de TecnoCircuito con `dist/tecnocircuito.js` para depender de ella y llevar el simulador al instalador.

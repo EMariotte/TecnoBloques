@@ -159,11 +159,19 @@ details.subir-detalle pre { max-height: 220px; overflow: auto; font-family: var(
 .menu-lista small { color: var(--muted); }
 
 /* ---------- Área principal ---------- */
-#principal { display: grid; min-height: 0; grid-template-columns: minmax(0, 1fr) minmax(360px, 40%); }
+/* --ancho-panel lo pone el divisor (el aprendiz lo arrastra); sin él, el panel toma el 40 %. */
+#principal { display: grid; min-height: 0; grid-template-columns: minmax(0, 1fr) 6px var(--ancho-panel, minmax(360px, 40%)); }
 #principal[data-vista="bloques"] { grid-template-columns: minmax(0, 1fr); }
 #principal[data-vista="bloques"] #panel { display: none; }
-#principal[data-vista="codigo"] { grid-template-columns: minmax(0, 1fr); }
-#principal[data-vista="codigo"] #zonaBloques { display: none; }
+#principal[data-vista="codigo"], #principal[data-vista="circuito"] { grid-template-columns: minmax(0, 1fr); }
+#principal[data-vista="codigo"] #zonaBloques, #principal[data-vista="circuito"] #zonaBloques { display: none; }
+#principal:not([data-vista="dividido"]) #divisor { display: none; }
+#principal[data-vista="circuito"] #panel { border-left: 0; }
+#divisor { position: relative; cursor: col-resize; background: var(--line); touch-action: none; }
+#divisor::after { content: ""; position: absolute; inset: 0 -5px; } /* zona de agarre más ancha que la línea */
+#divisor:hover, #divisor.arrastrando, #divisor:focus-visible { background: var(--accent); outline: none; }
+#principal.redimensionando { cursor: col-resize; user-select: none; }
+#principal.redimensionando iframe, #principal.redimensionando #lienzoCircuito { pointer-events: none; }
 #zonaBloques { position: relative; min-width: 0; min-height: 0; }
 #blockly { position: absolute; inset: 0; }
 #avisoTexto {
@@ -251,6 +259,7 @@ details.subir-detalle pre { max-height: 220px; overflow: auto; font-family: var(
 #modalCuerpo textarea { font-family: var(--mono); font-size: 12.5px; min-height: 190px; width: 100%; box-sizing: border-box; background: var(--code-bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px; color: var(--code-ink); }
 #modalCuerpo .entrada { width: 100%; box-sizing: border-box; }
 #modalCuerpo ul { margin: 0; padding-left: 18px; }
+#modalCuerpo .vista-imagen { display: block; max-width: 100%; max-height: 50vh; margin: 0 auto; background: #fff; border: 1px solid var(--line); border-radius: 6px; }
 #modalCuerpo code { font-family: var(--mono); font-size: 12.5px; background: var(--panel-2); padding: 1px 4px; border-radius: 4px; }
 #modalCuerpo .fila-lib { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); }
 #modalCuerpo .fila-lib span { flex: 1; }
@@ -318,6 +327,7 @@ details.subir-detalle pre { max-height: 220px; overflow: auto; font-family: var(
   #principal[data-vista="codigo"] { grid-template-rows: auto; }
   #principal[data-vista="bloques"] { grid-template-rows: calc(100vh - 170px); }
   #panel { border-left: 0; border-top: 1px solid var(--line); min-height: 60vh; }
+  #divisor { display: none; }
   .acciones { margin-left: 0; }
   #nombreProyecto { width: 9em; }
 }

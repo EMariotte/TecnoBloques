@@ -462,7 +462,7 @@ Un solo archivo JSON lleva todo lo necesario para **abrir el proyecto en otro co
 
 ## Proyecto hermano: TecnoCircuito (simulador)
 
-> Iniciado el 7 de octubre de 2026. Repositorio propio `EMariotte/TecnoCircuito`, en la carpeta hermana `..\TecnoCircuito`.
+> Iniciado el 7 de octubre de 2026. Repositorio propio y público, https://github.com/EMariotte/TecnoCircuito (publicado el 7 oct), en la carpeta hermana `..\TecnoCircuito`.
 > **La fuente única del contrato entre los dos es `..\TecnoCircuito\CONTRATO.md`.** Esta sección lo resume desde el lado de TecnoBloques. Antes de cambiar algo de la tabla «Quién hace qué», lee ese archivo.
 
 TecnoCircuito es un simulador de circuitos con microcontrolador: avr8js ejecuta el `.hex`, un solucionador eléctrico propio (análisis nodal modificado con Newton-Raphson) calcula el circuito y los dibujos salen de @wokwi/elements. Todo es MIT o propio, así que TecnoBloques sigue en Apache 2.0. **Solo simula en la app de escritorio,** porque necesita el `.hex` que compila arduino-cli. En la versión web solo habrá cableado y documentación.
@@ -522,8 +522,10 @@ escritorio/main.js
 - ✅ **Scripts:** `app:simulador` y `build:simulador` (`node build.js --simulador-local`) y `test:simulador`. `build.js` embebe la copia local solo con esa bandera (o una versión etiquetada en `node_modules/tecnocircuito`); el build normal y el instalador salen sin simulador.
 - ✅ **Seguro del instalador:** `empaquetar.js` se niega a empaquetar si el HTML trae `TB_SIMULADOR_ORIGEN = "local"`.
 - ⬜ **Registro:** campo para el alias del aprendiz e IPC `tb:registrar`, que agrega líneas al archivo `.jsonl`. Hoy los eventos quedan en memoria (`simulador.eventos`).
-- ⬜ **Contrato:** cuando TecnoCircuito agregue `sim.destruir()` y `sim.medidas()`, dejar de usar `_destruir()` y `_medidas()` (solo del prototipo).
-- ⬜ **Versión etiquetada:** cuando exista el repositorio de TecnoCircuito, depender de una etiqueta (`node_modules/tecnocircuito`) para que el simulador pueda llegar al instalador.
+- ✅ **Contrato:** `sim.destruir()` y `sim.medidas()` (con respaldo a `_destruir()`/`_medidas()` para paquetes anteriores).
+- ✅ **Agrandar el circuito:** divisor arrastrable entre bloques y panel (`iniciarDivisor`, preferencia `anchoPanel`), vista «Circuito» (`cambiarVista('circuito')`, solo con simulador) y botón «Ampliar»/«Reducir». En las vistas de solo panel, pestaña y vista van juntas (`ponerPestanas`).
+- ✅ **«Guardar imagen»:** vista previa y descarga del SVG del circuito (`lienzo.exportarSVG()`, contrato 1).
+- ◐ **Versión etiquetada:** el repositorio de TecnoCircuito ya está publicado (https://github.com/EMariotte/TecnoCircuito, 7 oct). Falta su primera etiqueta con `dist/tecnocircuito.js`; después, depender de ella (`node_modules/tecnocircuito`) para que el simulador pueda llegar al instalador.
 
 ### Mecanismo para que ninguno rompa al otro
 
@@ -761,7 +763,9 @@ Fase 5 ⬜ Nivel 2 de librerías: diseñador de bloques para instructores (forma
 
 Fase 6 ⬜ Nivel 3: catálogo compartido de bloques (posiblemente Supabase, como Tecnohonguera).
 
-Ideas sueltas: coreografías de Otto con matrices, calibrar en vivo por el monitor serial,
+Ideas sueltas: DIAGRAMA DE FLUJO del programa (pedido por Efraín el 7 oct 2026): armarlo a partir
+de los bloques (inicio, acciones, decisiones «si», repeticiones) y guardarlo en SVG para la documentación y
+TecnoRuta, igual que el circuito (lienzo.exportarSVG). Coreografías de Otto con matrices, calibrar en vivo por el monitor serial,
 más ejemplos y retos por práctica, exportar a PDF una ficha del programa para la evidencia
 del aprendiz, concurso para ponerle nombre a la mascota (el robot de la marca).
 ```

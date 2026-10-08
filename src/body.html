@@ -21,6 +21,7 @@
       <button type="button" id="vBloques" data-vista="bloques" aria-pressed="false">Bloques</button>
       <button type="button" id="vDividido" data-vista="dividido" aria-pressed="true">Dividido</button>
       <button type="button" id="vCodigo" data-vista="codigo" aria-pressed="false">C++</button>
+      <button type="button" id="vCircuito" data-vista="circuito" aria-pressed="false" title="Solo el circuito, en toda la ventana" hidden>Circuito</button>
     </div>
     <div class="acciones">
       <div class="menu">
@@ -48,6 +49,8 @@
         </div>
       </div>
     </section>
+
+    <div id="divisor" role="separator" aria-orientation="vertical" tabindex="0" aria-label="Tamaño del panel" title="Arrastra para agrandar el panel · Doble clic: tamaño normal"></div>
 
     <section id="panel" aria-label="Código y monitor serial">
       <div class="pestanas" role="tablist">
@@ -101,6 +104,8 @@
           <span class="estado" id="estadoSim">Arma el circuito y pulsa Simular</span>
           <button type="button" class="btn chico primario" id="btnSimular">Simular</button>
           <button type="button" class="btn chico" id="btnDetenerSim" disabled>Detener</button>
+          <button type="button" class="btn chico" id="btnAmpliarCircuito" title="Ver solo el circuito, en toda la ventana">Ampliar</button>
+          <button type="button" class="btn chico" id="btnImagenCircuito" title="Guardar el circuito como imagen para la documentación o una evidencia">Guardar imagen</button>
         </div>
         <div class="nota-serial" id="notaCircuito" hidden></div>
         <ul id="fallasSim" aria-live="polite" hidden></ul>
