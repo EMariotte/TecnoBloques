@@ -46,6 +46,21 @@ with sync_playwright() as p:
         (SALIDA / nombre).mkdir(exist_ok=True)
         guardar(pag, SALIDA / nombre / (nombre + '.ino'), info['codigo'])
         resultados[nombre] = {'placa': placa, 'avisos': info['avisos']}
+    # Tarea T1 con su circuito (fixture del contrato con TecnoCircuito): el pin 13 copia lo que lee el pin 2,
+    # con el botón y la pull-down armados en la protoboard. El circuito viaja en el proyecto, como lo guarda la app.
+    circuito = json.loads((RAIZ / 'test' / 'circuitos' / 't1_protoboard.json').read_text(encoding='utf-8'))
+    info = pag.evaluate('''(circuito) => {
+        cargarEjemplo({ id: 't1_protoboard', nombre: 'T1 en protoboard', placa: 'uno', xml: `<xml xmlns="https://developers.google.com/blockly/xml">
+<block type="programa" x="40" y="40"><statement name="LOOP">
+ <block type="escribir_digital_valor"><field name="PIN">13</field><value name="V"><block type="leer_digital"><field name="PIN">2</field></block></value></block>
+</statement></block></xml>` });
+        extrasProyecto.circuito = circuito;
+        actualizar();
+        return { codigo: ultimo.codigo, avisos: ultimo.avisos.map(a => a.msg), circuito: proyectoActual().circuito.componentes.length };
+    }''', circuito)
+    (SALIDA / 't1_protoboard').mkdir(exist_ok=True)
+    guardar(pag, SALIDA / 't1_protoboard' / 't1_protoboard.ino', info['codigo'])
+    resultados['t1_protoboard'] = {'placa': 'uno', 'avisos': info['avisos'] + [f"circuito con {info['circuito']} piezas"]}
     json.dump({k: {'placa': v.get('placa'), 'avisos': v['avisos']} for k, v in resultados.items()}, sys.stdout, indent=1, ensure_ascii=False)
     print('\nERRORES:', *errores, sep='\n')
     nav.close()

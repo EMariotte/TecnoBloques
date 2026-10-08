@@ -560,3 +560,31 @@ Anotado con el mismo título en las dos bitácoras. El simulador tiene ahora una
 - En la pestaña Circuito, el botón **«Llevar a KiCad»** abre la ventana de exportar (Copiar y Descargar `<proyecto>-circuito.net`), con la explicación para el aprendiz: en KiCad, editor de placas → Archivo → Importar → Netlist.
 - Si el simulador embebido no trae la función, avisa en vez de fallar.
 - `test:simulador`: un paso nuevo (4d), que pasa.
+
+## 2026-10-08 — Contrato 1: el esquema del circuito y las fixtures
+
+- TecnoCircuito publica `contrato/circuito.schema.json` (JSON Schema 2020-12). Es la fuente de los pines de cada pieza, los colores y los huecos de la protoboard. **No cambia el formato:** escribe las reglas que ya había, y es tolerante con piezas y campos nuevos.
+- TecnoCircuito ya trae las fixtures de aquí (`npm run fixtures`: los 16 casos de `test/salida/`, de la 0.2.5). Allá, los 13 `.hex` del Uno y del Nano corren en el chip simulado y el eco responde.
+- **Pendiente aquí:** un caso de prueba con `circuito` (por ejemplo, la T1 en protoboard). Ninguna fixture lo trae, porque se generaron antes del simulador.
+
+## 2026-10-08 — Contrato 1: la prueba con circuito en los dos proyectos
+
+- **Caso nuevo `t1_protoboard`** (`test/prueba.py`): el programa de bloques «escribir en el pin 13 lo que lee el pin 2», con la T1 armada en la protoboard en el campo `circuito` (`test/circuitos/t1_protoboard.json`). Compila en el Uno (`npm run compilar`). TecnoCircuito lo trae como fixture y lo corre con su circuito: el LED sigue al botón.
+- **`test:simulador`** revisa el circuito que guarda la app con el revisor de TecnoCircuito (`contrato/circuito.schema.json` más las referencias). Si falta la carpeta hermana, se salta.
+- **«Llevar a KiCad»:** el texto explica que el proyecto se crea desde la plantilla «Arduino Uno Shield» de KiCad. La netlist ahora lleva los conectores J1–J4 de esa plantilla, así que las piezas ya no se solapan con el Uno.
+
+## 2026-10-08 — Validación humana del flujo completo (Efraín)
+
+Efraín llevó un proyecto **desde cero** por todo el camino, en la app de escritorio (`npm run app:simulador`), y lo aprobó:
+
+1. armó el programa con bloques y conectó los componentes en el simulador;
+2. lo simuló, y funcionó;
+3. exportó el circuito como imagen SVG y como netlist;
+4. creó el proyecto en KiCad 10 desde la plantilla «Arduino Uno Shield» e importó la netlist: **KiCad la aceptó y el DRC no vio inconvenientes**;
+5. guardó el proyecto como `.tbq.json` y lo volvió a abrir desde la app, con los bloques y el circuito conectado.
+
+Con esto, el flujo del aula queda probado de punta a punta:
+
+```
+bloques → simulación → imagen SVG (evidencia) → netlist → placa en KiCad
+```

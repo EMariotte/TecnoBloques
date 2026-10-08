@@ -1,0 +1,145 @@
+{
+ "formato": 1,
+ "placa": "uno",
+ "protoboard": {
+  "tipo": "media",
+  "x": 300,
+  "y": 30
+ },
+ "componentes": [
+  {
+   "id": "r1",
+   "tipo": "resistencia",
+   "x": 429.6,
+   "y": 83.35,
+   "rot": 0,
+   "props": {
+    "ohmios": 220
+   },
+   "en": {
+    "1": "protoboard.c13",
+    "2": "protoboard.c19"
+   }
+  },
+  {
+   "id": "led1",
+   "tipo": "led",
+   "x": 405,
+   "y": 27.8,
+   "rot": 0,
+   "props": {
+    "color": "rojo"
+   },
+   "en": {
+    "catodo": "protoboard.a12",
+    "anodo": "protoboard.a13"
+   }
+  },
+  {
+   "id": "btn1",
+   "tipo": "pulsador",
+   "x": 491.68,
+   "y": 80.76,
+   "rot": 90,
+   "props": {
+    "color": "rojo"
+   },
+   "en": {
+    "2i": "protoboard.a22",
+    "1i": "protoboard.a24",
+    "2d": "protoboard.f22",
+    "1d": "protoboard.f24"
+   }
+  },
+  {
+   "id": "r2",
+   "tipo": "resistencia",
+   "x": 535.2,
+   "y": 150.55,
+   "rot": 0,
+   "props": {
+    "ohmios": 10000
+   },
+   "en": {
+    "1": "protoboard.h24",
+    "2": "protoboard.h30"
+   }
+  }
+ ],
+ "cables": [
+  {
+   "de": "placa.D13",
+   "a": "protoboard.a19",
+   "color": "naranja",
+   "puntos": [
+    [
+     125,
+     -8
+    ],
+    [
+     487.2,
+     -8
+    ]
+   ]
+  },
+  {
+   "de": "protoboard.e12",
+   "a": "protoboard.i-12",
+   "color": "negro"
+  },
+  {
+   "de": "protoboard.i-2",
+   "a": "placa.GND2",
+   "color": "negro",
+   "puntos": [
+    [
+     324,
+     230
+    ],
+    [
+     169.5,
+     230
+    ]
+   ]
+  },
+  {
+   "de": "placa.5V",
+   "a": "protoboard.j22",
+   "color": "rojo",
+   "puntos": [
+    [
+     160,
+     240
+    ],
+    [
+     516,
+     240
+    ]
+   ]
+  },
+  {
+   "de": "placa.D2",
+   "a": "protoboard.g24",
+   "color": "amarillo",
+   "puntos": [
+    [
+     236.5,
+     -16
+    ],
+    [
+     620,
+     -16
+    ],
+    [
+     620,
+     146.6
+    ]
+   ]
+  },
+  {
+   "de": "protoboard.j30",
+   "a": "protoboard.i-30",
+   "color": "negro"
+  }
+ ]
+}

@@ -525,7 +525,7 @@ escritorio/main.js
 - ✅ **Contrato:** `sim.destruir()` y `sim.medidas()` (con respaldo a `_destruir()`/`_medidas()` para paquetes anteriores).
 - ✅ **Agrandar el circuito:** divisor arrastrable entre bloques y panel (`iniciarDivisor`, preferencia `anchoPanel`), vista «Circuito» (`cambiarVista('circuito')`, solo con simulador) y botón «Ampliar»/«Reducir». En las vistas de solo panel, pestaña y vista van juntas (`ponerPestanas`).
 - ✅ **«Guardar imagen»:** vista previa y descarga del SVG del circuito (`lienzo.exportarSVG()`, contrato 1). La imagen trae abajo a la derecha la marca «Hecho con TecnoCircuito · SENA – TecnoAcademia Tolima» (la pone TecnoCircuito).
-- ✅ **«Llevar a KiCad»** (8 oct): muestra y descarga `<proyecto>-circuito.net`, la netlist de KiCad (`lienzo.exportarNetlist()`, contrato 1), para diseñar un shield en el editor de placas (Archivo → Importar → Netlist).
+- ✅ **«Llevar a KiCad»** (8 oct): muestra y descarga `<proyecto>-circuito.net`, la netlist de KiCad (`lienzo.exportarNetlist()`, contrato 1), para diseñar un shield: proyecto desde la plantilla «Arduino Uno Shield» de KiCad y, en el editor de placas, Archivo → Importar → Netlist. El Uno va como los conectores J1–J4 de esa plantilla (sin solapes).
 - ◐ **Versión etiquetada:** el repositorio de TecnoCircuito ya está publicado (https://github.com/EMariotte/TecnoCircuito, 7 oct). Falta su primera etiqueta con `dist/tecnocircuito.js`; después, depender de ella (`node_modules/tecnocircuito`) para que el simulador pueda llegar al instalador.
 
 ### Mecanismo para que ninguno rompa al otro
@@ -534,7 +534,9 @@ escritorio/main.js
 2. **Versión fija.** TecnoBloques depende de una etiqueta (`#v1.2.0`), nunca de una rama. Se actualiza a propósito: cambiar la etiqueta, `npm install`, pruebas y un commit `chore: TecnoCircuito v1.2.0`.
 3. **Revisión al arrancar.** Si `TecnoCircuito.CONTRATO` no es el que espera TecnoBloques (constante `CONTRATO_TC`), se oculta «Simular» y el editor funciona normal.
 4. **Pruebas de contrato en los dos lados:**
-   - TecnoCircuito guarda en `pruebas/fixtures/` proyectos `.tbq.json` y `.hex` generados por TecnoBloques. Se commitean, así que sus pruebas corren sin el proyecto hermano.
+   - TecnoCircuito guarda en `prototipo/pruebas/fixtures/` proyectos `.tbq.json` y `.hex` generados por TecnoBloques (✅ `npm run fixtures` allá, 8 oct). Se commitean, así que sus pruebas corren sin el proyecto hermano. Allá se revisa cada proyecto, su circuito contra `contrato/circuito.schema.json`, y cada `.hex` corre en el chip simulado.
+   - ✅ **Caso con circuito (8 oct):** `t1_protoboard` (`test/prueba.py`, circuito en `test/circuitos/t1_protoboard.json`), compilado por `npm run compilar`. TecnoCircuito lo corre con su circuito.
+   - ✅ `test:simulador` revisa el circuito que guarda la app con `../TecnoCircuito/prototipo/pruebas/contrato.js` (esquema y referencias). Si falta la carpeta hermana, se salta.
    - TecnoBloques tendrá `npm run test:simulador`: compila los programas de prueba, los corre en la versión fija del simulador con Node y comprueba que guardar y abrir conserva el circuito.
 5. **Trabajo en los dos a la vez.** `npm run app:simulador` embebe la copia local (`..\TecnoCircuito\prototipo\dist\tecnocircuito.js`); el build normal no la lleva. **`empaquetar.js` se niega a armar el instalador si el HTML trae la copia local.** Así un simulador en desarrollo nunca llega al aula.
 6. **Versión congelada.** Mientras el simulador se use en un estudio con aprendices, la etiqueta queda fija. Se pueden publicar versiones de TecnoBloques, pero ninguna cambia esa etiqueta.

@@ -1542,8 +1542,9 @@ function guardarNetlistCircuito() {
   if (!lienzo || typeof lienzo.exportarNetlist !== 'function') { mostrarToast('Esta versión del simulador no exporta a KiCad.'); return; }
   const base = nombreArchivoBase();
   modalExportar('Llevar el circuito a KiCad', base + '-circuito.net', lienzo.exportarNetlist({ nombre: base }), 'text/plain',
-    'Es la lista de piezas y de conexiones (netlist). En KiCad, abre el editor de placas y usa Archivo → Importar → Netlist. ' +
-    'Las piezas aparecen con líneas finas que muestran qué va con qué: tú las ubicas y trazas las pistas. La protoboard y los cables no van: ya son conexiones.');
+    'Es la lista de piezas y de conexiones (netlist) para hacer un shield. En KiCad, crea el proyecto desde la plantilla «Arduino Uno Shield», ' +
+    'abre el editor de placas y usa Archivo → Importar → Netlist. Las piezas aparecen con líneas finas hacia los conectores del Uno: ' +
+    'tú las ubicas y trazas las pistas. La protoboard y los cables no van: ya son conexiones.');
 }
 /** Estado de la pestaña Circuito, del botón de la barra y del monitor mientras se simula. */
 function uiSimulador(texto) {

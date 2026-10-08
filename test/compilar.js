@@ -27,7 +27,8 @@ const FQBN = {
   otto_calibrar: 'arduino:avr:nano:cpu=atmega328',
   otto_calibrado: 'arduino:avr:nano:cpu=atmega328',
   matriz: 'arduino:avr:uno',
-  otto_todo: 'arduino:avr:nano:cpu=atmega328'
+  otto_todo: 'arduino:avr:nano:cpu=atmega328',
+  t1_protoboard: 'arduino:avr:uno'
 };
 const salida = path.join(__dirname, 'salida');
 if (!fs.existsSync(salida)) { console.error('No hay test/salida. Corre primero: npm test'); process.exit(1); }

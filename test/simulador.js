@@ -139,6 +139,15 @@ const LIENZO = "document.querySelector('#lienzoCircuito .tecnocircuito').shadowR
     return { antes, vacio, despues: simulador.lienzo.circuito().componentes.length, pot: simulador.lienzo.circuito().componentes.some((c) => c.tipo === 'potenciometro') };
   });
   revisar(guardado.antes === 4 && guardado.despues === 4 && guardado.pot, `agregar un LED en el lienzo se guarda en el proyecto y vuelve al abrirlo (${guardado.antes} → ${guardado.despues} piezas)`);
+  // El circuito que guarda la app cumple el contrato: lo revisa el mismo código de TecnoCircuito (esquema y referencias)
+  const revisor = path.join(RAIZ, '..', 'TecnoCircuito', 'prototipo', 'pruebas', 'contrato.js');
+  if (!fs.existsSync(revisor)) console.log('      (sin ../TecnoCircuito: no se revisa el circuito contra el contrato)');
+  else {
+    const archivo = path.join(SALIDA, 'sim_circuito.json');
+    fs.writeFileSync(archivo, JSON.stringify(await win.evaluate(() => proyectoActual().circuito)));
+    const r = require('child_process').spawnSync(process.execPath, [revisor, archivo], { encoding: 'utf8' });
+    revisar(r.status === 0, 'el circuito guardado en el proyecto cumple el contrato de TecnoCircuito (contrato/circuito.schema.json)' + (r.status === 0 ? '' : ': ' + (r.stdout + r.stderr).trim()));
+  }
   revisar(guardado.vacio, 'un proyecto nuevo empieza sin circuito');
 
   // 4b. Agrandar el circuito: el divisor, la vista «Circuito» y el botón «Ampliar»
@@ -187,8 +196,8 @@ const LIENZO = "document.querySelector('#lienzoCircuito .tecnocircuito').shadowR
   await win.locator('#btnKicadCircuito').click();
   await esperar(() => !$('modal').hidden && document.querySelector('#modalCuerpo textarea'), 5000);
   const netlist = await win.evaluate(() => (document.querySelector('#modalCuerpo textarea') || {}).value || '');
-  revisar(netlist.startsWith('(export') && netlist.includes('(footprint "Module:Arduino_UNO_R3")') && netlist.includes('(footprint "LED_THT:LED_D5.0mm")'),
-    `«Llevar a KiCad» muestra la netlist con el Uno y el LED («${await win.evaluate(() => $('modalTitulo').textContent)}»)`);
+  revisar(netlist.startsWith('(export') && netlist.includes('(ref "J2")') && netlist.includes('(footprint "LED_THT:LED_D5.0mm")'),
+    `«Llevar a KiCad» muestra la netlist con los conectores del shield y el LED («${await win.evaluate(() => $('modalTitulo').textContent)}»)`);
   await win.evaluate(() => cerrarModal(false));
 
   // 5. Programa con error: se explica igual que al subir
