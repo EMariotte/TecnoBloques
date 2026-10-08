@@ -553,3 +553,10 @@ Anotado con el mismo título en las dos bitácoras. El simulador tiene ahora una
 ## 2026-10-07 — Contrato 1: marca en la imagen del circuito
 
 - TecnoCircuito agrega a `lienzo.exportarSVG()` la marca «Hecho con TecnoCircuito · SENA – TecnoAcademia Tolima», abajo a la derecha y sin tapar el circuito. La API no cambia, así que en TecnoBloques no hubo que tocar código: la vista previa de «Guardar imagen» ya la muestra.
+
+## 2026-10-08 — Contrato 1: «Llevar a KiCad»
+
+- TecnoCircuito agrega `lienzo.exportarNetlist({ nombre })`: el circuito como netlist de KiCad. Lleva las piezas con su huella y sus conexiones; la protoboard y los cables no van, porque ya son conexiones.
+- En la pestaña Circuito, el botón **«Llevar a KiCad»** abre la ventana de exportar (Copiar y Descargar `<proyecto>-circuito.net`), con la explicación para el aprendiz: en KiCad, editor de placas → Archivo → Importar → Netlist.
+- Si el simulador embebido no trae la función, avisa en vez de fallar.
+- `test:simulador`: un paso nuevo (4d), que pasa.

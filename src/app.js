@@ -1536,6 +1536,15 @@ function guardarImagenCircuito() {
     ]
   });
 }
+/** El circuito como netlist de KiCad (lienzo.exportarNetlist, contrato 1): piezas con su huella y sus conexiones, para empezar una placa. */
+function guardarNetlistCircuito() {
+  const lienzo = simulador.lienzo;
+  if (!lienzo || typeof lienzo.exportarNetlist !== 'function') { mostrarToast('Esta versión del simulador no exporta a KiCad.'); return; }
+  const base = nombreArchivoBase();
+  modalExportar('Llevar el circuito a KiCad', base + '-circuito.net', lienzo.exportarNetlist({ nombre: base }), 'text/plain',
+    'Es la lista de piezas y de conexiones (netlist). En KiCad, abre el editor de placas y usa Archivo → Importar → Netlist. ' +
+    'Las piezas aparecen con líneas finas que muestran qué va con qué: tú las ubicas y trazas las pistas. La protoboard y los cables no van: ya son conexiones.');
+}
 /** Estado de la pestaña Circuito, del botón de la barra y del monitor mientras se simula. */
 function uiSimulador(texto) {
   if (!simulador.disponible) return;
@@ -1544,6 +1553,7 @@ function uiSimulador(texto) {
   $('btnSimular').textContent = corriendo ? 'Simular de nuevo' : 'Simular';
   $('btnDetenerSim').disabled = !corriendo;
   $('btnImagenCircuito').disabled = !simulador.lienzo;
+  $('btnKicadCircuito').disabled = !simulador.lienzo;
   $('puntoCircuito').classList.toggle('on', corriendo);
   let t = texto;
   if (!t) {
@@ -1635,6 +1645,7 @@ function iniciar() {
     $('btnSimularBarra').addEventListener('click', simular);
     $('btnDetenerSim').addEventListener('click', detenerSimulacion);
     $('btnImagenCircuito').addEventListener('click', guardarImagenCircuito);
+    $('btnKicadCircuito').addEventListener('click', guardarNetlistCircuito);
     $('formSim').addEventListener('submit', (e) => {
       e.preventDefault();
       const t = $('txtSim').value;

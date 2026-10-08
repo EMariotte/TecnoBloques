@@ -525,6 +525,7 @@ escritorio/main.js
 - ✅ **Contrato:** `sim.destruir()` y `sim.medidas()` (con respaldo a `_destruir()`/`_medidas()` para paquetes anteriores).
 - ✅ **Agrandar el circuito:** divisor arrastrable entre bloques y panel (`iniciarDivisor`, preferencia `anchoPanel`), vista «Circuito» (`cambiarVista('circuito')`, solo con simulador) y botón «Ampliar»/«Reducir». En las vistas de solo panel, pestaña y vista van juntas (`ponerPestanas`).
 - ✅ **«Guardar imagen»:** vista previa y descarga del SVG del circuito (`lienzo.exportarSVG()`, contrato 1). La imagen trae abajo a la derecha la marca «Hecho con TecnoCircuito · SENA – TecnoAcademia Tolima» (la pone TecnoCircuito).
+- ✅ **«Llevar a KiCad»** (8 oct): muestra y descarga `<proyecto>-circuito.net`, la netlist de KiCad (`lienzo.exportarNetlist()`, contrato 1), para diseñar un shield en el editor de placas (Archivo → Importar → Netlist).
 - ◐ **Versión etiquetada:** el repositorio de TecnoCircuito ya está publicado (https://github.com/EMariotte/TecnoCircuito, 7 oct). Falta su primera etiqueta con `dist/tecnocircuito.js`; después, depender de ella (`node_modules/tecnocircuito`) para que el simulador pueda llegar al instalador.
 
 ### Mecanismo para que ninguno rompa al otro

@@ -183,6 +183,14 @@ const LIENZO = "document.querySelector('#lienzoCircuito .tecnocircuito').shadowR
   await win.screenshot({ path: path.join(SALIDA, 'sim_5_imagen.png') });
   await win.evaluate(() => cerrarModal(false));
 
+  // 4d. Llevar el circuito a KiCad (lienzo.exportarNetlist, contrato 1)
+  await win.locator('#btnKicadCircuito').click();
+  await esperar(() => !$('modal').hidden && document.querySelector('#modalCuerpo textarea'), 5000);
+  const netlist = await win.evaluate(() => (document.querySelector('#modalCuerpo textarea') || {}).value || '');
+  revisar(netlist.startsWith('(export') && netlist.includes('(footprint "Module:Arduino_UNO_R3")') && netlist.includes('(footprint "LED_THT:LED_D5.0mm")'),
+    `«Llevar a KiCad» muestra la netlist con el Uno y el LED («${await win.evaluate(() => $('modalTitulo').textContent)}»)`);
+  await win.evaluate(() => cerrarModal(false));
+
   // 5. Programa con error: se explica igual que al subir
   await win.evaluate(() => { entrarModoTexto('void setup() { velocidad = 3; }\nvoid loop() {}\n', ''); });
   await win.waitForTimeout(300);
