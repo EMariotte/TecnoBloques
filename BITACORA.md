@@ -549,3 +549,7 @@ Anotado con el mismo título en las dos bitácoras. El simulador tiene ahora una
 
 - Efraín dio por validado el prototipo del simulador. El repositorio **https://github.com/EMariotte/TecnoCircuito** quedó público (Apache 2.0), con la historia de los prototipos en sus commits.
 - TecnoBloques sigue usando la copia local con `npm run app:simulador`. **Falta** la primera etiqueta de TecnoCircuito con `dist/tecnocircuito.js` para depender de ella y llevar el simulador al instalador.
+
+## 2026-10-07 — Contrato 1: marca en la imagen del circuito
+
+- TecnoCircuito agrega a `lienzo.exportarSVG()` la marca «Hecho con TecnoCircuito · SENA – TecnoAcademia Tolima», abajo a la derecha y sin tapar el circuito. La API no cambia, así que en TecnoBloques no hubo que tocar código: la vista previa de «Guardar imagen» ya la muestra.
