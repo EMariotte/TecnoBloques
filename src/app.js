@@ -1746,6 +1746,8 @@ function iniciar() {
   $('btnEjemplos').addEventListener('click', (e) => {
     e.stopPropagation();
     lista.hidden = !lista.hidden; $('btnEjemplos').setAttribute('aria-expanded', String(!lista.hidden));
+    // La lista llega hasta el borde inferior de la ventana y se desplaza por dentro (style.css, .menu-lista).
+    if (!lista.hidden) { lista.style.setProperty('--menu-top', ($('btnEjemplos').getBoundingClientRect().bottom + 6) + 'px'); lista.scrollTop = 0; }
   });
   document.addEventListener('click', (e) => { if (!lista.hidden && !lista.contains(e.target)) { lista.hidden = true; $('btnEjemplos').setAttribute('aria-expanded', 'false'); } });
 

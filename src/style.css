@@ -153,6 +153,8 @@ details.subir-detalle pre { max-height: 220px; overflow: auto; font-family: var(
   position: absolute; top: calc(100% + 6px); right: 0; z-index: 50; min-width: 270px;
   background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 6px;
   display: grid; gap: 2px;
+  /* Con muchos ejemplos la lista pasa del borde de la ventana: se desplaza por dentro (hasta el borde inferior). */
+  box-sizing: border-box; max-height: calc(100vh - var(--menu-top, 130px) - 12px); overflow-y: auto; overscroll-behavior: contain;
 }
 .menu-lista button { text-align: left; border: 0; background: transparent; padding: 8px 10px; border-radius: 6px; cursor: pointer; display: grid; gap: 2px; }
 .menu-lista button:hover { background: var(--accent-soft); }

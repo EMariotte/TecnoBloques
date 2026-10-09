@@ -635,3 +635,10 @@ Lo siguiente: la shield L293D y el motor DC (T3).
 - TecnoCircuito ya tiene la shield L293D, el motor TT y la batería LiPo 2S como piezas Tecno (contrato 1: piezas `shield_l293d`, `motor_tt` y `bateria_lipo`, y la no idealidad `caidaL293D` funcionando). Aparecen en «+ Agregar» del lienzo sin cambios en TecnoBloques.
 - Ejemplo nuevo en el grupo de validación: el carro con la shield (motores en M1 y M4, la LiPo en EXT_PWR) y el programa de AFMotor_R4 que los mueve adelante, quietos y atrás. Sirve para medir en el laboratorio la caída del L293D y el sentido de cada rueda.
 - `test:simulador`: 28 de 28 con el simulador local.
+
+## 2026-10-10 — La lista de ejemplos se desplaza
+
+- **Pedido de Efraín:** con los ejemplos de validación, la lista de «Ejemplos» pasaba del borde de la ventana y no se llegaba a los últimos, como «Validar: carro con la shield L293D».
+- **Arreglo:** la lista llega hasta el borde inferior y se desplaza por dentro, con su barra.
+- **`test:simulador`:** comprueba que cabe en la ventana y que llega al último ejemplo.
+- **Simulador:** el programa de bloques de Efraín con los motores sin pausa iba al 28–40 %. El arreglo está en TecnoCircuito (núcleo casi 6 veces más rápido con ese programa) y llega a la app con el simulador local.

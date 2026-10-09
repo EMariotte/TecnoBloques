@@ -200,6 +200,17 @@ const LIENZO = "document.querySelector('#lienzoCircuito .tecnocircuito').shadowR
     `«Llevar a KiCad» muestra la netlist con los conectores del shield y el LED («${await win.evaluate(() => $('modalTitulo').textContent)}»)`);
   await win.evaluate(() => cerrarModal(false));
 
+  // 4d bis. Con muchos ejemplos, la lista no pasa del borde de la ventana: se desplaza y llega al último
+  await win.locator('#btnEjemplos').click();
+  const menu = await win.evaluate(() => {
+    const l = $('listaEjemplos');
+    l.scrollTop = l.scrollHeight;
+    const ultimo = [...l.querySelectorAll('button')].pop().getBoundingClientRect();
+    return { dentro: l.getBoundingClientRect().bottom <= innerHeight, ultimo: ultimo.bottom <= l.getBoundingClientRect().bottom + 1, desplaza: getComputedStyle(l).overflowY === 'auto' };
+  });
+  revisar(menu.dentro && menu.ultimo && menu.desplaza, 'la lista de ejemplos cabe en la ventana y se desplaza hasta el último');
+  await win.locator('#btnEjemplos').click();
+
   // 4e. Ejemplo de validación (C++ y su circuito): el servo del pin 9 sigue al programa en el simulador
   await win.evaluate(() => { detenerSimulacion(); cargarEjemplo(EJEMPLOS.find((e) => e.id === 'val_servo')); });
   await win.waitForTimeout(500);
