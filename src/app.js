@@ -1527,6 +1527,7 @@ function detenerSimulacion() {
   // Contrato 1: destruir() detiene y libera el Worker. Los paquetes anteriores solo tenían _destruir().
   try { if (sim.destruir) sim.destruir(); else if (sim._destruir) sim._destruir(); else sim.detener(); } catch (e) { /* ya estaba detenida */ }
   uiSimulador();
+  pintarMediciones();
   uiSerial();
 }
 /** El circuito como imagen SVG (lienzo.exportarSVG, contrato 1): para la documentación del proyecto o una evidencia en TecnoRuta. */
@@ -1555,6 +1556,22 @@ function guardarNetlistCircuito() {
     'Es la lista de piezas y de conexiones (netlist) para hacer un shield. En KiCad, crea el proyecto desde la plantilla «Arduino Uno Shield», ' +
     'abre el editor de placas y usa Archivo → Importar → Netlist. Las piezas aparecen con líneas finas hacia los conectores del Uno: ' +
     'tú las ubicas y trazas las pistas. La protoboard y los cables no van: ya son conexiones.');
+}
+/** Panel de mediciones (vista Circuito ampliada): la tabla que arma TecnoCircuito.filasDeMediciones con
+ *  sim.mediciones() (contrato 1). Cada fila: pieza, voltaje y corriente, y debajo el detalle (PWM, brillo, ángulo…). */
+function pintarMediciones() {
+  if (estado.vista !== 'circuito') return;
+  const sim = simulador.sim;
+  const leer = sim && (sim.mediciones || sim._mediciones);
+  const filas = leer && typeof TecnoCircuito.filasDeMediciones === 'function' ? TecnoCircuito.filasDeMediciones(leer.call(sim)) : [];
+  $('tablaMediciones').hidden = !filas.length;
+  $('notaMediciones').hidden = filas.length > 0;
+  const cuerpo = $('tablaMediciones').tBodies[0];
+  cuerpo.textContent = '';
+  for (const f of filas) {
+    cuerpo.append(el('tr', null, el('td', null, f.pieza), el('td', null, f.voltaje), el('td', null, f.corriente)));
+    if (f.detalle) cuerpo.append(el('tr', { class: 'detalle' }, el('td', { colspan: '3' }, f.detalle)));
+  }
 }
 /** Estado de la pestaña Circuito, del botón de la barra y del monitor mientras se simula. */
 function uiSimulador(texto) {
@@ -1657,6 +1674,7 @@ function iniciar() {
     $('btnDetenerSim').addEventListener('click', detenerSimulacion);
     $('btnImagenCircuito').addEventListener('click', guardarImagenCircuito);
     $('btnKicadCircuito').addEventListener('click', guardarNetlistCircuito);
+    setInterval(pintarMediciones, 250); // la tabla se pinta solo con el circuito ampliado
     $('formSim').addEventListener('submit', (e) => {
       e.preventDefault();
       const t = $('txtSim').value;

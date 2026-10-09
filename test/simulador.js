@@ -214,6 +214,19 @@ const LIENZO = "document.querySelector('#lienzoCircuito .tecnocircuito').shadowR
   const giro = await esperar(() => simulador.sim && /90/.test($('salidaSerial').textContent));
   const angulo = await win.evaluate(() => (simulador.sim._mediciones() || { servos: [] }).servos.map((s) => Math.round(s.angulo)));
   revisar(giro, `y al simularlo el servo sigue al programa (serial «0, 90», ángulo ${angulo})`);
+  // Panel de mediciones: con el circuito ampliado, a la derecha, la tabla de TecnoCircuito.filasDeMediciones
+  await win.evaluate(() => cambiarVista('circuito'));
+  await win.waitForTimeout(700);
+  const panel = await win.evaluate(() => ({
+    visible: getComputedStyle($('panelMediciones')).display !== 'none',
+    filas: [...document.querySelectorAll('#tablaMediciones tbody tr')].map((tr) => tr.textContent),
+  }));
+  revisar(panel.visible && panel.filas.some((f) => /^Pin 9/.test(f)) && panel.filas.some((f) => /servo1 \(SG90\)/.test(f)),
+    `con el circuito ampliado, el panel «Mediciones» muestra cada pieza (${panel.filas.length} filas: ${panel.filas.slice(0, 3).join(' | ')})`);
+  await win.screenshot({ path: path.join(SALIDA, 'sim_6_mediciones.png') });
+  await win.evaluate(() => cambiarVista('dividido'));
+  const oculto = await win.evaluate(() => getComputedStyle($('panelMediciones')).display === 'none');
+  revisar(oculto, 'en la vista dividida el panel de mediciones no aparece (el panel de la derecha es angosto)');
   await win.evaluate(() => detenerSimulacion());
 
   // 5. Programa con error: se explica igual que al subir

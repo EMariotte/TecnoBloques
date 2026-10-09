@@ -338,7 +338,17 @@ details.subir-detalle pre { max-height: 220px; overflow: auto; font-family: var(
 /* Columna flexible: los avisos ocultos no dejan filas vacías y el lienzo toma todo el alto que sobra. */
 #pCircuito { display: flex; flex-direction: column; min-height: 0; }
 #pCircuito > .herr, #pCircuito > .nota-serial, #fallasSim, .serial-sim { flex: none; }
-#lienzoCircuito { flex: 1 1 auto; min-height: 200px; overflow: hidden; }
+#lienzoCircuito { flex: 1 1 auto; min-height: 200px; min-width: 0; overflow: hidden; }
+/* Con el circuito ampliado, a la derecha va el panel de mediciones (la tabla de TecnoCircuito.filasDeMediciones). */
+.circuito-cuerpo { flex: 1 1 auto; display: flex; min-height: 0; }
+#panelMediciones { display: none; flex: none; width: 300px; overflow-y: auto; border-left: 1px solid var(--line); padding: 10px 12px; background: var(--panel); }
+#principal[data-vista="circuito"] #panelMediciones { display: block; }
+#panelMediciones h3 { margin: 0 0 8px; font-size: 14px; }
+#panelMediciones p { margin: 0; font-size: 12.5px; }
+#tablaMediciones { width: 100%; border-collapse: collapse; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+#tablaMediciones th { text-align: left; font-weight: 600; color: var(--muted); padding: 4px 4px; border-bottom: 1px solid var(--line); }
+#tablaMediciones td { padding: 5px 4px 1px; vertical-align: top; }
+#tablaMediciones tr.detalle td { padding: 0 4px 5px; color: var(--muted); border-bottom: 1px solid var(--line); }
 #fallasSim { list-style: none; margin: 0; padding: 8px 12px; display: grid; gap: 6px; border-bottom: 1px solid var(--line); }
 #fallasSim[hidden] { display: none; }
 #fallasSim li { padding: 7px 10px; border-radius: 8px; font-size: 13px; line-height: 1.4; background: var(--warn-soft); color: var(--ink); border: 1px solid var(--line); }

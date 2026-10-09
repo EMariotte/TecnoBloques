@@ -110,7 +110,17 @@
         </div>
         <div class="nota-serial" id="notaCircuito" hidden></div>
         <ul id="fallasSim" aria-live="polite" hidden></ul>
-        <div id="lienzoCircuito" aria-label="Circuito"></div>
+        <div class="circuito-cuerpo">
+          <div id="lienzoCircuito" aria-label="Circuito"></div>
+          <aside id="panelMediciones" aria-label="Mediciones del circuito">
+            <h3>Mediciones</h3>
+            <p class="muted" id="notaMediciones">Pulsa Simular para ver el voltaje y la corriente de cada pieza, como con un multímetro.</p>
+            <table id="tablaMediciones" hidden>
+              <thead><tr><th>Pieza</th><th>Voltaje</th><th>Corriente</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </aside>
+        </div>
         <div class="serial-sim">
           <pre id="salidaSim" aria-live="polite" aria-label="Monitor serial de la simulación"></pre>
           <form class="envio" id="formSim">

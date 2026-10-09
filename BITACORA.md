@@ -621,3 +621,11 @@ Lo siguiente: la shield L293D y el motor DC (T3).
 - **`test:simulador`, paso 4e:** abre el ejemplo del servo, revisa su C++, su circuito y el título del grupo, y lo simula. Son 28 de 28. `npm test` y `test:ui` también pasan.
 - Con estos ejemplos, Efraín validó el 9 oct en el laboratorio el ruido del ADC, la entrada al aire y el servo (ver la bitácora de TecnoCircuito).
 - **Pedidos de Efraín durante la validación** (Fase 2d): exportar el monitor serial a CSV y un graficador serial con casillas por variable.
+
+## 2026-10-10 — Contrato 1: sim.mediciones() y el panel de mediciones
+
+- **Con el circuito ampliado,** la pestaña Circuito muestra a la derecha el panel **«Mediciones»**: cada pieza con su voltaje y su corriente y, debajo, el detalle (PWM, brillo, ángulo del servo, pulso, USB). Es la misma tabla que la página de prueba de TecnoCircuito: la arma `TecnoCircuito.filasDeMediciones(sim.mediciones())`, que entró al contrato 1.
+- Se pinta cada 250 ms y solo con el circuito ampliado. Sin simular, explica «Pulsa Simular para ver el voltaje y la corriente de cada pieza».
+- **`test:simulador`:** con el ejemplo del servo ampliado, el panel muestra el pin 9 («señal de servo: pulso de 1471 µs») y el servo, y en la vista dividida no aparece.
+
+- **Validación humana (Efraín, 10 oct):** creó un proyecto nuevo en TecnoBloques, conectó un LED con su resistencia, usó el ejemplo de encendido por el monitor serial y, al simular con el circuito ampliado, vio cambiar las mediciones en el panel. Aprobado.
