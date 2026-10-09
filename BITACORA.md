@@ -607,3 +607,17 @@ bloques → simulación → imagen SVG (evidencia) → netlist → placa en KiCa
 4. servo SG90/MG90S como pieza Tecno y energía del USB, también validados.
 
 Lo siguiente: la shield L293D y el motor DC (T3).
+
+## 2026-10-09 — Ejemplos de validación con la placa real
+
+- **El grupo nuevo «Validación con la placa real (instructor)»** está en Ejemplos, con su propio título en la lista. Sus ejemplos traen el **C++ exacto** que se probó en TecnoCircuito y **su circuito armado**. Así se simula con «Simular» y se sube a la placa con «Subir a la placa», sin cambiar nada:
+  - ruido de `analogRead()`;
+  - entrada al aire;
+  - servo a 0°, 90° y 180°;
+  - servo en barrido continuo;
+  - cuatro servos en el USB;
+  - seis servos en el USB.
+- **`cargarEjemplo`** acepta ahora `texto` (se abre en modo C++) y `circuito` (va a `extrasProyecto.circuito`, y el lienzo lo dibuja).
+- **`test:simulador`, paso 4e:** abre el ejemplo del servo, revisa su C++, su circuito y el título del grupo, y lo simula. Son 28 de 28. `npm test` y `test:ui` también pasan.
+- Con estos ejemplos, Efraín validó el 9 oct en el laboratorio el ruido del ADC, la entrada al aire y el servo (ver la bitácora de TecnoCircuito).
+- **Pedidos de Efraín durante la validación** (Fase 2d): exportar el monitor serial a CSV y un graficador serial con casillas por variable.

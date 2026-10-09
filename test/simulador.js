@@ -200,6 +200,22 @@ const LIENZO = "document.querySelector('#lienzoCircuito .tecnocircuito').shadowR
     `«Llevar a KiCad» muestra la netlist con los conectores del shield y el LED («${await win.evaluate(() => $('modalTitulo').textContent)}»)`);
   await win.evaluate(() => cerrarModal(false));
 
+  // 4e. Ejemplo de validación (C++ y su circuito): el servo del pin 9 sigue al programa en el simulador
+  await win.evaluate(() => { detenerSimulacion(); cargarEjemplo(EJEMPLOS.find((e) => e.id === 'val_servo')); });
+  await win.waitForTimeout(500);
+  const abierto = await win.evaluate(() => ({
+    texto: !!estado.texto && /Servo servo;/.test($('editor').value),
+    servo: simulador.lienzo.circuito().componentes.some((c) => c.tipo === 'servo'),
+    menu: [...document.querySelectorAll('#listaEjemplos .menu-titulo')].map((t) => t.textContent),
+  }));
+  revisar(abierto.texto && abierto.servo && abierto.menu.length === 1,
+    `el ejemplo «Validar: servo 0°, 90° y 180°» abre su C++ y su servo, bajo «${abierto.menu[0]}»`);
+  await win.locator('#btnSimularBarra').click();
+  const giro = await esperar(() => simulador.sim && /90/.test($('salidaSerial').textContent));
+  const angulo = await win.evaluate(() => (simulador.sim._mediciones() || { servos: [] }).servos.map((s) => Math.round(s.angulo)));
+  revisar(giro, `y al simularlo el servo sigue al programa (serial «0, 90», ángulo ${angulo})`);
+  await win.evaluate(() => detenerSimulacion());
+
   // 5. Programa con error: se explica igual que al subir
   await win.evaluate(() => { entrarModoTexto('void setup() { velocidad = 3; }\nvoid loop() {}\n', ''); });
   await win.waitForTimeout(300);

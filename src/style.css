@@ -157,6 +157,7 @@ details.subir-detalle pre { max-height: 220px; overflow: auto; font-family: var(
 .menu-lista button { text-align: left; border: 0; background: transparent; padding: 8px 10px; border-radius: 6px; cursor: pointer; display: grid; gap: 2px; }
 .menu-lista button:hover { background: var(--accent-soft); }
 .menu-lista small { color: var(--muted); }
+.menu-lista .menu-titulo { font-size: 12px; font-weight: 600; color: var(--muted); padding: 8px 10px 2px; border-top: 1px solid var(--line); margin-top: 4px; }
 
 /* ---------- Área principal ---------- */
 /* --ancho-panel lo pone el divisor (el aprendiz lo arrastra); sin él, el panel toma el 40 %. */

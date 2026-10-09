@@ -525,6 +525,7 @@ escritorio/main.js
 - ✅ **Contrato:** `sim.destruir()` y `sim.medidas()` (con respaldo a `_destruir()`/`_medidas()` para paquetes anteriores).
 - ✅ **Agrandar el circuito:** divisor arrastrable entre bloques y panel (`iniciarDivisor`, preferencia `anchoPanel`), vista «Circuito» (`cambiarVista('circuito')`, solo con simulador) y botón «Ampliar»/«Reducir». En las vistas de solo panel, pestaña y vista van juntas (`ponerPestanas`).
 - ✅ **«Guardar imagen»:** vista previa y descarga del SVG del circuito (`lienzo.exportarSVG()`, contrato 1). La imagen trae abajo a la derecha la marca «Hecho con TecnoCircuito · SENA – TecnoAcademia Tolima» (la pone TecnoCircuito).
+- ✅ **Ejemplos de validación** (9 oct): el grupo «Validación con la placa real (instructor)» en Ejemplos, con 6 ejemplos que traen su **C++ y su circuito** (`cargarEjemplo` acepta `texto` y `circuito`): ruido del ADC, entrada al aire, servo 0°/90°/180°, servo en barrido continuo, cuatro servos y seis servos en el USB. El código es el mismo de `..\TecnoCircuito\prototipo\programas\`, para simular y subir a la placa sin cambiar nada. `test:simulador` abre y simula el del servo (paso 4e).
 - ✅ **Servo y energía del USB** (8 oct, contrato 1): el lienzo trae la pieza `servo` (SG90 o MG90S) en «+ Agregar», y el modo realista incluye `limiteUSB` (la placa se reinicia o se apaga si los servos piden más de lo que da el USB). Las fallas nuevas (`servo_alimentacion`, `reinicio_usb`, `fusible_usb`) y el evento `reinicio_placa` llegan por `alEvento` como las demás: no hubo que tocar código aquí.
 - ✅ **«Llevar a KiCad»** (8 oct): muestra y descarga `<proyecto>-circuito.net`, la netlist de KiCad (`lienzo.exportarNetlist()`, contrato 1), para diseñar un shield: proyecto desde la plantilla «Arduino Uno Shield» de KiCad y, en el editor de placas, Archivo → Importar → Netlist. El Uno va como los conectores J1–J4 de esa plantilla (sin solapes).
 - ◐ **Versión etiquetada:** el repositorio de TecnoCircuito ya está publicado (https://github.com/EMariotte/TecnoCircuito, 7 oct). Falta su primera etiqueta con `dist/tecnocircuito.js`; después, depender de ella (`node_modules/tecnocircuito`) para que el simulador pueda llegar al instalador.
@@ -766,6 +767,15 @@ Fase 5 ⬜ Nivel 2 de librerías: diseñador de bloques para instructores (forma
           librería Arduino en el servidor (solo instructores).
 
 Fase 6 ⬜ Nivel 3: catálogo compartido de bloques (posiblemente Supabase, como Tecnohonguera).
+
+Fase 2d ⬜ Monitor serial para analizar (pedido por Efraín el 9 oct 2026, durante la validación del ADC):
+          ⬜ EXPORTAR A CSV lo que llegó por el monitor serial (placa real y simulador), sin copiar y
+             pegar: una fila por línea, con la hora (ms) y, si la línea trae «etiqueta valor» o
+             «etiqueta:valor», una columna por etiqueta. Sirve para hojas de cálculo y gráficos.
+          ⬜ GRAFICADOR SERIAL, como el del IDE de Arduino, pero eligiendo qué variables se ven:
+             una casilla por etiqueta para mostrarla u ocultarla, y pausar para mirar. Formatos que
+             entiende: «a:1 b:2», «a 1 b 2» (como validar_adc: «min 430 max 430 …») y números sueltos
+             separados por espacio, coma o tabulación (como el IDE).
 
 Ideas sueltas: DIAGRAMA DE FLUJO del programa (pedido por Efraín el 7 oct 2026): armarlo a partir
 de los bloques (inicio, acciones, decisiones «si», repeticiones) y guardarlo en SVG para la documentación y
