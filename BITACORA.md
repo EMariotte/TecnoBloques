@@ -629,3 +629,9 @@ Lo siguiente: la shield L293D y el motor DC (T3).
 - **`test:simulador`:** con el ejemplo del servo ampliado, el panel muestra el pin 9 («señal de servo: pulso de 1471 µs») y el servo, y en la vista dividida no aparece.
 
 - **Validación humana (Efraín, 10 oct):** creó un proyecto nuevo en TecnoBloques, conectó un LED con su resistencia, usó el ejemplo de encendido por el monitor serial y, al simular con el circuito ampliado, vio cambiar las mediciones en el panel. Aprobado.
+
+## 2026-10-10 — Ejemplo «Validar: carro con la shield L293D»
+
+- TecnoCircuito ya tiene la shield L293D, el motor TT y la batería LiPo 2S como piezas Tecno (contrato 1: piezas `shield_l293d`, `motor_tt` y `bateria_lipo`, y la no idealidad `caidaL293D` funcionando). Aparecen en «+ Agregar» del lienzo sin cambios en TecnoBloques.
+- Ejemplo nuevo en el grupo de validación: el carro con la shield (motores en M1 y M4, la LiPo en EXT_PWR) y el programa de AFMotor_R4 que los mueve adelante, quietos y atrás. Sirve para medir en el laboratorio la caída del L293D y el sentido de cada rueda.
+- `test:simulador`: 28 de 28 con el simulador local.
