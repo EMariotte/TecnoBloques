@@ -642,3 +642,8 @@ Lo siguiente: la shield L293D y el motor DC (T3).
 - **Arreglo:** la lista llega hasta el borde inferior y se desplaza por dentro, con su barra.
 - **`test:simulador`:** comprueba que cabe en la ventana y que llega al último ejemplo.
 - **Simulador:** el programa de bloques de Efraín con los motores sin pausa iba al 28–40 %. El arreglo está en TecnoCircuito (núcleo casi 6 veces más rápido con ese programa) y llega a la app con el simulador local.
+
+## 2026-10-10 — El lienzo trae la biblioteca de piezas y la ficha (TecnoCircuito)
+
+- «+ Agregar» abre ahora un panel con las piezas por categoría, sus dibujos y un buscador; las piezas se pueden arrastrar al lienzo. Al elegir una pieza aparece su ficha (para qué sirve, propiedades, datos, pines y si su modelo se probó con la placa real). En la vista dividida la ficha empieza plegada, con solo las propiedades.
+- No hubo que cambiar nada en TecnoBloques: la API del lienzo es la misma. `test:simulador` pasa con el simulador local.
