@@ -235,6 +235,29 @@ const LIENZO = "document.querySelector('#lienzoCircuito .tecnocircuito').shadowR
   revisar(panel.visible && panel.filas.some((f) => /^Pin 9/.test(f)) && panel.filas.some((f) => /servo1 \(SG90\)/.test(f)),
     `con el circuito ampliado, el panel «Mediciones» muestra cada pieza (${panel.filas.length} filas: ${panel.filas.slice(0, 3).join(' | ')})`);
   await win.screenshot({ path: path.join(SALIDA, 'sim_6_mediciones.png') });
+  // Monitor y mediciones plegables: el botón de arriba a la derecha los recoge y el circuito gana el espacio
+  const anchoAntes = await win.evaluate(() => $('lienzoCircuito').clientWidth);
+  const altoAntes = await win.evaluate(() => $('lienzoCircuito').clientHeight);
+  await win.locator('#btnPlegarMediciones').click();
+  await win.locator('#btnPlegarSerialSim').click();
+  await win.waitForTimeout(400);
+  const plegados = await win.evaluate(() => ({
+    ancho: $('lienzoCircuito').clientWidth, alto: $('lienzoCircuito').clientHeight,
+    serial: $('cuerpoSerialSim').hidden, med: $('cuerpoMediciones').hidden,
+    botones: [$('btnPlegarSerialSim').textContent, $('btnPlegarMediciones').textContent],
+    pref: JSON.parse(localStorage.getItem('tecnobloques.preferencias.v1') || '{}'),
+  }));
+  revisar(plegados.serial && plegados.med && plegados.ancho > anchoAntes + 200 && plegados.alto > altoAntes + 80 && plegados.pref.serialSimPlegado && plegados.pref.medicionesPlegado,
+    `al recogerlos, el circuito gana espacio (${anchoAntes}×${altoAntes} → ${plegados.ancho}×${plegados.alto}) y queda guardado; botones «${plegados.botones.join('» y «')}»`);
+  await win.screenshot({ path: path.join(SALIDA, 'sim_7_plegados.png') });
+  await win.evaluate(() => salidaSim('hola'));
+  const aviso = await win.evaluate(() => !$('nuevoSerialSim').hidden);
+  await win.locator('#btnPlegarSerialSim').click();
+  await win.locator('#btnPlegarMediciones').click();
+  await win.waitForTimeout(400);
+  const vueltos = await win.evaluate(() => ({ serial: !$('cuerpoSerialSim').hidden, med: !$('cuerpoMediciones').hidden, punto: $('nuevoSerialSim').hidden, ancho: $('lienzoCircuito').clientWidth }));
+  revisar(aviso && vueltos.serial && vueltos.med && vueltos.punto && vueltos.ancho === anchoAntes,
+    'recogido, el monitor avisa con un punto que llegó texto; al mostrarlos vuelven como estaban');
   await win.evaluate(() => cambiarVista('dividido'));
   const oculto = await win.evaluate(() => getComputedStyle($('panelMediciones')).display === 'none');
   revisar(oculto, 'en la vista dividida el panel de mediciones no aparece (el panel de la derecha es angosto)');

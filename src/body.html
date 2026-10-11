@@ -113,20 +113,31 @@
         <div class="circuito-cuerpo">
           <div id="lienzoCircuito" aria-label="Circuito"></div>
           <aside id="panelMediciones" aria-label="Mediciones del circuito">
-            <h3>Mediciones</h3>
+            <div class="cabeza-plegable">
+              <h3>Mediciones</h3>
+              <button type="button" class="btn chico plegar" id="btnPlegarMediciones" aria-expanded="true" aria-controls="cuerpoMediciones" title="Ocultar las mediciones para tener más espacio para el circuito">Ocultar ▸</button>
+            </div>
+            <div id="cuerpoMediciones">
             <p class="muted" id="notaMediciones">Pulsa Simular para ver el voltaje y la corriente de cada pieza, como con un multímetro.</p>
             <table id="tablaMediciones" hidden>
               <thead><tr><th>Pieza</th><th>Voltaje</th><th>Corriente</th></tr></thead>
               <tbody></tbody>
             </table>
+            </div>
           </aside>
         </div>
         <div class="serial-sim">
+          <div class="cabeza-plegable">
+            <span class="titulo-plegable">Monitor serial de la simulación <span class="punto-nuevo" id="nuevoSerialSim" hidden title="Llegó texto nuevo"></span></span>
+            <button type="button" class="btn chico plegar" id="btnPlegarSerialSim" aria-expanded="true" aria-controls="cuerpoSerialSim" title="Ocultar el monitor serial para tener más espacio para el circuito">Ocultar ▾</button>
+          </div>
+          <div id="cuerpoSerialSim">
           <pre id="salidaSim" aria-live="polite" aria-label="Monitor serial de la simulación"></pre>
           <form class="envio" id="formSim">
             <input class="entrada" id="txtSim" placeholder="Mensaje para el programa simulado (Enter envía)" autocomplete="off" aria-label="Mensaje para el programa simulado">
             <button type="submit" class="btn chico" id="btnEnviarSim">Enviar</button>
           </form>
+          </div>
         </div>
       </div>
     </section>

@@ -358,3 +358,18 @@ details.subir-detalle pre { max-height: 220px; overflow: auto; font-family: var(
 #salidaSim { margin: 0; height: 7.5em; overflow: auto; padding: 8px 12px; background: var(--code-bg); color: var(--code-ink); font-family: var(--mono); font-size: 12px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; }
 #salidaSim:empty::before { content: "Monitor serial de la simulación: aquí sale lo que imprime el programa."; color: var(--muted); font-family: inherit; }
 #salidaSim .enviado { color: var(--accent); }
+/* Monitor y mediciones plegables: un botón arriba a la derecha los oculta para dejarle el espacio al circuito. */
+.cabeza-plegable { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.serial-sim > .cabeza-plegable { padding: 4px 8px 4px 12px; background: var(--panel); }
+.titulo-plegable { font-size: 12.5px; font-weight: 600; color: var(--muted); display: inline-flex; align-items: center; gap: 6px; }
+.punto-nuevo { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); display: inline-block; }
+.punto-nuevo[hidden] { display: none; }
+.btn.plegar { padding: 2px 8px; font-size: 12px; }
+#cuerpoSerialSim[hidden], #cuerpoMediciones[hidden] { display: none; }
+#panelMediciones .cabeza-plegable { margin-bottom: 8px; }
+#panelMediciones .cabeza-plegable h3 { margin: 0; }
+/* Plegado, el panel de mediciones queda como una franja angosta con su botón de pie. */
+#panelMediciones.plegado { width: 38px; padding: 8px 4px; overflow: hidden; }
+#panelMediciones.plegado .cabeza-plegable { flex-direction: column; margin: 0; }
+#panelMediciones.plegado h3 { display: none; }
+#panelMediciones.plegado .btn.plegar { writing-mode: vertical-rl; transform: rotate(180deg); padding: 8px 2px; }

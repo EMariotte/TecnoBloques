@@ -647,3 +647,21 @@ Lo siguiente: la shield L293D y el motor DC (T3).
 
 - «+ Agregar» abre ahora un panel con las piezas por categoría, sus dibujos y un buscador; las piezas se pueden arrastrar al lienzo. Al elegir una pieza aparece su ficha (para qué sirve, propiedades, datos, pines y si su modelo se probó con la placa real). En la vista dividida la ficha empieza plegada, con solo las propiedades.
 - No hubo que cambiar nada en TecnoBloques: la API del lienzo es la misma. `test:simulador` pasa con el simulador local.
+
+## 2026-10-10 — Contrato 1: cable de balance y probador de celdas
+
+- TecnoCircuito agrega al contrato:
+  - el cable de balance de `bateria_lipo` (`BAL0`, `BAL1`, `BAL2`) y la carga `desbalanceada`;
+  - la pieza `probador_lipo` (`NEG`, `C1` a `C8`; `umbral`);
+  - las fallas `bateria_desbalanceada` y `probador_alarma`;
+  - `probadores` en `mediciones()`.
+- Ejemplo nuevo en el grupo de validación: «Validar: probador de celdas LiPo», para comparar su pantalla con la del real en el laboratorio.
+- `test:simulador` y `npm test`: todo bien con el simulador local.
+
+## 2026-10-10 — Monitor de la simulación y mediciones se pueden ocultar
+
+- **Pedido de Efraín:** tener todo el espacio para el circuito mientras se arma el diseño.
+- **Monitor serial de la simulación:** tiene un título y, arriba a la derecha, el botón «Ocultar ▾» / «Mostrar ▴». Recogido queda solo esa franja, y un punto verde avisa si llegó texto nuevo.
+- **Panel «Mediciones»:** con el circuito ampliado, su botón «Ocultar ▸» lo deja como una franja angosta con «◂ Mediciones» de pie. Recogido no se repinta la tabla.
+- **Los dos estados se guardan** en las preferencias (`serialSimPlegado`, `medicionesPlegado`) y se recuerdan al volver a abrir la app.
+- **`test:simulador`:** al recogerlos, el lienzo gana espacio (de 1029×423 a 1307×575 px); el punto avisa el texto nuevo, y al mostrarlos todo vuelve como estaba. 33 de 33.
