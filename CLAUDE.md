@@ -1,7 +1,7 @@
 # CLAUDE.md — TecnoBloques
 
 > Memoria técnica del proyecto para Claude Code / Claude en Cowork.
-> Actualizado: 7 de octubre de 2026 · **Proyecto hermano TecnoCircuito (simulador): primera conexión hecha (7 oct), solo en desarrollo con `npm run app:simulador`; ver «Proyecto hermano».** Estado: **v0.2.5 publicada en GitHub Releases (7 oct): formato del proyecto listo para TecnoCircuito. La v0.2.4 fue la PRIMERA VERSIÓN PARA EL AULA. Subir y monitor serial probados con Uno R3 original, Nano clon CH340 y Mega 2560 clon CH340, más la actualización automática. Ya se puede instalar en los PC del aula. Falta: los robots y módulos en el ambiente (ver "Próxima sesión").**
+> Actualizado: 11 de octubre de 2026 · **Proyecto hermano TecnoCircuito (simulador):** funciona dentro de la app en desarrollo (`npm run app:simulador` / `node build.js --simulador-local`) con las tareas T1, T2 y T3; su primera versión `v0.1.0` está preparada y se etiqueta después de validar la T3 en el laboratorio (ver «Proyecto hermano»). Estado de TecnoBloques: **v0.2.5 publicada (7 oct)**, la del aula. Desde entonces, en el código (sin publicar): ejemplos de validación, panel de mediciones, paneles plegables, monitor serial con gráfico y CSV (Fase 2d), y el instalador que exige una etiqueta fija del simulador.
 
 ---
 

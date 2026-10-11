@@ -32,7 +32,7 @@ genera en vivo y ábrelo en tu placa. Funciona con **Arduino Uno R3, Nano y Mega
 - **C++ libre:** mezcla bloques con líneas de código escritas a mano.
 - **Vista dividida:** el C++ se actualiza con cada bloque. También puedes editar el C++ directamente.
 - **Avisos de pines:** te dice cuando dos cosas usan el mismo pin o cuando un pin no sirve para lo que pides.
-- **Monitor serial** que recibe y **envía** mensajes a la placa (Web Serial).
+- **Monitor serial** que recibe y **envía** mensajes a la placa (Web Serial). Lo que llega se puede **graficar** (una casilla por variable, pausa, escalas) y **exportar a CSV** para Excel, de la placa real o del simulador.
 - Proyectos que se guardan en un archivo `.tbq.json` y ejemplos listos.
 
 ![Bloques de Otto humanoide](docs/capturas/bloques-otto.png)
@@ -80,6 +80,8 @@ bloques o placas, decisiones y hoja de ruta. El historial del proyecto está en 
 - [x] **Niveles 1 · 2 · 3** de bloques y nombres para los pines (`#define LedRojo 13`)
 - [x] **Librerías nuevas:** MPU6050, PCA9685 (Adafruit_PWMServoDriver) e I2C
 - [x] **Listas y matrices** (nivel 3)
+- [x] **Monitor serial para analizar:** gráfico y exportación a CSV
+- [ ] **Simulador TecnoCircuito** en el instalador del aula (con su primera versión, `v0.1.0`, después de validarlo con la placa real)
 - [ ] **Fase 3:** Arduino Uno R4
 - [ ] **Fase 4:** pantallas OLED
 - [ ] **Fase 5:** diseñador de bloques para instructores
