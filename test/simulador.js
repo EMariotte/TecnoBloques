@@ -263,6 +263,37 @@ const LIENZO = "document.querySelector('#lienzoCircuito .tecnocircuito').shadowR
   revisar(oculto, 'en la vista dividida el panel de mediciones no aparece (el panel de la derecha es angosto)');
   await win.evaluate(() => detenerSimulacion());
 
+  // 4f. Monitor para analizar: el gráfico y el CSV, con «Validar: ruido de analogRead()» (imprime min, max,
+  //     promedio y desviacion cada medio segundo)
+  await win.evaluate(() => { $('btnLimpiar').click(); cargarEjemplo(EJEMPLOS.find((e) => e.id === 'val_adc')); });
+  await win.waitForTimeout(500);
+  await win.locator('#btnSimularBarra').click();
+  const conDatos = await esperar(() => registroSerial.lineas.filter((l) => 'min' in l.valores).length >= 3, 60000);
+  await win.evaluate(() => seleccionarPestana('serial'));
+  await win.locator('#vmGrafico').click();
+  await win.waitForTimeout(800);
+  const graf = await win.evaluate(() => ({ estado: graficoSerial.estado(), texto: $('salidaSerial').hidden, visible: !$('graficoSerial').hidden,
+    casillas: [...document.querySelectorAll('#graficoSerial .graf-serie')].map((l) => l.textContent) }));
+  revisar(conDatos && graf.visible && graf.texto && ['min', 'max', 'promedio', 'desviacion'].every((k) => graf.estado.series.includes(k)) && graf.estado.origen === 'simulador',
+    `«Gráfico» muestra las variables del programa: ${graf.casillas.join(', ')} (${graf.estado.filas} líneas, del ${graf.estado.origen})`);
+  await win.screenshot({ path: path.join(SALIDA, 'sim_8_grafico.png') });
+  await win.locator('#graficoSerial .graf-serie', { hasText: 'desviacion' }).locator('input').uncheck();
+  await win.locator('#graficoSerial button', { hasText: 'Pausar' }).click();
+  const filasPausa = await win.evaluate(() => graficoSerial.estado());
+  await win.waitForTimeout(1200);
+  const tras = await win.evaluate(() => ({ estado: graficoSerial.estado(), lineas: registroSerial.lineas.length }));
+  revisar(!tras.estado.series.includes('desviacion') && tras.estado.pausa && tras.estado.filas === filasPausa.filas,
+    'al quitar la casilla la variable se oculta, y en pausa el gráfico queda quieto');
+  revisar(tras.lineas > 0, `el registro sigue guardando mientras está en pausa (${tras.lineas} líneas)`);
+  const csv = await win.evaluate(() => registroSerial.csv());
+  const filasCsv = csv.slice(1).trim().split('\r\n');
+  revisar(csv.startsWith('﻿') && filasCsv[0] === 't_ms;origen;linea;"min";"max";"promedio";"desviacion"' &&
+    filasCsv.slice(1).some((f) => /^\d+;simulador;"min \d+ max \d+ promedio [\d.]+ desviacion [\d.]+";\d+;\d+;\d+(,\d+)?;\d+(,\d+)?$/.test(f)),
+  `el CSV para Excel en español: ${filasCsv[0]} · ${filasCsv.slice(1).find((f) => f.includes('min')) || ''}`);
+  await win.locator('#graficoSerial button', { hasText: 'Seguir' }).click();
+  await win.locator('#vmTexto').click();
+  await win.evaluate(() => detenerSimulacion());
+
   // 5. Programa con error: se explica igual que al subir
   await win.evaluate(() => { entrarModoTexto('void setup() { velocidad = 3; }\nvoid loop() {}\n', ''); });
   await win.waitForTimeout(300);

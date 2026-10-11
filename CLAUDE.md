@@ -772,14 +772,19 @@ Fase 5 ⬜ Nivel 2 de librerías: diseñador de bloques para instructores (forma
 
 Fase 6 ⬜ Nivel 3: catálogo compartido de bloques (posiblemente Supabase, como Tecnohonguera).
 
-Fase 2d ⬜ Monitor serial para analizar (pedido por Efraín el 9 oct 2026, durante la validación del ADC):
-          ⬜ EXPORTAR A CSV lo que llegó por el monitor serial (placa real y simulador), sin copiar y
+Fase 2d ✅ Monitor serial para analizar (pedido por Efraín el 9 oct 2026; hecho el 11 oct en src/graficador.js):
+          ✅ EXPORTAR A CSV lo que llegó por el monitor serial (placa real y simulador), sin copiar y
              pegar: una fila por línea, con la hora (ms) y, si la línea trae «etiqueta valor» o
              «etiqueta:valor», una columna por etiqueta. Sirve para hojas de cálculo y gráficos.
-          ⬜ GRAFICADOR SERIAL, como el del IDE de Arduino, pero eligiendo qué variables se ven:
+          ✅ GRAFICADOR SERIAL, como el del IDE de Arduino, pero eligiendo qué variables se ven:
              una casilla por etiqueta para mostrarla u ocultarla, y pausar para mirar. Formatos que
              entiende: «a:1 b:2», «a 1 b 2» (como validar_adc: «min 430 max 430 …») y números sueltos
              separados por espacio, coma o tabulación (como el IDE).
+          Cómo quedó: un registro de cada línea (hora, origen placa o simulador, números) que alimenta el CSV
+          («;», coma decimal y marca UTF-8, para Excel en español) y el gráfico (canvas sin librerías, 8 colores
+          validados para daltonismo, casillas, pausa, ventana de 5 a 60 s, escala automática, 0–1023 o 0–5 V, y
+          valores al pasar el mouse). En el simulador la hora es el tiempo simulado. Pruebas: test/graficador.js
+          (Node) y test:simulador (gráfico, casillas, pausa y CSV con «Validar: ruido de analogRead()»).
 
 Ideas sueltas: DIAGRAMA DE FLUJO del programa (pedido por Efraín el 7 oct 2026): armarlo a partir
 de los bloques (inicio, acciones, decisiones «si», repeticiones) y guardarlo en SVG para la documentación y

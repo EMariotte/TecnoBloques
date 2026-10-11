@@ -22,7 +22,7 @@ const iconos = `<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;b
   `<link rel="apple-touch-icon" href="data:image/png;base64,${b64('marca/png/icono-180.png')}">` +
   '<meta name="theme-color" content="#00304D">';
 const body = R('src/body.html').replace('<!--SIMBOLO-->', simbolo);
-const app = ['src/nucleo.js', 'src/bloques.js', 'src/app.js'].map(R).join('\n');
+const app = ['src/nucleo.js', 'src/bloques.js', 'src/graficador.js', 'src/app.js'].map(R).join('\n');
 // La versión de la app va en la página: el proyecto la guarda en "creadoCon" (también en la versión web)
 const VERSION_TB = require('./package.json').version;
 const medioJS = `window.TB_MEDIA = ${JSON.stringify(media)}; window.TB_VERSION = ${JSON.stringify(VERSION_TB)};`;

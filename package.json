@@ -17,6 +17,7 @@
     "publicar": "node build.js && node escritorio/empaquetar.js --publicar",
     "test:app": "node test/app.js",
     "test:placas": "node test/placas.js",
+    "test:graficador": "node test/graficador.js",
     "test:simulador": "node build.js --simulador-local && node test/simulador.js"
   },
   "devDependencies": {

@@ -1099,7 +1099,17 @@ function refrescarPines() {
 }
 
 /* ---------- Monitor serial (Web Serial) ---------- */
-const serial = { puerto: null, lector: null, bucle: null, conectado: false, inicioLinea: true, trasCR: false, historial: [], posHist: -1 };
+const serial = { puerto: null, lector: null, bucle: null, conectado: false, inicioLinea: true, trasCR: false, historial: [], posHist: -1, t0: 0 };
+/** Lo que llega por el monitor (placa o simulador), línea por línea con sus números: para el CSV y el gráfico. */
+const registroSerial = crearRegistro();
+let graficoSerial = null;
+/** Guarda el registro del monitor como CSV para Excel en español («;» y coma decimal). */
+function exportarCsvMonitor() {
+  if (!registroSerial.lineas.length) { mostrarToast('Todavía no ha llegado nada por el monitor serial.'); return; }
+  const fecha = new Date().toISOString().slice(0, 10);
+  descargar(`${nombreArchivoBase()} - monitor ${fecha}.csv`, registroSerial.csv(), 'text/csv;charset=utf-8');
+  mostrarToast(`CSV con ${registroSerial.lineas.length} líneas y ${registroSerial.etiquetas.length} columnas de números.`);
+}
 const FINES = { '': '', '\\n': '\n', '\\r': '\r', '\\r\\n': '\r\n' };
 function notaSerial(html) { const n = $('notaSerial'); n.innerHTML = html; n.hidden = !html; }
 function uiSerial() {
@@ -1165,7 +1175,11 @@ async function leerBucle() {
       while (true) {
         const { value, done } = await serial.lector.read();
         if (done) break;
-        if (value) agregarSalida(dec.decode(value, { stream: true }));
+        if (value) {
+          const texto = dec.decode(value, { stream: true });
+          agregarSalida(texto);
+          registroSerial.agregar(texto, 'placa', performance.now() - serial.t0);
+        }
       }
     } catch (e) {
       if (serial.conectado) lineaEspecial('Error de lectura: ' + e.message, 'sistema');
@@ -1199,6 +1213,8 @@ async function conectarSerial() {
     const p = await navigator.serial.requestPort();
     await p.open({ baudRate: parseInt($('baudios').value, 10) });
     serial.puerto = p; serial.conectado = true; serial.inicioLinea = true; serial.trasCR = false;
+    serial.t0 = performance.now(); // el registro cuenta los ms desde que se conectó
+    registroSerial.continuar('placa');
     notaSerial('');
     uiSerial();
     const info = p.getInfo ? p.getInfo() : {};
@@ -1487,7 +1503,8 @@ async function simular() {
   }
   try {
     const sim = TecnoCircuito.crearSimulador({ lienzo: simulador.lienzo, placa: placaActual, hex: r.hex, modo: 'realista', alEvento: registrarEventoSim });
-    sim.alSerial((t) => { agregarSalida(t); salidaSim(t); });
+    registroSerial.continuar('simulador'); // simular de nuevo: el tiempo del registro sigue, no vuelve a 0
+    sim.alSerial((t) => { agregarSalida(t); salidaSim(t); registroSerial.agregar(t, 'simulador', sim.medidas().msSimulados); });
     $('salidaSim').textContent = '';
     sim.alFalla((f) => {
       $('fallasSim').append(el('li', null, f.mensaje));
@@ -1780,7 +1797,20 @@ function iniciar() {
   // Monitor serial
   $('btnConectar').addEventListener('click', () => (serial.conectado ? desconectarSerial() : conectarSerial()));
   $('baudios').addEventListener('change', () => { estado.baudiosManual = true; });
-  $('btnLimpiar').addEventListener('click', () => { $('salidaSerial').innerHTML = ''; serial.inicioLinea = true; });
+  $('btnLimpiar').addEventListener('click', () => { $('salidaSerial').innerHTML = ''; serial.inicioLinea = true; registroSerial.limpiar(); });
+  // Monitor para analizar (Fase 2d): verlo como texto o como gráfico, y exportar todo a CSV
+  graficoSerial = crearGraficador($('graficoSerial'), registroSerial);
+  const verMonitor = (grafico) => {
+    $('salidaSerial').hidden = grafico;
+    $('graficoSerial').hidden = !grafico;
+    $('vmTexto').setAttribute('aria-pressed', String(!grafico));
+    $('vmGrafico').setAttribute('aria-pressed', String(grafico));
+    graficoSerial.mostrar(grafico);
+    if (!grafico && $('chkAuto').checked) $('salidaSerial').scrollTop = $('salidaSerial').scrollHeight;
+  };
+  $('vmTexto').addEventListener('click', () => verMonitor(false));
+  $('vmGrafico').addEventListener('click', () => verMonitor(true));
+  $('btnCsv').addEventListener('click', exportarCsvMonitor);
   $('formEnvio').addEventListener('submit', (e) => {
     e.preventDefault();
     const t = $('txtEnviar').value;

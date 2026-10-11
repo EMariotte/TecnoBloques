@@ -665,3 +665,26 @@ Lo siguiente: la shield L293D y el motor DC (T3).
 - **Panel «Mediciones»:** con el circuito ampliado, su botón «Ocultar ▸» lo deja como una franja angosta con «◂ Mediciones» de pie. Recogido no se repinta la tabla.
 - **Los dos estados se guardan** en las preferencias (`serialSimPlegado`, `medicionesPlegado`) y se recuerdan al volver a abrir la app.
 - **`test:simulador`:** al recogerlos, el lienzo gana espacio (de 1029×423 a 1307×575 px); el punto avisa el texto nuevo, y al mostrarlos todo vuelve como estaba. 33 de 33.
+
+## 2026-10-11 — Fase 2d: el monitor serial para analizar (CSV y gráfico)
+
+**Pedido de Efraín** (9 oct, durante la validación del ADC): exportar el monitor serial a CSV y un graficador con casillas por variable. **Decisiones:** el CSV con «;» y coma decimal (se abre directo en Excel en español) y el gráfico solo en la pestaña Monitor serial.
+
+- **`src/graficador.js`** (nuevo, entra al armado antes de `app.js`):
+  - **Registro:** cada línea que llega, de la placa o del simulador, con su hora y sus números.
+    - Entiende `temp:25 luz:512`, `temp=25`, `Temperatura: 25.3 C`, `min 430 max 431` y números sueltos (`valor1`, `valor2`…).
+    - Un `nan` queda como hueco.
+    - Con la placa, la hora son los ms desde que se conectó; en el simulador, el tiempo simulado. Al reconectar o simular de nuevo, el tiempo sigue.
+    - Guarda hasta 20 000 líneas; «Limpiar» lo vacía.
+  - **CSV:** `t_ms;origen;linea;<una columna por etiqueta>`, con coma decimal, comillas escapadas y marca UTF-8. Botón «Exportar CSV», con el diálogo de guardar de siempre.
+  - **Gráfico:** «Texto | Gráfico» en la pestaña del monitor.
+    - Canvas sin librerías y una línea de 2 px por variable.
+    - 8 colores en orden fijo, validados para daltonismo en modo claro y oscuro contra el fondo de la app.
+    - Casillas para mostrar u ocultar cada variable; pausar mientras el registro sigue.
+    - Ventana de 5 a 60 s y escala automática, 0–1023 o 0–5 V.
+    - Etiqueta con el último valor al final de cada línea, y línea vertical con valores al pasar el mouse.
+    - Solo se dibuja mientras está a la vista y cuando llega algo nuevo.
+- **Pruebas:**
+  - `npm run test:graficador` (Node, 22): los formatos, las líneas en trozos, el `\r\n` partido, el tiempo que sigue, el CSV y el límite;
+  - `test:simulador` (37 de 37): con «Validar: ruido de analogRead()», el gráfico muestra min, max, promedio y desviacion, una casilla oculta su variable, la pausa congela el gráfico y el CSV sale como se espera;
+  - `npm test`: todo bien.

@@ -247,6 +247,42 @@ details.subir-detalle pre { max-height: 220px; overflow: auto; font-family: var(
 .nota-serial { padding: 10px 12px; font-size: 13px; line-height: 1.45; background: var(--warn-soft); border-bottom: 1px solid var(--line); }
 .nota-serial[hidden] { display: none; }
 .check { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; color: var(--muted); }
+.hueco-herr { flex: 1 1 auto; }
+#salidaSerial[hidden] { display: none; }
+
+/* ---------- Graficador del monitor serial (src/graficador.js) ----------
+   8 colores en orden fijo, uno por variable según su orden de llegada (paleta categórica validada para daltonismo
+   contra el fondo de cada modo). Tres de los claros quedan bajo 3:1 contra el fondo: por eso cada línea lleva su
+   etiqueta al final, la leyenda con casillas y los valores al pasar el mouse. */
+:root {
+  --serie-1: #2a78d6; --serie-2: #eb6834; --serie-3: #1baf7a; --serie-4: #eda100;
+  --serie-5: #e87ba4; --serie-6: #008300; --serie-7: #4a3aa7; --serie-8: #e34948;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --serie-1: #3987e5; --serie-2: #d95926; --serie-3: #199e70; --serie-4: #c98500;
+    --serie-5: #d55181; --serie-6: #008300; --serie-7: #9085e9; --serie-8: #e66767;
+  }
+}
+:root[data-theme="dark"] {
+  --serie-1: #3987e5; --serie-2: #d95926; --serie-3: #199e70; --serie-4: #c98500;
+  --serie-5: #d55181; --serie-6: #008300; --serie-7: #9085e9; --serie-8: #e66767;
+}
+#graficoSerial { display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: 0; background: var(--code-bg); }
+#graficoSerial[hidden] { display: none; }
+.graf-barra { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--panel); }
+.graf-leyenda { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; }
+.graf-serie { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--ink); cursor: pointer; }
+.graf-muestra { display: inline-block; width: 14px; height: 4px; border-radius: 2px; flex: none; }
+.graf-hueco { flex: 1 1 auto; }
+.graf-nota { font-size: 12px; color: var(--muted); }
+.graf-area { position: relative; min-height: 160px; }
+.graf-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: crosshair; }
+.graf-vacio { position: absolute; inset: 0; margin: 0; display: grid; place-items: center; padding: 20px; text-align: center; color: var(--muted); font-size: 13px; }
+.graf-vacio[hidden] { display: none; }
+.graf-tip { position: absolute; pointer-events: none; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 6px 9px; font-size: 12px; line-height: 1.5; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.14); white-space: nowrap; }
+.graf-tip[hidden] { display: none; }
+.graf-tip div { display: flex; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; }
 
 /* ---------- Modal ---------- */
 #modal { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 16px; background: rgba(8, 16, 10, .45); }

@@ -84,10 +84,17 @@
             <label class="check"><input type="checkbox" id="chkHora"> Hora</label>
             <label class="check"><input type="checkbox" id="chkAuto" checked> Autodesplazar</label>
             <button type="button" class="btn chico" id="btnLimpiar">Limpiar</button>
+            <span class="hueco-herr"></span>
+            <div class="segmentado" id="vistaMonitor" role="group" aria-label="Cómo ver el monitor">
+              <button type="button" id="vmTexto" aria-pressed="true">Texto</button>
+              <button type="button" id="vmGrafico" aria-pressed="false">Gráfico</button>
+            </div>
+            <button type="button" class="btn chico" id="btnCsv" title="Guardar todo lo que llegó por el monitor serial en una hoja de cálculo (Excel, LibreOffice o Google Sheets)">Exportar CSV</button>
           </div>
           <div class="nota-serial" id="notaSerial" hidden></div>
         </div>
         <pre id="salidaSerial" aria-live="polite"></pre>
+        <div id="graficoSerial" hidden></div>
         <form class="envio" id="formEnvio">
           <input class="entrada" id="txtEnviar" placeholder="Mensaje para la placa (Enter envía)" autocomplete="off" aria-label="Mensaje a enviar">
           <select id="finLinea" aria-label="Fin de línea">
