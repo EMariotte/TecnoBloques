@@ -19,6 +19,7 @@ with sync_playwright() as p:
     errores = []
     pag.on('console', lambda m: errores.append(f'{m.type}: {m.text}') if m.type in ('error', 'warning') else None)
     pag.on('pageerror', lambda e: errores.append(f'pageerror: {e}'))
+    pag.on('requestfailed', lambda r: errores.append(f'no cargó: {r.url[:120]} ({r.failure})') if r.url.startswith('file:') else None)  # sin internet, las fuentes de Google pueden faltar
     pag.goto((RAIZ / 'dist' / 'TecnoBloques.html').as_uri())
     pag.wait_for_timeout(1200)
     resultados = {}
@@ -64,3 +65,5 @@ with sync_playwright() as p:
     json.dump({k: {'placa': v.get('placa'), 'avisos': v['avisos']} for k, v in resultados.items()}, sys.stdout, indent=1, ensure_ascii=False)
     print('\nERRORES:', *errores, sep='\n')
     nav.close()
+# Un error de JavaScript o un recurso que no carga hace fallar la prueba (antes solo se imprimía y npm test daba éxito).
+sys.exit(1 if errores else 0)

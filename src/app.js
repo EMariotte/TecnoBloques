@@ -168,6 +168,15 @@ function reemplazarMedia(raiz) {
     }
   });
 }
+// Los estilos de Blockly también piden imágenes por ruta: url(tbmedia/sprites.svg) en las flechas de las categorías y
+// los controles. Se cambian por las que vienen dentro, como las <image>; si no, el navegador busca un archivo que no existe.
+function reemplazarMediaCss() {
+  const media = window.TB_MEDIA || {};
+  document.querySelectorAll('style').forEach(st => {
+    if (!st.textContent.includes(PREFIJO_MEDIA)) return;
+    st.textContent = st.textContent.replace(/url\((["']?)tbmedia\/+([^"')]+)\1\)/g, (todo, comilla, archivo) => media[archivo] ? `url("${media[archivo]}")` : todo);
+  });
+}
 new MutationObserver((muts) => {
   for (const m of muts) {
     if (m.type === 'attributes') { if (m.target.tagName === 'image') reemplazarMedia(m.target.parentNode || document); }
@@ -1646,6 +1655,10 @@ function iniciar() {
   Object.entries(PLACAS).forEach(([k, v]) => sel.append(el('option', { value: k }, v.nombre)));
   sel.value = placaActual;
 
+  // Los estilos de Blockly se ponen antes del inject para cambiar sus rutas de imágenes antes de que el navegador
+  // los use (inject mide el texto y eso ya pide los fondos). Blockly los pone una sola vez: el inject no los repite.
+  Blockly.Css.inject($('blockly'), true, PREFIJO_MEDIA);
+  reemplazarMediaCss();
   espacio = Blockly.inject('blockly', {
     toolbox: toolboxNivel(nivelActual = nivelGuardado()), renderer: 'zelos', theme: esOscuro() ? TEMA_OSCURO : TEMA_CLARO, media: PREFIJO_MEDIA, sounds: false,
     trashcan: true, zoom: { controls: true, wheel: true, startScale: 0.72, maxScale: 2, minScale: 0.35, scaleSpeed: 1.15 },

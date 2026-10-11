@@ -328,7 +328,8 @@ with sync_playwright() as p:
     nav = p.chromium.launch()
     pag = nav.new_page(viewport={'width': 1400, 'height': 860})
     errores = []
-    pag.on('console', lambda m: errores.append(f'{m.type}: {m.text}') if m.type in ('error',) and 'ERR_' not in m.text else None)
+    pag.on('console', lambda m: errores.append(f'{m.type}: {m.text}') if m.type == 'error' else None)
+    pag.on('requestfailed', lambda r: errores.append(f'no cargó: {r.url[:120]} ({r.failure})') if r.url.startswith('file:') else None)  # sin internet, las fuentes de Google pueden faltar
     pag.on('pageerror', lambda e: errores.append(f'pageerror: {e} {e.stack[:900]}'))
     pag.goto((RAIZ / 'dist' / 'TecnoBloques.html').as_uri())
     pag.wait_for_timeout(1000)
@@ -387,3 +388,5 @@ with sync_playwright() as p:
     print('PROYECTO MAS NUEVO:', pag.evaluate(JS_NUEVO))
     print('ERRORES:', *errores, sep='\n')
     nav.close()
+# Un error de JavaScript o un recurso que no carga hace fallar la prueba (antes solo se imprimía y npm test daba éxito).
+sys.exit(1 if errores else 0)

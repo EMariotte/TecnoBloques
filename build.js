@@ -7,7 +7,7 @@ const BL = 'node_modules/blockly/';
 const VERSION = require('./node_modules/blockly/package.json').version;
 
 const mediaDir = path.join(__dirname, BL, 'media');
-const tipos = { svg: 'image/svg+xml', png: 'image/png', gif: 'image/gif' };
+const tipos = { svg: 'image/svg+xml', png: 'image/png', gif: 'image/gif', cur: 'image/x-icon' }; // .cur: cursores de arrastrar y borrar
 const media = {};
 for (const f of fs.readdirSync(mediaDir)) {
   const ext = f.split('.').pop();

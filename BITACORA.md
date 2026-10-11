@@ -704,3 +704,13 @@ Lo siguiente: la shield L293D y el motor DC (T3).
 - **`escritorio/empaquetar.js`:** si el HTML trae el simulador instalado, exige que `package.json` diga `github:EMariotte/TecnoCircuito#vX.Y.Z` con esa misma versión instalada. Probado en los tres casos: un paquete armado a mano se rechaza, sin simulador se acepta y la copia local se rechaza.
 - **La publicación de TecnoCircuito v0.1.0 está preparada** (sin etiquetar): con la etiqueta, en `package.json` va `"tecnocircuito": "github:EMariotte/TecnoCircuito#v0.1.0"` y se corre `npm install`. Probado con un paquete local: la app usa el simulador «etiqueta» 0.1.0 y simula el carro.
 - `npm run test:graficador` (28), `test:simulador` (37) y `npm test`: todo bien.
+
+## 2026-10-11 — R8 de la revisión de Codex: `npm test` falla ante errores, y `sprites.svg`
+
+Autor: Claude. Revisión de partida: `171d76a`. Lo verifica Codex.
+
+- **El problema (R8):** `npm test` terminaba en 0 aunque `prueba.py` imprimía `Failed to load resource: net::ERR_FILE_NOT_FOUND`, y `prueba_todo.py` filtraba los mensajes con `ERR_`.
+- **Las pruebas:** `test/prueba.py` y `test/prueba_todo.py` registran también los archivos locales que no cargan (`requestfailed`, solo `file:`, para que la falta de internet no tumbe la prueba). Con cualquier error salen con 1. `prueba_todo.py` ya no filtra `ERR_`. Comprobado: con el archivo faltante, `npm test` dio 1.
+- **El archivo faltante era `tbmedia/sprites.svg`:** los estilos de Blockly lo piden por ruta (las flechas de las categorías), e `inject` ya pide los fondos al medir el texto. Ahora `iniciar()` pone los estilos con `Blockly.Css.inject` antes del `inject` y `reemplazarMediaCss()` cambia sus rutas `tbmedia/…` por las imágenes de `TB_MEDIA`. `build.js` también embebe los cursores `.cur` (arrastrar y borrar), que los estilos piden igual.
+- **Contrato (TecnoCircuito, 11 oct):** falla nueva `corriente_chip`, dentro de `limitePin`. TecnoBloques solo muestra el `mensaje`: no hubo que cambiar nada. Anotado en «Proyecto hermano».
+- `npm test` sin errores (exit 0), `test:simulador` 37 de 37 y `test:graficador`: todo bien.
