@@ -1,7 +1,7 @@
 // Prueba con Node el registro del monitor serial: cómo lee cada línea, el tiempo y el CSV para Excel en español.
 // Uso: node test/graficador.js
 'use strict';
-const { leerValores, crearRegistro } = require('../src/graficador.js');
+const { leerValores, crearRegistro, marcasEje } = require('../src/graficador.js');
 
 let fallos = 0;
 function revisar(condicion, texto) {
@@ -54,10 +54,26 @@ revisar(r2.csv().trim().endsWith(';'), 'un «nan» queda como celda vacía');
 // 4. Límite y limpiar
 const r3 = crearRegistro(5);
 for (let i = 0; i < 12; i++) r3.agregar(`v ${i}\n`, 'placa', i);
-revisar(r3.lineas.length === 5 && r3.lineas[0].valores.v === 7, 'guarda las últimas líneas hasta el límite');
+revisar(r3.lineas.length >= 5 && r3.lineas.length <= 6 && r3.lineas[r3.lineas.length - 1].valores.v === 11, `guarda las últimas líneas: recorta por bloques al pasar el límite (quedan ${r3.lineas.length} de 12, hasta la 11)`);
 const antes = r3.version;
 r3.limpiar();
 revisar(r3.lineas.length === 0 && r3.etiquetas.length === 0 && r3.version > antes, '«Limpiar» vacía el registro');
+
+// 5. Revisión de código del 11 oct
+revisar(igual(lee('Lectura 1: 512'), [['Lectura', 1], ['valor1', 512]]), '«Lectura 1: 512»: el «1» no es una etiqueta (no crea una columna por lectura)');
+revisar(igual(lee('Hora 12:30'), [['Hora', 12], ['valor1', 30]]), '«Hora 12:30»: dos números, sin etiquetas «12»');
+const r4 = crearRegistro();
+for (let i = 0; i < 100; i++) r4.agregar(`s${i}:${i}\n`, 'placa', i);
+revisar(r4.etiquetas.length === 40 && r4.lineas.length === 100, 'las columnas de números tienen un tope (40); las líneas siguen guardándose');
+const r5 = crearRegistro();
+r5.agregar('=== Inicio ===\n-- Lectura --\n+5V ok\n@hola\nnormal\n', 'placa', 0);
+const lineasCsv = r5.csv().slice(1).trim().split('\r\n').slice(1).map((f) => f.split(';')[2]);
+revisar(igual(lineasCsv, ['"\'=== Inicio ==="', '"\'-- Lectura --"', '"\'+5V ok"', '"\'@hola"', '"normal"']),
+  'en el CSV, una línea que empieza con = + - @ lleva un apóstrofo (Excel no la toma como fórmula)');
+const enorme = marcasEje(1.2e19, 1.2e19, 5);
+const grande = marcasEje(0, 1e17, 5);
+revisar(enorme.length >= 1 && grande.length <= 50, `marcas del eje con números enormes: terminan (${enorme.length} y ${grande.length} marcas)`);
+revisar(igual(marcasEje(0, 1023, 10), [0, 200, 400, 600, 800, 1000]), `marcas «redondas» de 0 a 1023: ${marcasEje(0, 1023, 10).join(', ')}`);
 
 console.log(fallos ? `\n${fallos} FALLA(S)` : '\nTodo bien.');
 process.exit(fallos ? 1 : 0);

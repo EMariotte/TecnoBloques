@@ -1106,7 +1106,8 @@ let graficoSerial = null;
 /** Guarda el registro del monitor como CSV para Excel en español («;» y coma decimal). */
 function exportarCsvMonitor() {
   if (!registroSerial.lineas.length) { mostrarToast('Todavía no ha llegado nada por el monitor serial.'); return; }
-  const fecha = new Date().toISOString().slice(0, 10);
+  const h = new Date();
+  const fecha = `${h.getFullYear()}-${String(h.getMonth() + 1).padStart(2, '0')}-${String(h.getDate()).padStart(2, '0')}`; // la local, no la UTC
   descargar(`${nombreArchivoBase()} - monitor ${fecha}.csv`, registroSerial.csv(), 'text/csv;charset=utf-8');
   mostrarToast(`CSV con ${registroSerial.lineas.length} líneas y ${registroSerial.etiquetas.length} columnas de números.`);
 }

@@ -21,6 +21,19 @@ if (html.includes('window.TB_SIMULADOR_ORIGEN = "local"')) {
   console.error('dist/TecnoBloques.html trae la copia LOCAL del simulador (npm run app:simulador). Arma con «node build.js» antes de empaquetar.');
   process.exit(1);
 }
+// Y si trae el simulador instalado, tiene que venir de una etiqueta fija (github:EMariotte/TecnoCircuito#vX.Y.Z), con
+// esa misma versión instalada: un paquete armado a mano o de una rama tampoco llega al aula.
+if (html.includes('window.TB_SIMULADOR_ORIGEN = "etiqueta"')) {
+  const dep = (require(path.join(raiz, 'package.json')).dependencies || {}).tecnocircuito || '';
+  const m = dep.match(/^github:EMariotte\/TecnoCircuito#v(\d+\.\d+\.\d+)$/);
+  let instalada = null;
+  try { instalada = require(path.join(raiz, 'node_modules', 'tecnocircuito', 'package.json')).version; } catch (e) { /* no está */ }
+  if (!m || instalada !== m[1]) {
+    console.error(`El simulador no viene de una etiqueta fija: package.json dice «${dep || 'nada'}» y está instalada la ${instalada || 'ninguna'}. ` +
+      'Pon "tecnocircuito": "github:EMariotte/TecnoCircuito#vX.Y.Z" y corre npm install (contrato, sección 9).');
+    process.exit(1);
+  }
+}
 const salida = path.join(process.env.LOCALAPPDATA || path.join(raiz, '..'), 'TecnoBloques-build');
 fs.rmSync(salida, { recursive: true, force: true });
 

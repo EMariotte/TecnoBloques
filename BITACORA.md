@@ -688,3 +688,19 @@ Lo siguiente: la shield L293D y el motor DC (T3).
   - `npm run test:graficador` (Node, 22): los formatos, las líneas en trozos, el `\r\n` partido, el tiempo que sigue, el CSV y el límite;
   - `test:simulador` (37 de 37): con «Validar: ruido de analogRead()», el gráfico muestra min, max, promedio y desviacion, una casilla oculta su variable, la pausa congela el gráfico y el CSV sale como se espera;
   - `npm test`: todo bien.
+
+## 2026-10-11 — Revisión de código del graficador y el instalador exige una etiqueta fija
+
+- **`/code-review` del graficador y los paneles plegables (10 hallazgos, todos corregidos):**
+  - **El más serio:** un número enorme (`1e17`, o un número largo impreso como dígitos) congelaba la app al calcular las marcas del eje. Ahora el paso nunca es cero y hay un tope de 50 marcas.
+  - **Etiquetas:** «Lectura 1: 512» o «12:30» ya no crean una columna por lectura (una etiqueta debe empezar con letra) y hay un tope de 40 columnas.
+  - **El gráfico** no se dibuja cuando no está a la vista.
+  - **Las casillas** no se rehacen al marcarlas (no pierden el foco del teclado).
+  - **El CSV:** las líneas que empiezan con `= + - @` llevan un apóstrofo, así Excel no las toma como fórmula.
+  - **La placa y el simulador**, que usan relojes distintos, ya no se cortan entre sí en el gráfico ni en la pausa.
+  - **El nombre del CSV** lleva la fecha local.
+  - **Menos trabajo:** un repintado por evento y el recorte del registro por bloques.
+  - **Pendiente, con nota:** una sola lógica de fin de línea para el monitor, el registro y el monitor del simulador.
+- **`escritorio/empaquetar.js`:** si el HTML trae el simulador instalado, exige que `package.json` diga `github:EMariotte/TecnoCircuito#vX.Y.Z` con esa misma versión instalada. Probado en los tres casos: un paquete armado a mano se rechaza, sin simulador se acepta y la copia local se rechaza.
+- **La publicación de TecnoCircuito v0.1.0 está preparada** (sin etiquetar): con la etiqueta, en `package.json` va `"tecnocircuito": "github:EMariotte/TecnoCircuito#v0.1.0"` y se corre `npm install`. Probado con un paquete local: la app usa el simulador «etiqueta» 0.1.0 y simula el carro.
+- `npm run test:graficador` (28), `test:simulador` (37) y `npm test`: todo bien.
