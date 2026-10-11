@@ -714,3 +714,17 @@ Autor: Claude. Revisión de partida: `171d76a`. Lo verifica Codex.
 - **El archivo faltante era `tbmedia/sprites.svg`:** los estilos de Blockly lo piden por ruta (las flechas de las categorías), e `inject` ya pide los fondos al medir el texto. Ahora `iniciar()` pone los estilos con `Blockly.Css.inject` antes del `inject` y `reemplazarMediaCss()` cambia sus rutas `tbmedia/…` por las imágenes de `TB_MEDIA`. `build.js` también embebe los cursores `.cur` (arrastrar y borrar), que los estilos piden igual.
 - **Contrato (TecnoCircuito, 11 oct):** falla nueva `corriente_chip`, dentro de `limitePin`. TecnoBloques solo muestra el `mensaje`: no hubo que cambiar nada. Anotado en «Proyecto hermano».
 - `npm test` sin errores (exit 0), `test:simulador` 37 de 37 y `test:graficador`: todo bien.
+
+## 2026-10-11 — Contrato: el registro de eventos queda aprobado (sección 6.1 de TecnoCircuito)
+
+Decisiones de Efraín, para implementar en la próxima sesión. La fuente es `..\TecnoCircuito\CONTRATO.md`, sección 6.1.
+
+- **A TecnoBloques le toca:**
+  - una opción del instructor, por PC, para encender el registro (**apagado por defecto**), y un aviso en pantalla cuando está encendido;
+  - el **código del equipo** al abrir la app, con confirmación (sin datos de los aprendices; reemplaza al `alias`);
+  - el sobre: `equipo`, `sesion`, `version_tb` y `version_tc`;
+  - los eventos del editor: `sesion_iniciada`, `proyecto_abierto`/`ejemplo_cargado`, `bloques_cambiados` (resumen), `codigo_compilado` (con el C++ sin comentarios), `programa_subido` y `sesion_terminada`;
+  - el IPC `tb:registrar`, que agrega cada línea a `registros\<equipo>-<fecha>.jsonl`;
+  - «Exportar registros», solo para el instructor.
+- **Quitar comentarios del C++:** `//` y `/* */`, respetando comillas y escapes, con pruebas.
+- **No se registra** el monitor serial.
