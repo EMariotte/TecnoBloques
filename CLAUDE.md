@@ -507,6 +507,18 @@ escritorio/main.js
 7. **Modo:** `'realista'` o `'ideal'`, más ajustes por no idealidad (`{caidaL293D: false, …}`). Las claves las define TecnoCircuito.
 8. **Errores:** si el simulador falla, el editor sigue. TecnoBloques envuelve cada llamada en `try/catch`.
 
+### Nano + expansión E/S (11 oct 2026, Codex)
+
+**Validación manual de Efraín:** abrió con `npm run app:simulador` y confirmó ejecución del programa y lecturas independientes de los potenciómetros en A6/A7. El 11 oct autorizó commit/push de ambos proyectos. Es validación del recorrido de software; alimentación y montaje físicos siguen pendientes. La comprobación automática y su entrega inicial sin commit se conservan debajo como evidencia fechada.
+
+Contrato 1 ampliado en desarrollo: `TecnoCircuito.PLACAS` admite `uno`, `nano` y `nano_old`; Mega continúa deshabilitada con explicación. La placa Nano se dibuja con una expansión roja/azul y un solo ATmega328P. A6/A7 son solo analógicos. `shield_nano_io` conserva variante, fuente USB/jack/desconectada y voltaje del jack; las reglas y 85 terminales están en `../TecnoCircuito/CONTRATO.md`, sección 4.2, y su esquema. El modelo de alimentación y la geometría están pendientes de validar con ambas tarjetas físicas.
+
+`abrirLienzo()` guarda el conjunto inicial del Nano aunque no haya ediciones; Uno nuevo sigue sin circuito. Un montaje incompatible (por ejemplo GND3 del Uno al elegir Nano) se conserva para volver a la placa original, con explicación del pin inválido. Ejemplo `val_nano_adc67`, «Validar: Nano + expansión A6/A7», en el grupo de validación existente: dos potenciómetros y su C++ para simular/subir.
+
+KiCad exporta el Nano como módulo de 30 pads, más regulación/filtro de referencia, jack e I2C/SPI; la electrónica interna del Nano permanece en el módulo. No hay PCB terminada ni identificación acreditada de los componentes comerciales. I2C/SPI aportan conexiones y redes; sus dispositivos/protocolos completos siguen pendientes.
+
+Comprobado: `test:simulador` **51 OK, sin errores JS**, compilando con los FQBN de Nano y Nano antiguo, Worker, ADC6/7, variante azul, guardado/reapertura, campos adicionales, SVG y netlist; `test:graficador` **28 OK** y `npm test` exit 0 con ambos registros `ERRORES` vacíos. Sin commit, push, etiqueta ni instalador. Protocolo físico: `../TecnoCircuito/docs/IMPLEMENTACION-NANO-2026-10-11.md`.
+
 ### Primera conexión (7 oct 2026) y pendientes en TecnoBloques
 
 - ✅ (0.2.5) **Conservar campos desconocidos del proyecto,** `creadoCon` y aviso de proyecto más nuevo. Ver «Proyecto (`.tbq.json`)».

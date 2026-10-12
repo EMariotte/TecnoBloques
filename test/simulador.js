@@ -44,6 +44,7 @@ const LIENZO = "document.querySelector('#lienzoCircuito .tecnocircuito').shadowR
 (async () => {
   const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'ELECTRON_RUN_AS_NODE'));
   const datos = path.join(require('os').tmpdir(), 'tecnobloques-prueba-simulador');
+  if (path.resolve(datos) !== path.join(path.resolve(require('os').tmpdir()), 'tecnobloques-prueba-simulador')) throw new Error('Ruta temporal inesperada');
   fs.rmSync(datos, { recursive: true, force: true }); // sin autoguardado de otra prueba
   const app = await electron.launch({ args: [RAIZ, `--user-data-dir=${datos}`], cwd: RAIZ, env });
   const errores = [];
@@ -302,12 +303,63 @@ const LIENZO = "document.querySelector('#lienzoCircuito .tecnocircuito').shadowR
   revisar(error, `un error de C++ se explica en español al simular («${await win.evaluate(() => $('modalTitulo').textContent)}»)`);
   await win.evaluate(() => { cerrarModal(false); salirModoTexto(true); });
 
-  // 6. Otra placa: el simulador del prototipo solo tiene el Uno
-  await win.evaluate(() => { $('placa').value = 'nano'; $('placa').dispatchEvent(new Event('change')); seleccionarPestana('circuito'); });
-  await win.waitForTimeout(300);
-  const nano = await win.evaluate(() => ({ nota: $('notaCircuito').textContent, oculto: $('notaCircuito').hidden, boton: $('btnSimular').disabled }));
-  revisar(!nano.oculto && /solo tiene/.test(nano.nota) && nano.boton, `con el Nano, la pestaña lo explica y «Simular» queda apagado («${nano.nota}»)`);
-  await win.screenshot({ path: path.join(SALIDA, 'sim_3_nano.png') });
+  // 6. Nano clásico/Nano antiguo: compilación, Worker, expansión y persistencia.
+  const leerNano = (a, b) => esperar(`(() => {
+    const pares = $('salidaSim').textContent.split(String.fromCharCode(10)).slice(0,-1).map(l => /^([0-9]+),([0-9]+)$/.exec(l.trim())).filter(Boolean);
+    return pares.length && Math.abs(Number(pares.at(-1)[1]) - ${a}) <= 2 && Math.abs(Number(pares.at(-1)[2]) - ${b}) <= 2;
+  })()`, 60000);
+  for (const placaNano of ['nano', 'nano_old']) {
+    await win.evaluate((placaNano) => {
+      detenerSimulacion();
+      $('placa').value = placaNano; $('placa').dispatchEvent(new Event('change'));
+      nuevoProyecto(); seleccionarPestana('circuito');
+    }, placaNano);
+    const inicial = await win.evaluate(() => ({ circuito: proyectoActual().circuito, nota: $('notaCircuito').hidden, boton: $('btnSimular').disabled }));
+    revisar(inicial.nota && !inicial.boton && inicial.circuito.placa === placaNano && inicial.circuito.componentes.length === 1 && inicial.circuito.componentes[0].tipo === 'shield_nano_io',
+      `${placaNano}: el conjunto nuevo se puede simular y se guarda sin editarlo`);
+    await win.evaluate((placaNano) => {
+      cargarEjemplo(EJEMPLOS.find(e => e.id === 'val_nano_adc67'));
+      $('placa').value = placaNano; $('placa').dispatchEvent(new Event('change'));
+      $('salidaSerial').textContent = ''; $('salidaSim').textContent = '';
+    }, placaNano);
+    await win.waitForTimeout(400);
+    await win.locator('#btnSimularBarra').click();
+    revisar(await leerNano(256,768), `${placaNano}: Arduino CLI compila con su FQBN y ADC6/7 imprime aproximadamente256,768`);
+    revisar(await win.evaluate(() => simulador.sim?.medidas().hilo === 'worker'), `${placaNano}: el programa corre en Worker`);
+    const cambiado = await win.evaluate(() => {
+      detenerSimulacion();
+      const p = proyectoActual();
+      p.circuito.componentes.find(c => c.id === 'exp1').props.variante = 'azul';
+      p.circuito.componentes.find(c => c.id === 'pot6').props.posicion = .8;
+      p.circuito.notas = 'campo de proyecto conservado';
+      const antes = JSON.stringify(p.circuito.cables);
+      cargarProyecto(p,true);
+      return { antes, guardado: proyectoActual().circuito };
+    });
+    await win.waitForTimeout(400);
+    revisar(cambiado.guardado.componentes[0].props.variante === 'azul' && JSON.stringify(cambiado.guardado.cables) === cambiado.antes && cambiado.guardado.notas === 'campo de proyecto conservado',
+      `${placaNano}: guardar y reabrir conserva variante, cables, perilla y campos adicionales`);
+    await win.locator('#btnSimularBarra').click();
+    revisar(await leerNano(819,768), `${placaNano}: la perilla guardada cambia A6 y conserva A7`);
+    const exportado = await win.evaluate(() => ({ svg: simulador.lienzo.exportarSVG(), net: simulador.lienzo.exportarNetlist({nombre:'Nano validación'}) }));
+    revisar(exportado.svg.includes('EXPANSIÓN E/S') && exportado.svg.includes('A6') && exportado.net.includes('Module:Arduino_Nano') && exportado.net.includes('LD1117S50TR') && exportado.net.includes('PJ-102AH') && exportado.net.includes('SPI MISO MOSI SCK SS'),
+      `${placaNano}: SVG del conjunto y netlist de módulo/regulación/jack/I2C/SPI disponibles`);
+    await win.screenshot({ path: path.join(SALIDA, `sim_nano_${placaNano}.png`) });
+    await win.evaluate(() => detenerSimulacion());
+  }
+  // Un cambio incompatible conserva el circuito original para volver a su placa.
+  await win.evaluate((c) => {
+    const p = proyectoActual(); p.placa = 'uno'; p.circuito = c; p.texto = null;
+    cargarProyecto(p,true);
+    $('placa').value = 'nano'; $('placa').dispatchEvent(new Event('change'));
+  }, T2(.5));
+  revisar(await win.evaluate(() => !simulador.lienzo && /GND3/.test($('notaCircuito').textContent) && proyectoActual().circuito.placa === 'uno'),
+    'cambiar Uno con GND3 a Nano explica el pin incompatible y conserva el circuito original');
+  await win.evaluate(() => { $('placa').value = 'uno'; $('placa').dispatchEvent(new Event('change')); });
+  revisar(await win.evaluate(() => simulador.lienzo.circuito().cables.some(c => c.de === 'placa.GND3')), 'volver a Uno recupera su montaje sin pérdida');
+  await win.evaluate(() => { $('placa').value = 'mega'; $('placa').dispatchEvent(new Event('change')); seleccionarPestana('circuito'); });
+  const mega = await win.evaluate(() => ({nota:$('notaCircuito').textContent,oculto:$('notaCircuito').hidden,boton:$('btnSimular').disabled}));
+  revisar(!mega.oculto && /solo tiene/.test(mega.nota) && mega.boton, 'Mega sigue deshabilitada con explicación de las placas disponibles');
   await win.evaluate(() => { $('placa').value = 'uno'; $('placa').dispatchEvent(new Event('change')); });
 
   revisar(errores.length === 0, 'sin errores de JavaScript' + (errores.length ? ': ' + errores.join(' | ') : ''));

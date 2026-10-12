@@ -728,3 +728,19 @@ Decisiones de Efraín, para implementar en la próxima sesión. La fuente es `..
   - «Exportar registros», solo para el instructor.
 - **Quitar comentarios del C++:** `//` y `/* */`, respetando comillas y escapes, con pruebas.
 - **No se registra** el monitor serial.
+
+
+## 2026-10-11 — Codex: Contrato 1: Nano + expansión E/S
+
+Efraín autorizó a Codex el desarrollo, pruebas y revisión del Nano clásico con expansión roja/azul. Revisión de partida TecnoBloques `07cc3dd`; TecnoCircuito `30ecd7d`. Se mantiene contrato/formato 1; alcance y reglas en `../TecnoCircuito/CONTRATO.md`, sección 4.2. La asignación anterior Codex revisor/Claude implementador queda como historia.
+
+- App: guarda el Nano con expansión inicial sin necesitar edición; conserva el montaje incompatible al cambiar de placa y permite volver a su placa original. Uno nuevo mantiene su circuito vacío.
+- Ejemplo de validación `val_nano_adc67`: C++ y dos potenciómetros en A6/A7 de la expansión, bajo el grupo existente. A6/A7 solo ADC; no se crean salidas digitales ni un segundo chip.
+- Prueba Electron/Arduino CLI ampliada: **51 OK, cero errores JS**. Ambos FQBN, Worker, lecturas iniciales y tras cambiar perilla, azul, reapertura, cables, campos desconocidos, SVG/netlist y Mega deshabilitada. Graficador **28 OK**. `npm test`: exit 0, ambos scripts con `ERRORES` vacío.
+- KiCad del hermano usa el exportador actualizado: módulo Nano de 30 pads + regulación/filtro, jack, I2C/SPI de referencia. Componentes y aislamiento pendientes de confirmar; no se fabrica una tarjeta a partir de las fotos.
+- Se actualiza «Proyecto hermano» de CLAUDE.md. La verificación física y la primera publicación siguen pendientes. No se cambió la dependencia instalada ni se hizo commit, push, etiqueta o instalador.
+
+
+## 2026-10-11 — Codex: validación manual de Nano por Efraín y autorización de entrega
+
+Efraín abrió la app con `npm run app:simulador`, confirmó que aparece el Nano y que el programa lee de manera independiente los dos potenciómetros en A6 y A7. Validación manual del recorrido de software; sin mediciones físicas nuevas. Después autorizó commit y push de la implementación en TecnoBloques y TecnoCircuito. Se conserva la evidencia automática de 51 comprobaciones de integración, 28 del graficador y las pruebas generales sin errores, junto con las 945 del simulador. Se actualiza «Proyecto hermano»; no se crea etiqueta, instalador ni se cambia la dependencia instalada.
