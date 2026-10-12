@@ -367,8 +367,9 @@ const LIENZO = "document.querySelector('#lienzoCircuito .tecnocircuito').shadowR
     $('placa').value = 'nano'; $('placa').dispatchEvent(new Event('change'));
     $('placa').value = 'uno'; $('placa').dispatchEvent(new Event('change'));
   });
-  revisar(await win.evaluate(() => !!simulador.lienzo && simulador.lienzo.circuito().placa === 'uno' && !simulador.lienzo.circuito().componentes.length),
-    'proyecto nuevo Nano → Uno: el lienzo del Uno abre vacío, sin la expansión');
+  revisar(await win.evaluate(() => !!simulador.lienzo && simulador.lienzo.circuito().placa === 'uno' && !simulador.lienzo.circuito().componentes.length
+    && !((proyectoActual().circuito || {}).componentes || []).some(k => k.tipo === 'shield_nano_io')),
+    'proyecto nuevo Nano → Uno: el lienzo del Uno abre vacío y el proyecto no guarda la expansión por defecto sin editar');
   await win.evaluate(() => { $('placa').value = 'mega'; $('placa').dispatchEvent(new Event('change')); seleccionarPestana('circuito'); });
   const mega = await win.evaluate(() => ({nota:$('notaCircuito').textContent,oculto:$('notaCircuito').hidden,boton:$('btnSimular').disabled}));
   revisar(!mega.oculto && /solo tiene/.test(mega.nota) && mega.boton, 'Mega sigue deshabilitada con explicación de las placas disponibles');

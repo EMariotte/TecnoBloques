@@ -771,3 +771,8 @@ En la revisión del Nano de Codex (pedida por Efraín) se encontró que cambiar 
 ## 2026-10-12 — Claude: contrato 4.2, diagnósticos del Nano
 
 Cambio del contrato en TecnoCircuito (aprobado por Efraín): el simulador ya no emite la falla `nano_referencia` en cada corrida del Nano (salía como aviso emergente en `fallasSim` y habría llegado a `simulacion_detenida` del registro de eventos), y `reinicio_placa` con `motivo: 'energia_nano'` solo se emite cuando el 5V cae por lo que pide el circuito; quitar la fuente a mano (Desconectada) reinicia el programa sin ese evento, porque el lienzo ya lo registra como `componente_cambiado`. TecnoBloques no necesita cambios de código: muestra las fallas que llegan. Se actualiza «Proyecto hermano».
+
+
+## 2026-10-12 — Claude: el conjunto Nano por defecto no se conserva al volver a Uno
+
+Tras la revisión independiente del día, `abrirLienzo()` no conserva lo guardado si es solo la expansión que el Nano trae por defecto (sin cables ni otras piezas): no hay montaje que recuperar. Antes, un proyecto nuevo que pasaba por Nano y volvía a Uno guardaba la expansión y repetía el aviso «Se quitó…» cada vez que se abría. Los montajes reales (por ejemplo, Uno con un cable a GND3) se siguen conservando. `test:simulador` **52 OK** (la prueba de proyecto nuevo Nano → Uno ahora también revisa lo guardado).

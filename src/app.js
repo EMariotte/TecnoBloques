@@ -1493,7 +1493,11 @@ function abrirLienzo() {
     // Al cambiar de placa, el lienzo quita lo que no va en la nueva (la expansión del Nano en el Uno, un cable a
     // GND3 en el Nano) y lo avisa. El proyecto conserva el montaje original hasta que el aprendiz edite: si
     // vuelve a la placa de antes, lo recupera completo.
-    const recortado = guardado && (inicial.componentes.length < (guardado.componentes || []).length
+    // Si lo guardado es solo la expansión que el Nano trae por defecto (sin cables ni otras piezas), no hay montaje
+    // que conservar: se reemplaza, para no repetir el aviso cada vez que se abre el proyecto.
+    const soloExpansion = guardado && (guardado.componentes || []).length === 1 && guardado.componentes[0].tipo === 'shield_nano_io'
+      && !(guardado.cables || []).length && !guardado.protoboard;
+    const recortado = guardado && !soloExpansion && (inicial.componentes.length < (guardado.componentes || []).length
       || inicial.cables.length < (guardado.cables || []).length);
     if (!recortado && (guardado || inicial.componentes.length || inicial.cables.length || inicial.protoboard))
       extrasProyecto.circuito = inicial;
