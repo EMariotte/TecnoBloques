@@ -1497,8 +1497,10 @@ function abrirLienzo() {
     // que conservar: se reemplaza, para no repetir el aviso cada vez que se abre el proyecto.
     const soloExpansion = guardado && (guardado.componentes || []).length === 1 && guardado.componentes[0].tipo === 'shield_nano_io'
       && !(guardado.cables || []).length && !guardado.protoboard;
+    // También cuentan las patas enchufadas directo (`en`): un LED en GND3 se suelta al pasar al Nano.
+    const enchufes = (c) => (c.componentes || []).reduce((n, k) => n + Object.keys(k.en || {}).length, 0);
     const recortado = guardado && !soloExpansion && (inicial.componentes.length < (guardado.componentes || []).length
-      || inicial.cables.length < (guardado.cables || []).length);
+      || inicial.cables.length < (guardado.cables || []).length || enchufes(inicial) < enchufes(guardado));
     if (!recortado && (guardado || inicial.componentes.length || inicial.cables.length || inicial.protoboard))
       extrasProyecto.circuito = inicial;
     simulador.lienzo.alCambiar((c) => { extrasProyecto.circuito = c; autoguardar(); });

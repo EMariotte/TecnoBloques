@@ -776,3 +776,13 @@ Cambio del contrato en TecnoCircuito (aprobado por Efraín): el simulador ya no 
 ## 2026-10-12 — Claude: el conjunto Nano por defecto no se conserva al volver a Uno
 
 Tras la revisión independiente del día, `abrirLienzo()` no conserva lo guardado si es solo la expansión que el Nano trae por defecto (sin cables ni otras piezas): no hay montaje que recuperar. Antes, un proyecto nuevo que pasaba por Nano y volvía a Uno guardaba la expansión y repetía el aviso «Se quitó…» cada vez que se abría. Los montajes reales (por ejemplo, Uno con un cable a GND3) se siguen conservando. `test:simulador` **52 OK** (la prueba de proyecto nuevo Nano → Uno ahora también revisa lo guardado).
+
+
+## 2026-10-12 — Claude: contrato 1, `en` enchufa patas en pines (imán entre pines)
+
+Cambio del contrato en TecnoCircuito, decidido por Efraín: el campo `en` de un componente también puede enchufar una pata en el pin de otra pieza o de la placa (`{ "<pata>": "<id>.<pin>" }`), sin protoboard ni cables. Ejemplos: el probador en el balance de la LiPo, el servo en SERVO_1/2 de la shield, un LED en D13 y GND. TecnoBloques no necesita cambios de código: guarda el circuito tal como lo entrega el lienzo y el evento `componente_cambiado` ya lleva `en`, así que el registro del estudio sabrá quién conectó directo. Se actualiza «Proyecto hermano». Detalle en COMO-FUNCIONA de TecnoCircuito, sección 61.
+
+
+## 2026-10-12 — Claude: cambiar de placa también cuenta las patas enchufadas
+
+Tras la revisión independiente del imán entre pines: `abrirLienzo()` considera «recortado» un circuito si el lienzo trae menos patas enchufadas (`en`) que lo guardado. Ejemplo: un LED enchufado en GND3 pierde esa pata al pasar al Nano y la recupera al volver al Uno. `test:simulador` **53 OK**.

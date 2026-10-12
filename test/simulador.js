@@ -370,6 +370,19 @@ const LIENZO = "document.querySelector('#lienzoCircuito .tecnocircuito').shadowR
   revisar(await win.evaluate(() => !!simulador.lienzo && simulador.lienzo.circuito().placa === 'uno' && !simulador.lienzo.circuito().componentes.length
     && !((proyectoActual().circuito || {}).componentes || []).some(k => k.tipo === 'shield_nano_io')),
     'proyecto nuevo Nano → Uno: el lienzo del Uno abre vacío y el proyecto no guarda la expansión por defecto sin editar');
+  // Un LED enchufado directo en GND3 (sin cables): al pasar a Nano se suelta, y al volver a Uno se recupera.
+  await win.evaluate(() => {
+    const p = proyectoActual(); p.placa = 'uno'; p.texto = null;
+    p.circuito = { formato: 1, placa: 'uno', cables: [], protoboard: null,
+      componentes: [{ id: 'led1', tipo: 'led', x: 0, y: 0, rot: 0, props: {}, en: { catodo: 'placa.GND3', anodo: 'placa.VIN' } }] };
+    cargarProyecto(p, true);
+    $('placa').value = 'nano'; $('placa').dispatchEvent(new Event('change'));
+  });
+  const enNano = await win.evaluate(() => (simulador.lienzo.circuito().componentes.find(k => k.id === 'led1') || {}).en || null);
+  await win.evaluate(() => { $('placa').value = 'uno'; $('placa').dispatchEvent(new Event('change')); });
+  const enUno = await win.evaluate(() => (simulador.lienzo.circuito().componentes.find(k => k.id === 'led1') || {}).en || null);
+  revisar(JSON.stringify(enNano) === '{"anodo":"placa.VIN"}' && JSON.stringify(enUno) === '{"catodo":"placa.GND3","anodo":"placa.VIN"}',
+    `LED enchufado en GND3: en el Nano se suelta esa pata y al volver a Uno se recupera (${JSON.stringify(enNano)} → ${JSON.stringify(enUno)})`);
   await win.evaluate(() => { $('placa').value = 'mega'; $('placa').dispatchEvent(new Event('change')); seleccionarPestana('circuito'); });
   const mega = await win.evaluate(() => ({nota:$('notaCircuito').textContent,oculto:$('notaCircuito').hidden,boton:$('btnSimular').disabled}));
   revisar(!mega.oculto && /solo tiene/.test(mega.nota) && mega.boton, 'Mega sigue deshabilitada con explicación de las placas disponibles');
