@@ -756,3 +756,18 @@ Efraín corrigió la posición de I2C y confirmó que el bloque de seis contacto
 Efraín autorizó commit y push de la corrección de Nano + expansión en ambos proyectos: I2C junto a UART y seis contactos de alimentación duplicada GND/3V3/5V. TecnoCircuito registra 595 comprobaciones dirigidas aprobadas, cero fallas. En TecnoBloques se entrega la documentación compartida; el bundle local ya se reconstruyó. La integración Electron previa conserva su evidencia fechada.
 
 La próxima sesión retomará los ajustes de Nano + expansión según la prioridad de Efraín. Continuidad, identificación y mediciones de las tarjetas reales pendientes. Sin etiqueta ni instalador.
+
+
+## 2026-10-12 — Claude: cambiar de placa ya no deja el circuito sin lienzo
+
+En la revisión del Nano de Codex (pedida por Efraín) se encontró que cambiar de placa podía dejar al aprendiz sin lienzo. Un proyecto nuevo pasa a Nano (trae su expansión) y vuelve a Uno → «No se pudo abrir el circuito: Expansión E/S del Nano no se monta en Arduino Uno», sin forma de arreglarlo. TecnoCircuito ahora quita al abrir lo que no va en la placa (pieza montada de otra placa, cables a pines que no tiene) y lo avisa en la barra del lienzo (nota en su CONTRATO, API del lienzo; contrato y formato 1 sin cambios).
+
+- `abrirLienzo()` no sobrescribe `extrasProyecto.circuito` si el lienzo trae menos piezas o cables que lo guardado: volver a la placa original recupera el montaje completo hasta que el aprendiz edite.
+- `test/simulador.js`: la prueba del GND3 ahora comprueba que el lienzo abre, quita el cable, lo avisa y conserva el original; nueva prueba de proyecto nuevo Nano → Uno. `test:simulador` **52 OK**, sin errores de JavaScript; `npm test` exit 0 con `ERRORES` vacío.
+- En el simulador, en la misma entrega: VIN y el jack del Nano sin entrada ya no son un corto a GND escondido, y el modo realista del Nano corre a la par del Uno (caché del circuito; COMO-FUNCIONA de TecnoCircuito, sección 60). Suite del simulador: 972 OK, cero fallas.
+- Se actualiza «Proyecto hermano» de CLAUDE.md. Sin commit ni push.
+
+
+## 2026-10-12 — Claude: contrato 4.2, diagnósticos del Nano
+
+Cambio del contrato en TecnoCircuito (aprobado por Efraín): el simulador ya no emite la falla `nano_referencia` en cada corrida del Nano (salía como aviso emergente en `fallasSim` y habría llegado a `simulacion_detenida` del registro de eventos), y `reinicio_placa` con `motivo: 'energia_nano'` solo se emite cuando el 5V cae por lo que pide el circuito; quitar la fuente a mano (Desconectada) reinicia el programa sin ese evento, porque el lienzo ya lo registra como `componente_cambiado`. TecnoBloques no necesita cambios de código: muestra las fallas que llegan. Se actualiza «Proyecto hermano».

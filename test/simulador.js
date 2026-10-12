@@ -347,16 +347,28 @@ const LIENZO = "document.querySelector('#lienzoCircuito .tecnocircuito').shadowR
     await win.screenshot({ path: path.join(SALIDA, `sim_nano_${placaNano}.png`) });
     await win.evaluate(() => detenerSimulacion());
   }
-  // Un cambio incompatible conserva el circuito original para volver a su placa.
+  // Un cambio incompatible abre el lienzo sin lo que no va en la placa nueva, lo avisa y conserva el original.
   await win.evaluate((c) => {
     const p = proyectoActual(); p.placa = 'uno'; p.circuito = c; p.texto = null;
     cargarProyecto(p,true);
     $('placa').value = 'nano'; $('placa').dispatchEvent(new Event('change'));
   }, T2(.5));
-  revisar(await win.evaluate(() => !simulador.lienzo && /GND3/.test($('notaCircuito').textContent) && proyectoActual().circuito.placa === 'uno'),
-    'cambiar Uno con GND3 a Nano explica el pin incompatible y conserva el circuito original');
+  await win.waitForTimeout(400);
+  const aNano = await win.evaluate(() => ({ lienzo: !!simulador.lienzo, sinGND3: !!simulador.lienzo && !simulador.lienzo.circuito().cables.some(c => c.de === 'placa.GND3'),
+    aviso: document.querySelector('#lienzoCircuito .tecnocircuito').shadowRoot.querySelector('.tc-ayuda').textContent, placaGuardada: proyectoActual().circuito.placa }));
+  revisar(aNano.lienzo && aNano.sinGND3 && /quitó.*1 cable/.test(aNano.aviso) && aNano.placaGuardada === 'uno',
+    `cambiar Uno con GND3 a Nano abre el lienzo, quita ese cable, lo avisa y conserva el original («${aNano.aviso}»)`);
   await win.evaluate(() => { $('placa').value = 'uno'; $('placa').dispatchEvent(new Event('change')); });
   revisar(await win.evaluate(() => simulador.lienzo.circuito().cables.some(c => c.de === 'placa.GND3')), 'volver a Uno recupera su montaje sin pérdida');
+  // Proyecto nuevo: Nano trae su expansión; volver a Uno abre el lienzo sin ella (antes el lienzo no abría).
+  await win.evaluate(() => {
+    const p = proyectoActual(); p.placa = 'uno'; p.circuito = null; p.texto = null;
+    cargarProyecto(p,true);
+    $('placa').value = 'nano'; $('placa').dispatchEvent(new Event('change'));
+    $('placa').value = 'uno'; $('placa').dispatchEvent(new Event('change'));
+  });
+  revisar(await win.evaluate(() => !!simulador.lienzo && simulador.lienzo.circuito().placa === 'uno' && !simulador.lienzo.circuito().componentes.length),
+    'proyecto nuevo Nano → Uno: el lienzo del Uno abre vacío, sin la expansión');
   await win.evaluate(() => { $('placa').value = 'mega'; $('placa').dispatchEvent(new Event('change')); seleccionarPestana('circuito'); });
   const mega = await win.evaluate(() => ({nota:$('notaCircuito').textContent,oculto:$('notaCircuito').hidden,boton:$('btnSimular').disabled}));
   revisar(!mega.oculto && /solo tiene/.test(mega.nota) && mega.boton, 'Mega sigue deshabilitada con explicación de las placas disponibles');

@@ -1489,7 +1489,13 @@ function abrirLienzo() {
     });
     // El Nano nuevo incluye expansión desde su creación: se guarda aunque aún no haya ediciones.
     const inicial = simulador.lienzo.circuito();
-    if (extrasProyecto.circuito || inicial.componentes.length || inicial.cables.length || inicial.protoboard)
+    const guardado = extrasProyecto.circuito;
+    // Al cambiar de placa, el lienzo quita lo que no va en la nueva (la expansión del Nano en el Uno, un cable a
+    // GND3 en el Nano) y lo avisa. El proyecto conserva el montaje original hasta que el aprendiz edite: si
+    // vuelve a la placa de antes, lo recupera completo.
+    const recortado = guardado && (inicial.componentes.length < (guardado.componentes || []).length
+      || inicial.cables.length < (guardado.cables || []).length);
+    if (!recortado && (guardado || inicial.componentes.length || inicial.cables.length || inicial.protoboard))
       extrasProyecto.circuito = inicial;
     simulador.lienzo.alCambiar((c) => { extrasProyecto.circuito = c; autoguardar(); });
   } catch (e) {
