@@ -744,3 +744,15 @@ Efraín autorizó a Codex el desarrollo, pruebas y revisión del Nano clásico c
 ## 2026-10-11 — Codex: validación manual de Nano por Efraín y autorización de entrega
 
 Efraín abrió la app con `npm run app:simulador`, confirmó que aparece el Nano y que el programa lee de manera independiente los dos potenciómetros en A6 y A7. Validación manual del recorrido de software; sin mediciones físicas nuevas. Después autorizó commit y push de la implementación en TecnoBloques y TecnoCircuito. Se conserva la evidencia automática de 51 comprobaciones de integración, 28 del graficador y las pruebas generales sin errores, junto con las 945 del simulador. Se actualiza «Proyecto hermano»; no se crea etiqueta, instalador ni se cambia la dependencia instalada.
+
+
+## 2026-10-11 — Codex: Contrato 1: I2C junto a UART y seis salidas de alimentación
+
+Efraín corrigió la posición de I2C y confirmó que el bloque de seis contactos de la expansión es alimentación duplicada GND/3V3/5V, no SPI. TecnoCircuito corrige la vista y el modelo; 82 contactos físicos, tres IDs secundarios nuevos y seis aliases SPI heredados que conservan cables/redes sobre los pines del Nano. El header SPI de KiCad es un conector añadido al diseño de referencia. Contrato/formato 1 conservados; contrato4.2/esquema y «Proyecto hermano» actualizados. Bundle local reconstruido con `node build.js --simulador-local`; no cambia el código de la app. Pruebas dirigidas del simulador: 595 OK, cero fallas; la integración Electron de 51 comprobaciones corresponde a la entrega anterior. Continuidad y medidas físicas pendientes. Sin commit, push o etiqueta de esta corrección.
+
+
+### 2026-10-11 — Codex: autorización de entrega y cierre de sesión
+
+Efraín autorizó commit y push de la corrección de Nano + expansión en ambos proyectos: I2C junto a UART y seis contactos de alimentación duplicada GND/3V3/5V. TecnoCircuito registra 595 comprobaciones dirigidas aprobadas, cero fallas. En TecnoBloques se entrega la documentación compartida; el bundle local ya se reconstruyó. La integración Electron previa conserva su evidencia fechada.
+
+La próxima sesión retomará los ajustes de Nano + expansión según la prioridad de Efraín. Continuidad, identificación y mediciones de las tarjetas reales pendientes. Sin etiqueta ni instalador.

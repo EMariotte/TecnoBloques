@@ -509,9 +509,11 @@ escritorio/main.js
 
 ### Nano + expansión E/S (11 oct 2026, Codex)
 
+**Corrección posterior de Efraín:** I2C junto a UART y seis contactos de alimentación (dos GND, dos 3V3 y dos 5V), no SPI. Los nombres SPI del primer modelo se conservan como aliases de los pines del Nano para abrir proyectos existentes sin cambiar redes; no se dibujan como contactos de la expansión. KiCad añade un header SPI al diseño de referencia y lo identifica explícitamente. Actualizado contrato4.2/esquema; bundle local reconstruido. Pruebas dirigidas en TecnoCircuito: 595 OK, cero fallas. Efraín autorizó commit y push de esta corrección y continuar la próxima sesión; sin nuevas medidas físicas ni etiqueta.
+
 **Validación manual de Efraín:** abrió con `npm run app:simulador` y confirmó ejecución del programa y lecturas independientes de los potenciómetros en A6/A7. El 11 oct autorizó commit/push de ambos proyectos. Es validación del recorrido de software; alimentación y montaje físicos siguen pendientes. La comprobación automática y su entrega inicial sin commit se conservan debajo como evidencia fechada.
 
-Contrato 1 ampliado en desarrollo: `TecnoCircuito.PLACAS` admite `uno`, `nano` y `nano_old`; Mega continúa deshabilitada con explicación. La placa Nano se dibuja con una expansión roja/azul y un solo ATmega328P. A6/A7 son solo analógicos. `shield_nano_io` conserva variante, fuente USB/jack/desconectada y voltaje del jack; las reglas y 85 terminales están en `../TecnoCircuito/CONTRATO.md`, sección 4.2, y su esquema. El modelo de alimentación y la geometría están pendientes de validar con ambas tarjetas físicas.
+Contrato 1 ampliado en desarrollo: `TecnoCircuito.PLACAS` admite `uno`, `nano` y `nano_old`; Mega continúa deshabilitada con explicación. La placa Nano se dibuja con una expansión roja/azul y un solo ATmega328P. A6/A7 son solo analógicos. `shield_nano_io` conserva variante, fuente USB/jack/desconectada y voltaje del jack; las reglas, 82 contactos físicos y seis aliases SPI heredados están en `../TecnoCircuito/CONTRATO.md`, sección 4.2, y su esquema. El modelo de alimentación y la geometría están pendientes de validar con ambas tarjetas físicas.
 
 `abrirLienzo()` guarda el conjunto inicial del Nano aunque no haya ediciones; Uno nuevo sigue sin circuito. Un montaje incompatible (por ejemplo GND3 del Uno al elegir Nano) se conserva para volver a la placa original, con explicación del pin inválido. Ejemplo `val_nano_adc67`, «Validar: Nano + expansión A6/A7», en el grupo de validación existente: dos potenciómetros y su C++ para simular/subir.
 
