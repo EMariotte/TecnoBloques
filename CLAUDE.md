@@ -465,7 +465,7 @@ Un solo archivo JSON lleva todo lo necesario para **abrir el proyecto en otro co
 > Iniciado el 7 de octubre de 2026. Repositorio propio y público, https://github.com/EMariotte/TecnoCircuito (publicado el 7 oct), en la carpeta hermana `..\TecnoCircuito`.
 > **La fuente única del contrato entre los dos es `..\TecnoCircuito\CONTRATO.md`.** Esta sección lo resume desde el lado de TecnoBloques. Antes de cambiar algo de la tabla «Quién hace qué», lee ese archivo.
 
-TecnoCircuito es un simulador de circuitos con microcontrolador: avr8js ejecuta el `.hex`, un solucionador eléctrico propio (análisis nodal modificado con Newton-Raphson) calcula el circuito y los dibujos salen de @wokwi/elements. Todo es MIT o propio, así que TecnoBloques sigue en Apache 2.0. **Solo simula en la app de escritorio,** porque necesita el `.hex` que compila arduino-cli. En la versión web solo habrá cableado y documentación.
+TecnoCircuito es un simulador de circuitos con microcontrolador: avr8js ejecuta el `.hex`, un solucionador eléctrico propio (análisis nodal modificado con Newton-Raphson) calcula el circuito. Las placas (Uno, Nano y la expansión) son dibujos medidos por TecnoDiseñador desde las placas del ambiente; el LED, la resistencia, el botón y el potenciómetro salen de @wokwi/elements. Todo es MIT o propio, así que TecnoBloques sigue en Apache 2.0. **Solo simula en la app de escritorio,** porque necesita el `.hex` que compila arduino-cli. En la versión web solo habrá cableado y documentación.
 
 ### Quién hace qué
 
@@ -510,6 +510,8 @@ escritorio/main.js
 ### Nano + expansión E/S (11 oct 2026, Codex)
 
 **Corrección posterior de Efraín:** I2C junto a UART y seis contactos de alimentación (dos GND, dos 3V3 y dos 5V), no SPI. Los nombres SPI del primer modelo se conservan como aliases de los pines del Nano para abrir proyectos existentes sin cambiar redes; no se dibujan como contactos de la expansión. KiCad añade un header SPI al diseño de referencia y lo identifica explícitamente. Actualizado contrato4.2/esquema; bundle local reconstruido. Pruebas dirigidas en TecnoCircuito: 595 OK, cero fallas. Efraín autorizó commit y push de esta corrección y continuar la próxima sesión; sin nuevas medidas físicas ni etiqueta.
+
+**Vistas medidas (14 oct, contrato 1):** la placa real tiene **tres 3V3 y tres GND** en el bloque de seis, sin 5V. Entran `OUT_3V3_3` y `GND_OUT_3`; `OUT_5V`/`OUT_5V_2` quedan como aliases del 5V del Nano, como los `SPI_*`. Ningún cable guardado cambia de red. El LED «L» de la placa ya no es `wokwi-arduino-uno`: se lee en `.tc-placa [data-led="L"][data-encendido]` (lo usa `test/simulador.js`). TecnoCircuito, COMO-FUNCIONA, sección 62.
 
 **Validación manual de Efraín:** abrió con `npm run app:simulador` y confirmó ejecución del programa y lecturas independientes de los potenciómetros en A6/A7. El 11 oct autorizó commit/push de ambos proyectos. Es validación del recorrido de software; alimentación y montaje físicos siguen pendientes. La comprobación automática y su entrega inicial sin commit se conservan debajo como evidencia fechada.
 

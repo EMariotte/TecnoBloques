@@ -86,7 +86,7 @@ const LIENZO = "document.querySelector('#lienzoCircuito .tecnocircuito').shadowR
   revisar(await win.evaluate(() => $('estadoSerial').textContent === 'Simulación' && !$('pCircuito').hidden), 'el monitor dice «Simulación» y se ve la pestaña Circuito');
   await win.locator('#txtSim').fill('on'); // el monitor pequeño de la pestaña Circuito
   await win.locator('#txtSim').press('Enter');
-  const prendio = await esperar(`(() => { const r = ${LIENZO}; return r.querySelector('wokwi-led').brightness > 0.7 && r.querySelector('wokwi-arduino-uno').led13; })()`, 5000);
+  const prendio = await esperar(`(() => { const r = ${LIENZO}; return r.querySelector('wokwi-led').brightness > 0.7 && !!r.querySelector('.tc-placa [data-led="L"][data-encendido]'); })()`, 5000);
   revisar(prendio, 'enviar «on» desde el monitor prende el LED del circuito y el LED «L» de la placa');
   revisar(await win.evaluate(() => /Recibí: on/.test($('salidaSim').textContent) && /Recibí: on/.test($('salidaSerial').textContent)),
     'el programa simulado responde «Recibí: on», en el monitor de la pestaña Circuito y en el monitor serial');
@@ -342,7 +342,7 @@ const LIENZO = "document.querySelector('#lienzoCircuito .tecnocircuito').shadowR
     await win.locator('#btnSimularBarra').click();
     revisar(await leerNano(819,768), `${placaNano}: la perilla guardada cambia A6 y conserva A7`);
     const exportado = await win.evaluate(() => ({ svg: simulador.lienzo.exportarSVG(), net: simulador.lienzo.exportarNetlist({nombre:'Nano validación'}) }));
-    revisar(exportado.svg.includes('EXPANSIÓN E/S') && exportado.svg.includes('A6') && exportado.net.includes('Module:Arduino_Nano') && exportado.net.includes('LD1117S50TR') && exportado.net.includes('PJ-102AH') && exportado.net.includes('SPI MISO MOSI SCK SS'),
+    revisar(exportado.svg.includes('Expansión E/S azul') && exportado.svg.includes('td-exp-azul-') && exportado.svg.includes('A6') && exportado.net.includes('Module:Arduino_Nano') && exportado.net.includes('LD1117S50TR') && exportado.net.includes('PJ-102AH') && exportado.net.includes('SPI MISO MOSI SCK SS'),
       `${placaNano}: SVG del conjunto y netlist de módulo/regulación/jack/I2C/SPI disponibles`);
     await win.screenshot({ path: path.join(SALIDA, `sim_nano_${placaNano}.png`) });
     await win.evaluate(() => detenerSimulacion());

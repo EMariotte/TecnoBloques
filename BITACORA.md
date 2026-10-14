@@ -786,3 +786,10 @@ Cambio del contrato en TecnoCircuito, decidido por Efraín: el campo `en` de un 
 ## 2026-10-12 — Claude: cambiar de placa también cuenta las patas enchufadas
 
 Tras la revisión independiente del imán entre pines: `abrirLienzo()` considera «recortado» un circuito si el lienzo trae menos patas enchufadas (`en`) que lo guardado. Ejemplo: un LED enchufado en GND3 pierde esa pata al pasar al Nano y la recupera al volver al Uno. `test:simulador` **53 OK**.
+
+## 2026-10-14 — Claude: contrato 1, vistas medidas de TecnoCircuito y el bloque de seis de la expansión
+
+TecnoCircuito integró los dibujos de TecnoDiseñador: el Uno pasa a ser una Pieza Tecno (los mismos 31 pines) y el Nano y la expansión usan dibujos medidos. La medición mostró que el bloque de seis contactos de la expansión son tres 3V3 y tres GND, sin 5V. Por decisión de Efraín, el contrato sigue a la placa: entran `OUT_3V3_3` y `GND_OUT_3`, y `OUT_5V`/`OUT_5V_2` quedan como aliases del 5V del Nano. Ningún proyecto guardado cambia de red; una pata enchufada con el imán en `OUT_5V` se suelta al abrir, con aviso.
+
+- `test/simulador.js`: el LED «L» ya no se lee en `wokwi-arduino-uno.led13`, sino en `.tc-placa [data-led="L"][data-encendido]`.
+- «Proyecto hermano» actualizado. Detalle técnico en TecnoCircuito: COMO-FUNCIONA, sección 62.
