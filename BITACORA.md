@@ -797,3 +797,12 @@ TecnoCircuito integró los dibujos de TecnoDiseñador: el Uno pasa a ser una Pie
 ## 2026-10-14 — Nota del contrato: headers analógicos de la shield L293D (Claude, desde TecnoDiseñador, con Efraín)
 
 En TecnoCircuito, `CONTRATO.md` suma una nota de **pendiente**, sin cambio de formato: por decisión de Efraín, los headers +5 / Gnd / A0-5 de la shield L293D deben poder cablearse. Los nombres los define TecnoCircuito (propuesta: `A0_S`…`A5_G`). Además, la vista medida de la shield, entregada por TecnoDiseñador, tiene prioridad sobre el dibujo anterior. TecnoBloques no cambia. Se actualiza «Proyecto hermano».
+
+## 2026-10-14 — Claude: contrato 1, la shield L293D medida y sus headers analógicos
+
+TecnoCircuito integró la shield L293D medida por TecnoDiseñador (decisión de Efraín: la vista medida manda).
+- **Contrato:** la shield pasa de 18 a 36 contactos. Entran los headers +5 / Gnd / A0-5: `A0_S` … `A5_S` (A0 a A5 del Uno), `A0_V` … `A5_V` (5V) y `A0_G` … `A5_G` (GND).
+- **Pines tapados:** con la shield montada, SCL, SDA e IOREF del Uno quedan tapados (no se cablean ni reciben patas). Un cable que ya llegaba ahí se conserva.
+- **Lo demás no cambia de red:** los servos ahora se dibujan como en la placa (SERVO_1 arriba, pines − + S), pero siguen en los pines 10 y 9.
+- `src/app.js`: los dos dobleces del ejemplo «Validar: carro con la shield L293D» quedan bajo EXT_PWR, que se corrió 2,6 mm.
+- «Proyecto hermano» actualizado. Detalle técnico en TecnoCircuito: COMO-FUNCIONA, sección 64.
