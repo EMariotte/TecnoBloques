@@ -523,6 +523,8 @@ KiCad exporta el Nano como módulo de 30 pads, más regulación/filtro de refere
 
 Comprobado: `test:simulador` **51 OK, sin errores JS**, compilando con los FQBN de Nano y Nano antiguo, Worker, ADC6/7, variante azul, guardado/reapertura, campos adicionales, SVG y netlist; `test:graficador` **28 OK** y `npm test` exit 0 con ambos registros `ERRORES` vacíos. Sin commit, push, etiqueta ni instalador. Protocolo físico: `../TecnoCircuito/docs/IMPLEMENTACION-NANO-2026-10-11.md`.
 
+**Shield L293D medida (14 oct, contrato 1 sin cambios todavía):** TecnoDiseñador entregó la vista medida de la shield, que tiene prioridad sobre el dibujo anterior. Pendiente en el contrato, decidido por Efraín: los headers +5 / Gnd / A0-5 de la shield deben poder cablearse (nombres por definir, propuesta `A0_S`…`A5_G`). Cuando entren al contrato, TecnoBloques no debería necesitar cambios de código: guarda el circuito tal cual.
+
 ### Primera conexión (7 oct 2026) y pendientes en TecnoBloques
 
 - ✅ (0.2.5) **Conservar campos desconocidos del proyecto,** `creadoCon` y aviso de proyecto más nuevo. Ver «Proyecto (`.tbq.json`)».

@@ -793,3 +793,7 @@ TecnoCircuito integró los dibujos de TecnoDiseñador: el Uno pasa a ser una Pie
 
 - `test/simulador.js`: el LED «L» ya no se lee en `wokwi-arduino-uno.led13`, sino en `.tc-placa [data-led="L"][data-encendido]`.
 - «Proyecto hermano» actualizado. Detalle técnico en TecnoCircuito: COMO-FUNCIONA, sección 62.
+
+## 2026-10-14 — Nota del contrato: headers analógicos de la shield L293D (Claude, desde TecnoDiseñador, con Efraín)
+
+En TecnoCircuito, `CONTRATO.md` suma una nota de **pendiente**, sin cambio de formato: por decisión de Efraín, los headers +5 / Gnd / A0-5 de la shield L293D deben poder cablearse. Los nombres los define TecnoCircuito (propuesta: `A0_S`…`A5_G`). Además, la vista medida de la shield, entregada por TecnoDiseñador, tiene prioridad sobre el dibujo anterior. TecnoBloques no cambia. Se actualiza «Proyecto hermano».
