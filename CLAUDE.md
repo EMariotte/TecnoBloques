@@ -1,7 +1,7 @@
 # CLAUDE.md — TecnoBloques
 
 > Memoria técnica del proyecto para Claude Code / Claude en Cowork.
-> Actualizado: 11 de octubre de 2026 · **Proyecto hermano TecnoCircuito (simulador):** funciona dentro de la app en desarrollo (`npm run app:simulador` / `node build.js --simulador-local`) con las tareas T1, T2 y T3; su primera versión `v0.1.0` está preparada y se etiqueta después de validar la T3 en el laboratorio (ver «Proyecto hermano»). Estado de TecnoBloques: **v0.2.5 publicada (7 oct)**, la del aula. Desde entonces, en el código (sin publicar): ejemplos de validación, panel de mediciones, paneles plegables, monitor serial con gráfico y CSV (Fase 2d), y el instalador que exige una etiqueta fija del simulador.
+> Actualizado: 16 de octubre de 2026 · **TecnoCircuito `v0.1.0` etiquetado y TecnoBloques 0.3.0 con el simulador en el instalador (armado y probado, sin publicar el Release).** · **Proyecto hermano TecnoCircuito (simulador):** funciona dentro de la app en desarrollo (`npm run app:simulador` / `node build.js --simulador-local`) con las tareas T1, T2 y T3; su primera versión `v0.1.0` está preparada y se etiqueta después de validar la T3 en el laboratorio (ver «Proyecto hermano»). Estado de TecnoBloques: **v0.2.5 publicada (7 oct)**, la del aula. Desde entonces, en el código (sin publicar): ejemplos de validación, panel de mediciones, paneles plegables, monitor serial con gráfico y CSV (Fase 2d), y el instalador que exige una etiqueta fija del simulador.
 
 ---
 
@@ -552,7 +552,7 @@ Comprobado: `test:simulador` **51 OK, sin errores JS**, compilando con los FQBN 
 - ✅ **Ejemplos de validación** (9 oct): el grupo «Validación con la placa real (instructor)» en Ejemplos, con 6 ejemplos que traen su **C++ y su circuito** (`cargarEjemplo` acepta `texto` y `circuito`): ruido del ADC, entrada al aire, servo 0°/90°/180°, servo en barrido continuo, cuatro servos y seis servos en el USB. El código es el mismo de `..\TecnoCircuito\prototipo\programas\`, para simular y subir a la placa sin cambiar nada. `test:simulador` abre y simula el del servo (paso 4e).
 - ✅ **Servo y energía del USB** (8 oct, contrato 1): el lienzo trae la pieza `servo` (SG90 o MG90S) en «+ Agregar», y el modo realista incluye `limiteUSB` (la placa se reinicia o se apaga si los servos piden más de lo que da el USB). Las fallas nuevas (`servo_alimentacion`, `reinicio_usb`, `fusible_usb`) y el evento `reinicio_placa` llegan por `alEvento` como las demás: no hubo que tocar código aquí.
 - ✅ **«Llevar a KiCad»** (8 oct): muestra y descarga `<proyecto>-circuito.net`, la netlist de KiCad (`lienzo.exportarNetlist()`, contrato 1), para diseñar un shield: proyecto desde la plantilla «Arduino Uno Shield» de KiCad y, en el editor de placas, Archivo → Importar → Netlist. El Uno va como los conectores J1–J4 de esa plantilla (sin solapes).
-- ◐ **Versión etiquetada:** el repositorio de TecnoCircuito ya está publicado (https://github.com/EMariotte/TecnoCircuito, 7 oct). Falta su primera etiqueta con `dist/tecnocircuito.js`; después, depender de ella (`node_modules/tecnocircuito`) para que el simulador pueda llegar al instalador.
+- ✅ **Versión etiquetada (16 oct):** TecnoBloques depende de `github:EMariotte/TecnoCircuito#v0.1.0` (`dependencies.tecnocircuito`); `node build.js` y el instalador embeben esa versión (`TB_SIMULADOR_ORIGEN = "etiqueta"`). TecnoBloques sube a **0.3.0**. Instalador armado y probado (`test/app-empaquetada.js`), **sin publicar el Release**.
 
 ### Mecanismo para que ninguno rompa al otro
 

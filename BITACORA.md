@@ -810,3 +810,13 @@ TecnoCircuito integró la shield L293D medida por TecnoDiseñador (decisión de 
 ## 2026-10-16 — Nota del contrato: no idealidad `resistenciaBateria` (Claude, desde TecnoCircuito, con Efraín)
 
 En TecnoCircuito, el laboratorio del 15 oct midió la LiPo del kit (1,2 Ω de resistencia interna) y la caída del L293D (1,3 V + 1 V/A). Por decisión de Efraín, la resistencia de la batería es una no idealidad nueva, `resistenciaBateria` (CONTRATO, secciones 7 y 10). Agregar una clave no rompe nada: el modo «realista» la enciende. **TecnoBloques no cambia de código:** crea el simulador con `modo: 'realista'` y no ajusta claves sueltas. `test:simulador`: 53 OK con el simulador local. Se actualiza «Proyecto hermano».
+
+## 2026-10-16 — Claude: TecnoCircuito v0.1.0 y TecnoBloques 0.3.0 con el simulador
+
+Por pedido de Efraín, antes de dos días solo de software:
+- TecnoCircuito etiquetó **`v0.1.0`** (contrato 1), con `dist/tecnocircuito.js` construido y revisado por `npm run preparar-version`.
+- `package.json`: `"tecnocircuito": "github:EMariotte/TecnoCircuito#v0.1.0"` en `dependencies`, y la versión sube a **0.3.0** (el simulador llega al instalador).
+- Pruebas: `npm test` (ERRORES vacíos), `npm run test:simulador` (53 OK) y `npm run test:app` (ERRORES vacíos).
+- `npm run instalador`: `TecnoBloques-Setup-0.3.0.exe` (176 MB). `test/app-empaquetada.js` compila sin errores; la app trae `TB_SIMULADOR_ORIGEN = "etiqueta"` y el simulador 0.1.0.
+- **El Release no se publicó**: las apps del aula se actualizan solas desde GitHub Releases. Falta el sí de Efraín.
+- Pendientes de T3 conocidos en esta versión (en TecnoCircuito, `validacion/2026-10-16-polaridad-bloqueo-servos-uno.md`): el simulador predice reinicio con 5 SG90 y el Uno real no se reinicia; la polaridad de M1 en el dibujo de la shield.
