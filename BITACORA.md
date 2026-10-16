@@ -806,3 +806,7 @@ TecnoCircuito integró la shield L293D medida por TecnoDiseñador (decisión de 
 - **Lo demás no cambia de red:** los servos ahora se dibujan como en la placa (SERVO_1 arriba, pines − + S), pero siguen en los pines 10 y 9.
 - `src/app.js`: los dos dobleces del ejemplo «Validar: carro con la shield L293D» quedan bajo EXT_PWR, que se corrió 2,6 mm.
 - «Proyecto hermano» actualizado. Detalle técnico en TecnoCircuito: COMO-FUNCIONA, sección 64.
+
+## 2026-10-16 — Nota del contrato: no idealidad `resistenciaBateria` (Claude, desde TecnoCircuito, con Efraín)
+
+En TecnoCircuito, el laboratorio del 15 oct midió la LiPo del kit (1,2 Ω de resistencia interna) y la caída del L293D (1,3 V + 1 V/A). Por decisión de Efraín, la resistencia de la batería es una no idealidad nueva, `resistenciaBateria` (CONTRATO, secciones 7 y 10). Agregar una clave no rompe nada: el modo «realista» la enciende. **TecnoBloques no cambia de código:** crea el simulador con `modo: 'realista'` y no ajusta claves sueltas. `test:simulador`: 53 OK con el simulador local. Se actualiza «Proyecto hermano».

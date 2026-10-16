@@ -504,7 +504,7 @@ escritorio/main.js
 4. **Circuito:** `proyecto.circuito = {formato: 1, placa, componentes: […], cables: […], protoboard}`. TecnoBloques lo guarda y lo devuelve tal cual. Cada pin físico tiene nombre propio (`placa.GND1`, no `placa.GND`), los cables pueden traer `puntos` (sus dobleces) y la placa está fija en el origen.
 5. **Programa:** el `.hex` va como texto Intel HEX, leído de la carpeta de compilación de arduino-cli.
 6. **Eventos:** el paquete emite `{t, origen, tipo, datos}`. Los del cableado salen por el `alEvento` de `crearLienzo`, aunque el aprendiz nunca simule, y los de la simulación por el `alEvento` de `crearSimulador`. TecnoBloques agrega `alias`, `sesion` y las dos versiones, suma sus propios eventos del editor (`origen: 'editor'`) y escribe JSON Lines.
-7. **Modo:** `'realista'` o `'ideal'`, más ajustes por no idealidad (`{caidaL293D: false, …}`). Las claves las define TecnoCircuito.
+7. **Modo:** `'realista'` o `'ideal'`, más ajustes por no idealidad (`{caidaL293D: false, …}`). Las claves las define TecnoCircuito. Desde el 16 oct existe también `resistenciaBateria` (la LiPo de 1,2 Ω, medida): TecnoBloques no cambia, porque usa `modo: 'realista'` y no ajusta claves sueltas.
 8. **Errores:** si el simulador falla, el editor sigue. TecnoBloques envuelve cada llamada en `try/catch`.
 
 ### Nano + expansión E/S (11 oct 2026, Codex)
