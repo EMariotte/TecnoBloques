@@ -5,12 +5,21 @@ const { app, BrowserWindow, ipcMain, session, shell, dialog, Menu } = require('e
 const path = require('path');
 const fs = require('fs');
 const { Arduino } = require('./arduino');
+const { crearRegistroDisco } = require('./registro-disco');
 
 const recursos = app.isPackaged ? process.resourcesPath : path.join(__dirname, 'recursos');
 const arduino = new Arduino({ recursos, trabajo: path.join(app.getPath('userData'), 'arduino') });
+// Registro de eventos por equipo: %APPDATA%\TecnoBloques\registros\ (contrato con TecnoCircuito, sección 6.1)
+const registroEventos = crearRegistroDisco({ carpeta: app.getPath('userData') });
 let ventana = null;
 let puertoPreferido = null; // lo elige el aprendiz en el editor; lo usa el monitor serial (Web Serial)
 let ocupado = false;
+// Herramientas de desarrollo (F12): con ellas se podría apagar el registro desde la consola. En la app instalada
+// solo se abren después de que el instructor entra con su PIN en esta sesión. En desarrollo quedan libres, salvo con
+// TB_HERRAMIENTAS=instructor (así lo prueba test/registro-app.js); la variable solo restringe, nunca abre.
+const herramientasLibres = !app.isPackaged && process.env.TB_HERRAMIENTAS !== 'instructor';
+let instructorAutorizado = false;
+const puedeAbrirHerramientas = () => herramientasLibres || instructorAutorizado;
 
 if (!app.requestSingleInstanceLock()) app.quit();
 app.on('second-instance', () => { if (ventana) { if (ventana.isMinimized()) ventana.restore(); ventana.focus(); } });
@@ -28,8 +37,12 @@ function crearVentana() {
   // Enlaces externos en el navegador, nunca dentro de la app
   ventana.webContents.setWindowOpenHandler(({ url }) => { if (/^https?:/.test(url)) shell.openExternal(url); return { action: 'deny' }; });
   ventana.webContents.on('will-navigate', (e, url) => { if (!url.startsWith('file:')) { e.preventDefault(); shell.openExternal(url); } });
-  // F12 abre las herramientas de desarrollo (para el instructor)
-  ventana.webContents.on('before-input-event', (e, input) => { if (input.type === 'keyDown' && input.key === 'F12') ventana.webContents.toggleDevTools(); });
+  // F12 abre las herramientas de desarrollo, solo para el instructor (ver puedeAbrirHerramientas)
+  ventana.webContents.on('before-input-event', (e, input) => {
+    if (input.type === 'keyDown' && input.key === 'F12' && puedeAbrirHerramientas()) ventana.webContents.toggleDevTools();
+  });
+  // Si se abrieran por otro camino, se cierran
+  ventana.webContents.on('devtools-opened', () => { if (!puedeAbrirHerramientas()) ventana.webContents.closeDevTools(); });
 }
 
 function configurarSerial() {
@@ -67,6 +80,21 @@ ipcMain.handle('tb:compilar-hex', async (e, datos) => {
     return await arduino.compilarHex(datos, (m) => { if (!e.sender.isDestroyed()) e.sender.send('tb:progreso', m); });
   } finally { ocupado = false; }
 });
+
+/* ---------- Registro de eventos (apagado por defecto; lo enciende el instructor con su PIN) ---------- */
+ipcMain.handle('tb:registro-estado', () => registroEventos.estado());
+ipcMain.handle('tb:registro-instructor', (_e, peticion) => {
+  const r = registroEventos.instructor(peticion || {});
+  if (r.ok) instructorAutorizado = true; // el PIN correcto también habilita F12 hasta cerrar la app
+  return r;
+});
+ipcMain.handle('tb:registro-exportar', async (_e, { pin } = {}) => {
+  const r = await dialog.showOpenDialog(ventana, { title: 'Elige dónde copiar los registros (por ejemplo, la USB)', properties: ['openDirectory', 'createDirectory'] });
+  if (r.canceled || !r.filePaths[0]) return { ok: false, motivo: 'cancelado' };
+  try { return registroEventos.exportar({ pin, destino: r.filePaths[0] }); } catch (e) { return { ok: false, motivo: 'disco', mensaje: e.message }; }
+});
+// Una línea por evento, en orden: send (no invoke) para que el último evento salga aunque la ventana se esté cerrando.
+ipcMain.on('tb:registrar', (_e, linea) => { try { registroEventos.escribir(linea); } catch (e) { /* sin permiso de escritura: no molestar */ } });
 
 /* ---------- Actualización automática desde GitHub Releases ---------- */
 // Registro de la actualización: %APPDATA%\TecnoBloques\registro-actualizacion.txt (se reinicia si pasa de 1 MB)

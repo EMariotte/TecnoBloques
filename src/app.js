@@ -1098,6 +1098,7 @@ function cargarEjemplo(ej) {
   abrirLienzo();
   programarActualizacion();
   if (ej.texto) entrarModoTexto(ej.texto, ''); // ejemplo escrito en C++ (los de validación)
+  registrarEditor('ejemplo_cargado', { id: ej.id });
 }
 
 /* ---------- Placa ---------- */
@@ -1375,9 +1376,12 @@ async function subirPlaca(forzar) {
     } else if (!/no contesta|Cancelando/.test(etapa.textContent)) etapa.textContent = `Subiendo a ${puerto}…`;
   });
   let r;
-  try { r = await escritorio.subir({ codigo: codigoActual(), fqbn: placa().fqbn, puerto }); }
+  const codigoSubido = codigoActual();
+  try { r = await escritorio.subir({ codigo: codigoSubido, fqbn: placa().fqbn, puerto }); }
   catch (e) { r = { ok: false, etapa: 'app', salida: e.message }; }
   finally { quitar(); puertos.ocupado = false; }
+  registrarCompilacion(r, codigoSubido);
+  if (r.etapa === 'subir') registrarEditor('programa_subido', { ok: r.ok, placa: placaActual });
   if (r.ok) {
     const m = r.memoria || {};
     const cuerpo = [el('p', null, 'Tu programa ya está en la placa.')];
@@ -1459,12 +1463,188 @@ const simulador = {
   sim: null,
   codigo: '', // el C++ que se está simulando, para avisar si el programa cambió
   compilando: false,
-  eventos: [], // registro de esta sesión (pendiente: alias del aprendiz y archivo .jsonl)
+  eventos: [], // los últimos eventos del lienzo y del simulador, en memoria (el registro en disco va aparte)
   reloj: 0
 };
 function registrarEventoSim(ev) {
   simulador.eventos.push(ev);
   if (simulador.eventos.length > 2000) simulador.eventos.shift();
+  registroEventos.registrar(ev);
+}
+
+/* ---------- Registro de eventos por equipo (contrato con TecnoCircuito, sección 6.1) ---------- */
+// Apagado por defecto. El instructor lo enciende en cada PC con Ctrl+Alt+Mayús+R y su PIN. Con el registro
+// encendido, el equipo escribe su código al abrir (con confirmación), la esquina de abajo lo avisa y cada evento va
+// con el sobre (equipo, sesión, versiones) a %APPDATA%\TecnoBloques\registros\. Solo en la app de escritorio.
+const registroDisponible = !!(escritorio && escritorio.registro);
+const registroEventos = crearRegistroEventos({
+  escribir: (linea) => escritorio.registro.escribir(linea),
+  versionTB: TB_VERSION,
+  versionTC: window.TecnoCircuito && TecnoCircuito.VERSION,
+  nuevaSesion: () => (window.crypto && crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2)),
+});
+let registroEncendido = false;
+let tResumenBloques = null;
+
+function pintarAvisoRegistro() {
+  const a = $('avisoRegistro');
+  a.hidden = !registroEncendido;
+  a.textContent = registroEventos.activo() ? `Esta sesión se registra · Equipo ${registroEventos.equipo()}` : 'Esta sesión se registra · Falta el código del equipo';
+}
+async function iniciarRegistro() {
+  if (!registroDisponible) return;
+  try { registroEncendido = (await escritorio.registro.estado()).activo; } catch (e) { registroEncendido = false; }
+  pintarAvisoRegistro();
+  if (registroEncendido) pedirEquipo();
+}
+/** El equipo escribe su código y lo confirma («¿Son el equipo A7?»): así un PC compartido no mezcla registros. */
+function pedirEquipo(previo) {
+  const campo = el('input', { class: 'entrada', id: 'codigoEquipo', autocomplete: 'off', maxlength: '40', placeholder: 'por ejemplo: A7', value: previo || '' });
+  const error = el('p', { class: 'error' });
+  modal({
+    titulo: 'Código del equipo',
+    cuerpo: [el('p', null, 'Esta sesión se registra para mejorar TecnoBloques. Escriban el código que les dio el instructor (sin nombres).'),
+      el('label', { for: 'codigoEquipo' }, 'Código', campo), error],
+    botones: [{ texto: 'Seguir', primario: true, accion: () => {
+      const codigo = limpiarEquipo(campo.value);
+      if (!codigo) { error.textContent = 'Escriban el código del equipo.'; return false; }
+      setTimeout(() => confirmarEquipo(codigo), 50);
+    } }],
+    cancelar: pintarAvisoRegistro
+  });
+  campo.addEventListener('keydown', (e) => { if (e.key === 'Enter') $('modalAcciones').querySelector('.primario').click(); });
+}
+function confirmarEquipo(codigo) {
+  modal({
+    titulo: `¿Son el equipo ${codigo}?`,
+    cuerpo: 'Revisen que sea su código. Si no lo es, corríjanlo.',
+    botones: [
+      { texto: 'Corregir', accion: () => { setTimeout(() => pedirEquipo(codigo), 50); } },
+      { texto: 'Sí, somos ese equipo', primario: true, accion: () => {
+        registroEventos.empezar(codigo, { placa: placaActual, nivel: nivelActual });
+        pintarAvisoRegistro();
+      } }
+    ],
+    cancelar: pintarAvisoRegistro
+  });
+}
+/** Lo que pasa en el editor: si no hay equipo, registroEventos no escribe nada. */
+function registrarEditor(tipo, datos) { registroEventos.editor(tipo, datos); }
+/** Un resumen de los bloques unos segundos después del último cambio (no el XML). */
+function programarResumenBloques() {
+  if (!registroEventos.activo()) return;
+  clearTimeout(tResumenBloques);
+  tResumenBloques = setTimeout(() => registrarEditor('bloques_cambiados', resumenBloques(espacio.getAllBlocks(false).map(b => b.type))), 3000);
+}
+/** El tipo de error de una compilación (el mismo criterio de explicarError y traducirErrorCpp), sin el texto. */
+function tipoErrorCompilacion(r) {
+  if (r.ok) return null;
+  const s = r.salida || '';
+  if (/fatal error: [\w]+\.h: No such file/.test(s)) return 'libreria';
+  if (/Sketch too big|text section exceeds/.test(s)) return 'memoria_programa';
+  if (/data section exceeds|not enough memory/i.test(s)) return 'memoria_variables';
+  const m = /\.ino:\d+:\d+: error: (.*)/.exec(s);
+  if (!m) return r.etapa || 'desconocido';
+  if (/was not declared in this scope/.test(m[1])) return 'no_declarado';
+  if (/expected '.+?' before/.test(m[1])) return 'falta_simbolo';
+  if (/expected primary-expression/.test(m[1])) return 'incompleto';
+  if (/redefinition of|previously declared|conflicting declaration/.test(m[1])) return 'definido_dos_veces';
+  if (/too few arguments/.test(m[1])) return 'faltan_datos';
+  if (/too many arguments/.test(m[1])) return 'sobran_datos';
+  if (/stray '\\/.test(m[1])) return 'caracter_raro';
+  return 'otro';
+}
+/** codigo_compilado: el C++ sin comentarios (los textos entre comillas se conservan). */
+function registrarCompilacion(r, codigo) {
+  if (!registroEventos.activo() || !['compilar', 'subir'].includes(r.etapa)) return;
+  const compilo = r.ok || r.etapa === 'subir';
+  registrarEditor('codigo_compilado', {
+    ok: compilo, error: compilo ? null : tipoErrorCompilacion(r),
+    bytes: r.memoria && Number.isInteger(r.memoria.bytes) ? r.memoria.bytes : null, codigo: quitarComentarios(codigo)
+  });
+}
+
+/* ---- Opción del instructor: encender o apagar el registro, exportar y cambiar el PIN ---- */
+function campoPin(id, etiqueta) {
+  return el('label', { for: id }, etiqueta, el('input', { class: 'entrada', id, type: 'password', inputmode: 'numeric', autocomplete: 'off', maxlength: '8' }));
+}
+const MOTIVOS_PIN = { pin: 'Ese no es el PIN.', 'pin-invalido': 'El PIN debe tener de 4 a 8 dígitos.', espera: 'Demasiados intentos. Espera un minuto.' };
+async function abrirInstructor() {
+  if (!registroDisponible) return;
+  const e = await escritorio.registro.estado();
+  const error = el('p', { class: 'error' });
+  if (!e.tienePin) {
+    modal({
+      titulo: 'Registro de eventos: crear el PIN del instructor',
+      cuerpo: [el('p', null, 'Este PIN protege la opción de encender el registro y de exportar los archivos. Es de 4 a 8 dígitos y vale solo para este computador.'),
+        campoPin('pinNuevo', 'PIN'), campoPin('pinRepetido', 'Repite el PIN'), error],
+      botones: [{ texto: 'Cancelar' }, { texto: 'Crear PIN', primario: true, accion: async () => {
+        const pin = $('pinNuevo').value;
+        if (pin !== $('pinRepetido').value) { error.textContent = 'Los dos PIN no son iguales.'; return false; }
+        const r = await escritorio.registro.instructor({ accion: 'crear-pin', pin });
+        if (!r.ok) { error.textContent = MOTIVOS_PIN[r.motivo] || 'No se pudo crear el PIN.'; return false; }
+        setTimeout(() => panelInstructor(pin, r), 50);
+      } }]
+    });
+    return;
+  }
+  modal({
+    titulo: 'Registro de eventos (instructor)',
+    cuerpo: [campoPin('pinInstructor', 'PIN del instructor'), error],
+    botones: [{ texto: 'Cancelar' }, { texto: 'Entrar', primario: true, accion: async () => {
+      const pin = $('pinInstructor').value;
+      const r = await escritorio.registro.instructor({ accion: 'entrar', pin });
+      if (!r.ok) { error.textContent = MOTIVOS_PIN[r.motivo] || 'No se pudo entrar.'; return false; }
+      setTimeout(() => panelInstructor(pin, r), 50);
+    } }]
+  });
+  $('pinInstructor').addEventListener('keydown', (ev) => { if (ev.key === 'Enter') $('modalAcciones').querySelector('.primario').click(); });
+}
+function panelInstructor(pin, estado) {
+  const nota = el('p', { class: 'muted' });
+  modal({
+    titulo: 'Registro de eventos (instructor)',
+    cuerpo: [
+      el('p', null, estado.activo
+        ? el('b', null, 'El registro está encendido en este computador.')
+        : el('b', null, 'El registro está apagado en este computador.')),
+      el('p', null, 'Enciéndelo solo con el consentimiento de los acudientes y el asentimiento de los aprendices. Con el registro encendido, cada equipo escribe su código al abrir y la app lo avisa en pantalla.'),
+      el('p', { class: 'muted' }, `Archivos guardados: ${estado.archivos || 0} (en %APPDATA%\\TecnoBloques\\registros).`), nota
+    ],
+    botones: [
+      { texto: estado.activo ? 'Apagar el registro' : 'Encender el registro', accion: async () => {
+        if (estado.activo) registroEventos.terminar(); // la última línea del equipo, antes de apagar
+        const r = await escritorio.registro.instructor({ accion: 'activar', pin, activo: !estado.activo });
+        if (!r.ok) { nota.textContent = MOTIVOS_PIN[r.motivo] || 'No se pudo cambiar.'; return false; }
+        registroEncendido = r.activo;
+        pintarAvisoRegistro();
+        mostrarToast(r.activo ? 'Registro encendido en este computador.' : 'Registro apagado en este computador.');
+        if (r.activo) setTimeout(pedirEquipo, 50);
+      } },
+      { texto: 'Exportar registros', accion: async () => {
+        const r = await escritorio.registro.exportar(pin);
+        if (r.ok) { nota.textContent = `Se copiaron ${r.archivos} archivos a ${r.carpeta}.`; return false; }
+        if (r.motivo !== 'cancelado') nota.textContent = r.motivo === 'sin-archivos' ? 'Todavía no hay registros en este computador.' : (MOTIVOS_PIN[r.motivo] || 'No se pudo copiar: ' + (r.mensaje || r.motivo));
+        return false;
+      } },
+      { texto: 'Cambiar el PIN', accion: () => { setTimeout(() => cambiarPin(pin), 50); } },
+      { texto: 'Cerrar', primario: true }
+    ]
+  });
+}
+function cambiarPin(pin) {
+  const error = el('p', { class: 'error' });
+  modal({
+    titulo: 'Cambiar el PIN del instructor',
+    cuerpo: [campoPin('pinCambio', 'PIN nuevo'), campoPin('pinCambio2', 'Repite el PIN nuevo'), error],
+    botones: [{ texto: 'Cancelar' }, { texto: 'Cambiar', primario: true, accion: async () => {
+      const nuevoPin = $('pinCambio').value;
+      if (nuevoPin !== $('pinCambio2').value) { error.textContent = 'Los dos PIN no son iguales.'; return false; }
+      const r = await escritorio.registro.instructor({ accion: 'cambiar-pin', pin, nuevoPin });
+      if (!r.ok) { error.textContent = MOTIVOS_PIN[r.motivo] || 'No se pudo cambiar el PIN.'; return false; }
+      mostrarToast('PIN cambiado.');
+    } }]
+  });
 }
 function notaCircuito(texto) { $('notaCircuito').textContent = texto || ''; $('notaCircuito').hidden = !texto; }
 /** Crea el lienzo con el circuito del proyecto actual (al abrir, al cambiar de proyecto o de placa). */
@@ -1522,6 +1702,7 @@ async function simular() {
   try { r = await escritorio.compilarHex({ codigo, fqbn: placa().fqbn }); }
   catch (e) { r = { ok: false, etapa: 'app', salida: e.message }; }
   simulador.compilando = false;
+  registrarCompilacion(r, codigo);
   if (!r.ok || !r.hex) {
     uiSimulador();
     const ex = explicarError(r, '');
@@ -1716,6 +1897,7 @@ function iniciar() {
       }
     }
     programarActualizacion();
+    programarResumenBloques();
   });
 
   window.matchMedia && matchMedia('(prefers-color-scheme: dark)').addEventListener('change', aplicarTema);
@@ -1801,7 +1983,12 @@ function iniciar() {
     'El proyecto lleva los bloques, la placa y una copia de tus bloques propios que usa.'));
   $('btnAbrir').addEventListener('click', () => modalAbrirTexto({
     titulo: 'Abrir proyecto', explicacion: 'Elige un archivo .tbq.json guardado con TecnoBloques. El programa actual se reemplaza.',
-    alLeer: (d) => cargarProyecto(d)
+    alLeer: (d) => {
+      const r = cargarProyecto(d);
+      // Sin el nombre del proyecto: lo escribe el aprendiz (contrato, sección 6.1, decisión del 16 oct)
+      if (r === true) registrarEditor('proyecto_abierto', { placa: placaActual });
+      return r;
+    }
   }));
   $('btnNuevo').addEventListener('click', () => modal({
     titulo: '¿Empezar un programa nuevo?', cuerpo: 'Se borra el programa actual. Tus bloques de Mis bloques se conservan.',
@@ -1859,7 +2046,13 @@ function iniciar() {
 
   document.addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); $('btnGuardar').click(); }
+    // La opción del instructor para el registro de eventos (pide su PIN). e.code: con AltGr, e.key cambia.
+    if (e.ctrlKey && e.altKey && e.shiftKey && e.code === 'KeyR') { e.preventDefault(); abrirInstructor(); }
   });
+  // Registro de eventos: el equipo escribe su código al abrir (si el instructor lo encendió en este PC)
+  $('avisoRegistro').addEventListener('click', () => { if (registroEncendido) pedirEquipo(registroEventos.equipo() || ''); });
+  window.addEventListener('pagehide', () => registroEventos.terminar());
+  iniciarRegistro();
   window.addEventListener('resize', () => Blockly.svgResize(espacio));
 }
 iniciar();

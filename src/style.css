@@ -317,6 +317,16 @@ details.subir-detalle pre { max-height: 220px; overflow: auto; font-family: var(
   border-radius: 8px; padding: 9px 12px; font-size: 13px; box-shadow: var(--shadow);
 }
 #avisoActualizacion[hidden] { display: none; }
+/* Registro de eventos encendido: un aviso discreto abajo a la izquierda (contrato con TecnoCircuito, 6.1) */
+#avisoRegistro {
+  position: fixed; left: 16px; bottom: 16px; z-index: 890; max-width: min(360px, calc(100vw - 32px));
+  background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 999px;
+  padding: 5px 12px 5px 10px; font: inherit; font-size: 12.5px; cursor: pointer; box-shadow: var(--shadow);
+}
+#avisoRegistro::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 7px; border-radius: 50%; background: var(--accent); vertical-align: 1px; }
+#avisoRegistro:hover, #avisoRegistro:focus-visible { border-color: var(--accent); }
+#avisoRegistro[hidden] { display: none; }
+#avisoRegistro:not([hidden]) ~ #avisoActualizacion { bottom: 56px; }
 
 /* ---------- Blockly ---------- */
 .blocklyMainBackground { fill: var(--ws-bg) !important; stroke: none !important; }

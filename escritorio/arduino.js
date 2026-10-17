@@ -132,11 +132,11 @@ function nombrePorVid(vid) {
   return { '1a86': 'placa con chip CH340 (clon)', 2341: 'Arduino', '2a03': 'Arduino', '0403': 'placa con chip FTDI', '10c4': 'placa con chip CP210x' }[vid] || 'dispositivo serie';
 }
 
-/** "Sketch uses 3452 bytes (10%)…" → {flash: 10, ram: 13} */
+/** "Sketch uses 3452 bytes (10%)…" → {flash: 10, ram: 13, bytes: 3452} (bytes: para el registro de eventos) */
 function leerMemoria(t) {
-  const f = /Sketch uses \d+ bytes \((\d+)%\)/.exec(t);
+  const f = /Sketch uses (\d+) bytes \((\d+)%\)/.exec(t);
   const r = /Global variables use \d+ bytes \((\d+)%\)/.exec(t);
-  return { flash: f ? Number(f[1]) : null, ram: r ? Number(r[1]) : null };
+  return { flash: f ? Number(f[2]) : null, ram: r ? Number(r[1]) : null, bytes: f ? Number(f[1]) : null };
 }
 
 module.exports = { Arduino, ubicarArduino, leerMemoria };

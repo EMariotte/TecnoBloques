@@ -117,6 +117,7 @@ TecnoBloques/
 │   ├── main.js               ← ventana, IPC, Web Serial (elige el puerto), actualización automática
 │   ├── preload.js            ← puente seguro: window.tbEscritorio (info, puertos, subir, compilarHex, alProgreso…)
 │   ├── arduino.js            ← arduino-cli: board list, compile, upload (módulo Node sin Electron)
+│   ├── registro-disco.js     ← registro de eventos en disco: PIN del instructor, encendido, .jsonl, exportar
 │   ├── preparar-arduino.js   ← arma recursos/arduino (cli + núcleo AVR + librerías) para el instalador
 │   ├── empaquetar.js         ← corre electron-builder (salida en %LOCALAPPDATA%\TecnoBloques-build)
 │   ├── instalador.nsh        ← paso NSIS: ofrece el driver CH340 en la primera instalación
@@ -125,6 +126,7 @@ TecnoBloques/
 ├── src/
 │   ├── nucleo.js             ← perfiles de placa, campos, generador C++, revisión de pines
 │   ├── bloques.js            ← definición de TODOS los bloques + su traducción a C++
+│   ├── registro.js           ← registro de eventos sin página: C++ sin comentarios, sobre, resumen de bloques
 │   ├── app.js                ← interfaz: caja de herramientas, Mis bloques, proyectos,
 │   │                            ejemplos, modo texto, monitor serial, arranque
 │   ├── style.css             ← diseño (tokens claro/oscuro)
@@ -138,6 +140,8 @@ TecnoBloques/
 │   ├── app-empaquetada.js    ← lo mismo con la app ya empaquetada (win-unpacked)
 │   ├── placas.js             ← con placas reales: sube ejemplos, prueba el monitor y los errores (npm run test:placas)
 │   ├── simulador.js          ← la app con TecnoCircuito: compila y simula programas de bloques (npm run test:simulador)
+│   ├── registro.js           ← registro de eventos con Node, contra el esquema de TecnoCircuito (npm run test:registro)
+│   ├── registro-app.js       ← registro de punta a punta en la app: PIN, equipo, .jsonl (npm run test:registro-app)
 │   ├── instalar-librerias.ps1← núcleo AVR + librerías para arduino-cli (Windows)
 │   └── requirements.txt      ← playwright
 ├── marca/                    ← MARCA: generar.py (fuente única del dibujo), MARCA.md (guía),
@@ -473,7 +477,7 @@ TecnoCircuito es un simulador de circuitos con microcontrolador: avr8js ejecuta 
 |---|---|
 | Motor eléctrico, avr8js, modelos de componentes y lienzo con protoboard | Botón «Simular», panel del simulador y compilación del `.hex` |
 | Define el formato del circuito | Guarda el circuito dentro del `.tbq.json` **sin interpretarlo** |
-| Emite eventos por una función (`alEvento`) | Agrega el alias del aprendiz y escribe el registro en disco |
+| Emite eventos por una función (`alEvento`) | Agrega el código del equipo y el sobre, y escribe el registro en disco |
 | Recibe el modo (realista o ideal) | Decide el modo y se lo pasa |
 | No toca el disco, la red ni Electron | Es el único que habla con Node por IPC |
 
@@ -493,7 +497,7 @@ src/app.js (página)                                   window.TecnoCircuito
         ▼
 escritorio/main.js
   tb:compilar-hex  →  arduino.js compila y lee <build>/TecnoBloques.ino.hex
-  tb:registrar     →  %APPDATA%\TecnoBloques\registros\<alias>-<fecha>.jsonl
+  tb:registrar     →  registro-disco.js: %APPDATA%\TecnoBloques\registros\<equipo>-<fecha>.jsonl (solo si está encendido)
 ```
 
 ### Contrato 1 (resumen)
@@ -503,7 +507,7 @@ escritorio/main.js
 3. **Placas:** se usan las mismas claves de `PLACAS` de `nucleo.js`: `uno`, `nano`, `nano_old` y `mega`. Si la placa no está en `TecnoCircuito.PLACAS`, «Simular» se desactiva con un mensaje.
 4. **Circuito:** `proyecto.circuito = {formato: 1, placa, componentes: […], cables: […], protoboard}`. TecnoBloques lo guarda y lo devuelve tal cual. Cada pin físico tiene nombre propio (`placa.GND1`, no `placa.GND`), los cables pueden traer `puntos` (sus dobleces) y la placa está fija en el origen.
 5. **Programa:** el `.hex` va como texto Intel HEX, leído de la carpeta de compilación de arduino-cli.
-6. **Eventos:** el paquete emite `{t, origen, tipo, datos}`. Los del cableado salen por el `alEvento` de `crearLienzo`, aunque el aprendiz nunca simule, y los de la simulación por el `alEvento` de `crearSimulador`. TecnoBloques agrega `alias`, `sesion` y las dos versiones, suma sus propios eventos del editor (`origen: 'editor'`) y escribe JSON Lines.
+6. **Eventos:** el paquete emite `{v, t, origen, tipo, datos}` (los del simulador, además `corrida` y `ms_sim`; desde el 16 oct, esquema en `../TecnoCircuito/contrato/evento.schema.json`). Los del cableado salen por el `alEvento` de `crearLienzo`, aunque el aprendiz nunca simule, y los de la simulación por el `alEvento` de `crearSimulador`. TecnoBloques agrega `equipo`, `sesion` y las dos versiones, suma sus propios eventos del editor (`origen: 'editor'`) y escribe JSON Lines. Ver «Registro de eventos» abajo.
 7. **Modo:** `'realista'` o `'ideal'`, más ajustes por no idealidad (`{caidaL293D: false, …}`). Las claves las define TecnoCircuito. Desde el 16 oct existe también `resistenciaBateria` (la LiPo de 1,2 Ω, medida): TecnoBloques no cambia, porque usa `modo: 'realista'` y no ajusta claves sueltas.
 8. **Errores:** si el simulador falla, el editor sigue. TecnoBloques envuelve cada llamada en `try/catch`.
 
@@ -539,7 +543,12 @@ Comprobado: `test:simulador` **51 OK, sin errores JS**, compilando con los FQBN 
 - ✅ **El circuito se guarda en el proyecto:** `lienzo.alCambiar` lo pone en `extrasProyecto.circuito` y autoguarda. TecnoBloques no lo interpreta.
 - ✅ **Scripts:** `app:simulador` y `build:simulador` (`node build.js --simulador-local`) y `test:simulador`. `build.js` embebe la copia local solo con esa bandera (o una versión etiquetada en `node_modules/tecnocircuito`); el build normal y el instalador salen sin simulador.
 - ✅ **Seguro del instalador:** `empaquetar.js` se niega a empaquetar si el HTML trae `TB_SIMULADOR_ORIGEN = "local"`.
-- ⬜ **Registro** (aprobado el 11 oct; se implementa en la próxima sesión; contrato, sección 6.1): el registro identifica al **equipo** con un código sin datos de los aprendices (ya no un alias). Está apagado por defecto y lo enciende el instructor por PC, con aviso en pantalla. El código se pide al abrir, con confirmación. Lleva los eventos del editor del contrato, entre ellos `codigo_compilado` con el C++ sin comentarios, y el IPC `tb:registrar` escribe el `.jsonl`. «Exportar registros» es para el instructor, y el monitor serial no se registra. Hoy los eventos quedan en memoria (`simulador.eventos`).
+- ✅ **Registro de eventos** (16 oct, Claude; contrato, sección 6.1 con las decisiones del 16 oct). Identifica al **equipo** con un código sin datos de los aprendices.
+  - **Apagado por defecto.** El instructor lo enciende en cada PC con **Ctrl+Alt+Mayús+R** y un **PIN** de 4 a 8 dígitos que crea la primera vez (`registro-config.json` en userData guarda solo su resumen scrypt; 5 intentos fallidos = 1 minuto de espera). En el mismo panel: encender/apagar, «Exportar registros» (copia los `.jsonl` a una carpeta nueva en la USB) y cambiar el PIN. **F12** (herramientas de desarrollo) en la app instalada solo funciona después del PIN del instructor en esa sesión; en desarrollo queda libre (`TB_HERRAMIENTAS=instructor` lo restringe para probar).
+  - Encendido: al abrir pide el **código del equipo** con confirmación («¿Son el equipo A7?»), y abajo a la izquierda aparece «Esta sesión se registra · Equipo A7» (clic: cambiar de equipo, que cierra la sesión anterior). Sin código no se escribe nada.
+  - `src/registro.js` (puro, probado con Node): `quitarComentarios` (respeta comillas, escapes y R"(…)"; conserva el número de líneas), `codigoParaArchivo`, `resumenBloques` y `crearRegistroEventos` (el sobre). `escritorio/registro-disco.js`: PIN, encendido, escritura y exportación; el proceso principal revisa que esté encendido y limpia el nombre del archivo.
+  - Eventos del editor: `sesion_iniciada`, `ejemplo_cargado`, `proyecto_abierto` (**sin el nombre**), `bloques_cambiados` (3 s después del último cambio), `codigo_compilado` (C++ sin comentarios, tipo de error y `bytes`, al simular y al subir), `programa_subido` y `sesion_terminada` (al cerrar). Más todos los del lienzo y el simulador.
+  - Pruebas: `npm run test:registro` (Node, contra el esquema de TecnoCircuito) y `npm run test:registro-app` (Electron de punta a punta; necesita arduino-cli).
 - ✅ **Contrato:** `sim.destruir()` y `sim.medidas()` (con respaldo a `_destruir()`/`_medidas()` para paquetes anteriores).
 - ✅ **Agrandar el circuito:** divisor arrastrable entre bloques y panel (`iniciarDivisor`, preferencia `anchoPanel`), vista «Circuito» (`cambiarVista('circuito')`, solo con simulador) y botón «Ampliar»/«Reducir». En las vistas de solo panel, pestaña y vista van juntas (`ponerPestanas`).
 - ✅ **«Guardar imagen»:** vista previa y descarga del SVG del circuito (`lienzo.exportarSVG()`, contrato 1). La imagen trae abajo a la derecha la marca «Hecho con TecnoCircuito · SENA – TecnoAcademia Tolima» (la pone TecnoCircuito).

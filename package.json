@@ -18,6 +18,8 @@
     "test:app": "node test/app.js",
     "test:placas": "node test/placas.js",
     "test:graficador": "node test/graficador.js",
+    "test:registro": "node test/registro.js",
+    "test:registro-app": "node build.js --simulador-local && node test/registro-app.js",
     "test:simulador": "node build.js --simulador-local && node test/simulador.js"
   },
   "devDependencies": {
@@ -43,6 +45,8 @@
       "escritorio/main.js",
       "escritorio/preload.js",
       "escritorio/arduino.js",
+      "escritorio/registro-disco.js",
+      "src/registro.js",
       "escritorio/icono.png",
       "dist/TecnoBloques.html",
       "package.json",

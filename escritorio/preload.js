@@ -12,6 +12,14 @@ contextBridge.exposeInMainWorld('tbEscritorio', {
   subir: (datos) => ipcRenderer.invoke('tb:subir', datos),
   /** datos = {codigo, fqbn} → {ok, etapa, salida, memoria, hex}: compila sin subir, para el simulador */
   compilarHex: (datos) => ipcRenderer.invoke('tb:compilar-hex', datos),
+  /** Registro de eventos por equipo (contrato con TecnoCircuito, sección 6.1) */
+  registro: {
+    estado: () => ipcRenderer.invoke('tb:registro-estado'),
+    /** {accion: 'crear-pin' | 'entrar' | 'activar' | 'cambiar-pin', pin, nuevoPin, activo} */
+    instructor: (peticion) => ipcRenderer.invoke('tb:registro-instructor', peticion),
+    exportar: (pin) => ipcRenderer.invoke('tb:registro-exportar', { pin }),
+    escribir: (linea) => ipcRenderer.send('tb:registrar', linea),
+  },
   alProgreso: (fn) => {
     const h = (_e, m) => fn(m);
     ipcRenderer.on('tb:progreso', h);
