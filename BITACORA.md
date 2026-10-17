@@ -833,3 +833,10 @@ Por pedido de Efraín, antes de dos días solo de software:
 - `package.json`: los dos archivos nuevos entran al instalador; scripts `test:registro` y `test:registro-app`.
 
 **Pruebas:** `test:registro` **58 OK** (las líneas se revisan con el revisor de TecnoCircuito contra el esquema); `test:registro-app` **33 OK** (Electron de punta a punta: PIN, equipo, ejemplo, bloques, simular, cerrar, abrir de nuevo, apagar; las 7 líneas cumplen el esquema y el nombre del proyecto no aparece); `test:simulador` **53 OK**; `test:app` y `npm test` sin errores. Falta la prueba de Efraín en la app y con aprendices (fase 4).
+
+## 2026-10-16 — Registro de eventos: F12 solo para el instructor (Efraín, con Claude)
+
+Va en el mismo commit `4d428b9` que la entrada anterior, que no lo menciona:
+- **F12 (pedido de Efraín):** con las herramientas de desarrollo se podía apagar el registro desde la consola. En la app instalada, F12 solo las abre después de que el instructor entra con su PIN en esa sesión, y si se abren por otro camino se cierran solas. En desarrollo siguen libres (`TB_HERRAMIENTAS=instructor` hace que se comporten como en la instalada; la variable solo restringe).
+- Efraín aprobó las decisiones de la interfaz: sin código del equipo no se insiste ni se registra; el PIN se guarda solo como resumen; en un PC compartido, el clic en el aviso cambia de equipo.
+- `test:registro-app` pasa a **36 OK** (no 33): suma F12 sin PIN, F12 abierto por otro camino y F12 con PIN.
