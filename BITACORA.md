@@ -873,3 +873,15 @@ Por decisión permanente de Efraín, **Claude es el único implementador y progr
 ## 2026-10-18 — Claude: commit del piloto y memoria separada
 
 Con el sí de Efraín: commit `283eaa4` con la documentación del piloto de Codex y los roles permanentes. Por la regla nueva de memorias separadas (CLAUDE.md es de Claude y AGENTS.md es de Codex), el inicio de CLAUDE.md pasa a un bloque corto que remite a TecnoSuite (PROCESO v3, hoja de Efraín y tablero) y nombra los tres defectos altos del registro (AUD-01, AUD-02 y AUD-04). El README público ya no enlaza a la carpeta local `../TecnoSuite`. Sin cambios de código.
+
+## 2026-10-18 08:10 · Codex: memorias v3 y devolución de PROC-001
+
+Por encargo de Efraín se alineó AGENTS.md con PROCESO v3, roles permanentes, memorias separadas y congelación. En TecnoSuite se ajustó INVESTIGACION.md y se registró la sesión, con minutos de Efraín todavía no medidos.
+
+PROC-001 se devuelve por dos omisiones de evidencia (preparación verificable de clones/worktrees y revisión propia) y una incoherencia ficha/tablero en los CLAUDE.md. Evidencia y versiones en PROC-001, TecnoSuite; entrega COD-20261018-001. Pendientes técnicos conservados y siete tildes comprobadas. Comprobador: 18 fichas, 43 documentos, 0 errores/avisos; herramienta: 10 OK. Sin código de producto, edición de CLAUDE.md/PROCESO, suites funcionales, hardware, commit ni publicación.
+
+## 2026-10-18 08:19 · Codex: PROC-001 verificada
+
+Segunda revisión de la entrega CLA-20261018-003: PROC-R1/R2/R3 cerrados por cotejo exacto y regresión documental. Evidencia, hashes de los archivos sin commit y precisión sobre la tabla inicial en PROC-001, TecnoSuite. Comprobador: 18 fichas, 43 documentos, cero errores/avisos; herramienta: 10 OK. Los cuerpos técnicos permanecen íntegros. Codex actualiza ficha, registro y su canal; no edita CLAUDE.md ni PROCESO.
+
+Tercer cierre documental del piloto: datos del primer balance presentados en INVESTIGACION.md; pendientes la opinión corta de Claude y decisión de Efraín. Sin cierres funcionales nuevos, pruebas de producto, hardware, commit ni publicación.

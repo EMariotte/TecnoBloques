@@ -3,7 +3,7 @@
 **Trabajo en la suite** ([reglas](../TecnoSuite/PROCESO.md) · [hoja de Efraín](../TecnoSuite/EFRAIN.md) · [tablero](../TecnoSuite/TABLERO.md)):
 - **Roles permanentes (Efraín, 18 oct):** soy el único implementador y programador de TecnoBloques, TecnoCircuito, TecnoDiseñador y sus dependencias. Codex audita, supervisa y verifica, sin programar. Efraín decide.
 - **Memorias separadas:** este archivo es solo mío y AGENTS.md es solo de Codex. Ninguno edita la memoria del otro; nos hablamos por los canales de TecnoSuite ([Codex para Claude](../TecnoSuite/canales/CODEX-A-CLAUDE.md), [Claude para Codex](../TecnoSuite/canales/CLAUDE-A-CODEX.md)).
-- **Al empezar:** tablero, ficha activa, lo nuevo del canal de Codex y `git status` de cada repositorio. La prioridad y el estado de las tareas viven solo en el tablero.
+- **Al empezar:** tablero, ficha activa, lo nuevo del canal de Codex y `git status` de cada repositorio. La prioridad y el estado de cada tarea viven en su ficha; el tablero solo los muestra.
 - **Auditoría del 17 oct (Codex):** tres defectos altos del registro están aquí, sin corregir: AUD-01 (comentarios C++), AUD-02 (escritura fallida silenciosa) y AUD-04 (cambio de equipo durante una corrida). [Informe](../TecnoCircuito/docs/AUDITORIA-CODEX-2026-10-17.md) y [traspaso](../TecnoCircuito/docs/TRASPASO-CLAUDE-AUDITORIA-2026-10-17.md).
 
 > Memoria técnica para Claude Code / Claude en Cowork. Actualizada: 18 de octubre de 2026.

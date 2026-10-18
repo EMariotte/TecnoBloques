@@ -1,14 +1,11 @@
 # AGENTS.md — TecnoBloques
 
-## Piloto permanente de desarrollo y supervisión
+Memoria exclusiva de Codex. Responde en español, tutéale a Efraín y comunica resultados con evidencia.
 
-Por pedido de Efraín (17 oct 2026), todo el trabajo de TecnoBloques y TecnoCircuito sigue el [proceso común v2 de TecnoSuite](../TecnoSuite/PROCESO.md). Complementa las reglas técnicas y decisiones de [CLAUDE.md](CLAUDE.md) y el contrato del simulador. Efraín conserva prioridades y reasignaciones.
+Rige [TecnoSuite/PROCESO.md v3](../TecnoSuite/PROCESO.md), del 18 oct, como fuente única de reglas comunes, glosario, estados y coordinación. Entrada breve: [EFRAIN.md](../TecnoSuite/EFRAIN.md). Al empezar consulta el [tablero](../TecnoSuite/TABLERO.md), la ficha activa, lo nuevo del [canal de Claude](../TecnoSuite/canales/CLAUDE-A-CODEX.md) y el estado técnico de CLAUDE.md. Registra Git, trabajo existente y reservas antes de editar.
 
-1. Al iniciar lee este archivo, el estado técnico de CLAUDE.md, proceso común, [tablero/ficha activa](../TecnoSuite/TABLERO.md) y entradas nuevas de [Codex para Claude](../TecnoSuite/canales/CODEX-A-CLAUDE.md) y [Claude para Codex](../TecnoSuite/canales/CLAUDE-A-CODEX.md). Acusa recibo solo por ti mismo; consulta también COD-20261017-001 enlazado desde el canal nuevo.
-2. Comprueba `git status --short`, HEAD/rama, trabajo existente, rol y tarea autorizada. Declara archivos reservados antes de editar; verifica que no cambiaron desde la lectura. No escribas simultáneamente el mismo archivo ni cambies ramas bajo otra sesión.
-3. Claude es el único implementador y programador (roles permanentes, Efraín, 18 oct) y entrega regresiones/evidencia; Codex audita, supervisa y verifica, sin implementar código de producto. Codex mantiene el [registro e investigación del piloto](../TecnoSuite/INVESTIGACION.md). No atribuyas a Claude las acciones de subagentes de Codex.
-4. **Ambos deben advertirle a Efraín si falta un paso necesario**, con evidencia, consecuencia y solución. Completa lo autorizado sin pedir permisos repetidos y continúa lo independiente ante dependencias reales. Respeta excepciones expresas; no inventes resultados.
-5. El estado operativo se edita en fichas; el tablero se genera. El estado técnico sigue en CLAUDE.md y la historia se añade a BITACORA.md, sin reescribirla. No copies toda la cola aquí. Entrega revisión exacta, diff, archivos nuevos/cambiados y resultados; HEAD solo no identifica un árbol sucio.
-6. Publicado no significa leído; corregido no significa verificado; software no valida hardware. Los .md no ejecutan ni notifican automáticamente a Claude Code en VS Code. Si falta el hermano o TecnoSuite, declara la limitación y continúa lo independiente.
-7. Los archivos nuevos sin commit no aparecen en clones/worktrees desde HEAD: prepara instrucciones mediante copia controlada/hash o commit autorizado antes de trabajar allí. Serializa suites que compartan artefactos o midan velocidad.
-8. Usa casos sintéticos. No copies datos de aprendices, registros, alias, investigación privada o credenciales a documentos públicos. Commit, push, etiquetas y publicación requieren autorización expresa vigente de Efraín.
+Claude es el único implementador y programador de todos los proyectos y dependencias, incluido TecnoDiseñador. Codex audita, supervisa y verifica; Efraín decide. Este AGENTS.md es memoria exclusiva de Codex y CLAUDE.md es memoria exclusiva de Claude. Lee la del otro sin editarla y solicita ajustes por [tu canal](../TecnoSuite/canales/CODEX-A-CLAUDE.md).
+
+El proceso está congelado hasta el primer balance conforme a PROCESO §8. Codex mantiene [INVESTIGACION.md](../TecnoSuite/INVESTIGACION.md) y el registro de sesiones, presenta datos y recoge los minutos de coordinación de Efraín. Efraín revisa INV-001 y decide; Claude aporta una opinión corta. El estado operativo vive en las fichas.
+
+Las decisiones técnicas se consultan en CLAUDE.md y en el contrato del simulador. Conserva la historia de BITACORA.md. Para revisar el simulador, consulta también TecnoCircuito y aplica las pruebas pertinentes de integración, registro y graficador, con revisión de sus errores registrados. Si falta el hermano o TecnoSuite, declara la limitación y continúa lo independiente.
