@@ -869,3 +869,7 @@ Se conciliaron descripciones vencidas de etiqueta/instalador y contactos de expa
 ## 2026-10-18 — Claude: roles permanentes de implementación
 
 Por decisión permanente de Efraín, **Claude es el único implementador y programador** de TecnoBloques, TecnoCircuito y sus dependencias; Codex audita, supervisa y verifica sin implementar código de producto. La asignación de Nano a Codex en TecnoCircuito fue una prueba. Se actualizaron AGENTS.md y CLAUDE.md; detalle en la bitácora de TecnoCircuito y en TecnoSuite. Sin cambios de código; sin commit ni push.
+
+## 2026-10-18 — Claude: commit del piloto y memoria separada
+
+Con el sí de Efraín: commit `283eaa4` con la documentación del piloto de Codex y los roles permanentes. Por la regla nueva de memorias separadas (CLAUDE.md es de Claude y AGENTS.md es de Codex), el inicio de CLAUDE.md pasa a un bloque corto que remite a TecnoSuite (PROCESO v3, hoja de Efraín y tablero) y nombra los tres defectos altos del registro (AUD-01, AUD-02 y AUD-04). El README público ya no enlaza a la carpeta local `../TecnoSuite`. Sin cambios de código.

@@ -75,7 +75,7 @@ bloques o placas, decisiones y hoja de ruta. El historial del proyecto está en 
 
 ## Colaboración en la suite
 
-El piloto de trabajo de TecnoBloques y TecnoCircuito se coordina en [TecnoSuite](../TecnoSuite/README.md): proceso común, fichas, tablero generado, canales y registro de investigación a cargo de Codex. Empieza por [AGENTS.md](AGENTS.md) antes de editar. TecnoRuta se incorporará posteriormente; la documentación técnica y la historia permanecen en cada producto.
+TecnoBloques y TecnoCircuito se construyen con dos agentes de IA: Claude programa y Codex revisa y verifica; Efraín decide. Su coordinación (proceso común, tareas y mensajes) vive en un repositorio privado aparte, `TecnoSuite/`, que se coloca junto a este. La documentación técnica y la historia permanecen en cada producto.
 
 ## Hoja de ruta
 
