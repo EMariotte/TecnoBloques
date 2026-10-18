@@ -30,6 +30,36 @@ const CASOS = [
   ['un texto crudo con marca', 'auto s = R"x(a )" // b)x"; // c', 'auto s = R"x(a )" // b)x";'],
   ['saltos de línea de Windows (CRLF)', 'a; // uno\r\nb; /* dos\r\ntres */ c;\r\n', 'a;\r\nb; \r\n c;\r\n'],
   ['una barra al final del comentario lo continúa (sin perder la línea)', 'a; // uno \\\nsigue\nb;', 'a;\n\nb;'],
+  // AUD-01: el compilador une las líneas que terminan en \ antes de buscar comentarios; lo contrasta con avr-g++
+  // test/registro-preprocesador.js.
+  ['/\\ y otra línea con / también es un comentario', 'int v=1; /\\\n/ privado\nint w;', 'int v=1;\n\nint w;'],
+  ['/\\ y otra línea con / (CRLF)', 'int v=1; /\\\r\n/ privado\r\nint w;', 'int v=1;\r\n\r\nint w;'],
+  ['\\ con espacios antes del salto también une las líneas', 'int v=1; /\\ \n/ privado\nint w;', 'int v=1;\n\nint w;'],
+  ['/* y */ partidos por empalmes', 'a; /\\\n* privado *\\\n/ b;', 'a; \n\n b;'],
+  ...['R', 'u8R', 'uR', 'UR', 'LR'].map((p) => [`un texto crudo ${p}"(…)" con una comilla adentro`,
+    `auto s = ${p}"(a " b // c)"; // privado`, `auto s = ${p}"(a " b // c)";`]),
+  ['un nombre que termina en R no abre un texto crudo', 'auto s = xR"(a " // privado)";\nint w;', 'auto s = xR"(a "\nint w;'],
+  ['un número 1.R no abre un texto crudo', 'x = 1.R"(a " // privado)";\nint w;', 'x = 1.R"(a "\nint w;'],
+  ['el sufijo de un texto ("x"u8R) no abre un texto crudo', 'auto s = "x"u8R"(a " // privado)";\nint w;', 'auto s = "x"u8R"(a "\nint w;'],
+  ['un empalme dentro del prefijo sigue siendo texto crudo', 'auto s = u8\\\nR"(a " b)"; // privado', 'auto s = u8\\\nR"(a " b)";'],
+  ['un empalme dentro de un texto crudo es texto', 'auto s = R"(a \\\n// b)"; // privado', 'auto s = R"(a \\\n// b)";'],
+  ['una marca con espacio no es texto crudo', 'auto s = R"a b(x)a b"; // privado', 'auto s = R"a b(x)a b";'],
+  ['un texto partido por un empalme CRLF', 'char* t = "a\\\r\nb // no"; // privado', 'char* t = "a\\\r\nb // no";'],
+  ['un carácter partido por un empalme', "char c = '\\\n/'; // privado", "char c = '\\\n/';"],
+  ['un \\r solo termina el comentario', 'a; // privado\rb; // otro\r', 'a;\rb;\r'],
+  ['un \\r solo, un comentario y un \\n no se juntan en un \\r\\n', 'a;\r// privado\nb;', 'a;\r \nb;'],
+  // AUD-01-V1 y V2 (verificación de Codex): números partidos por un empalme y directivas.
+  ['1e\\ y otra línea con +R"( es un número, no un texto crudo', '#define M 1e\\\n+R"(a " // privado)"\nint m;', '#define M 1e\\\n+R"(a "\nint m;'],
+  ['un /* */ de varias líneas no corta un #define', '#define VALOR (1 /* privado\n */ + 2)\nint d = VALOR;', '#define VALOR (1  \\\n + 2)\nint d = VALOR;'],
+  ['lo mismo con CRLF', '#define VALOR (1 /* privado\r\n */ + 2)\r\nint d = VALOR;', '#define VALOR (1  \\\r\n + 2)\r\nint d = VALOR;'],
+  ['en #include <avr//io.h> el // es parte del nombre', '#include <avr//io.h> // privado\nint m;', '#include <avr//io.h>\nint m;'],
+  ['un /* */ de varias líneas no vuelve directiva un # del medio', 'int a; /* privado\n */ # define Z 1', 'int a;  \\\n # define Z 1'],
+  ['un /* */ de varias líneas al inicio deja la directiva como estaba', '/* privado\n */ #define Y 2', '\n #define Y 2'],
+  ['varios /* */ seguidos antes de un # del medio de la línea', 'a /* privado\n */ /* otro */ # define Z', 'a  \\\n   # define Z'],
+  ['una \\ suelta antes de // queda separada del salto con /**/', 'int a = 1; \\ // privado\nint b;', 'int a = 1; \\/**/\nint b;'],
+  ['lo mismo en un #define', '#define M a \\// privado\nint x;', '#define M a \\/**/\nint x;'],
+  ['en un #define, un texto crudo no pasa de su línea', '#define F R"x(abc\n// privado\n)x"\nint z;', '#define F R"x(abc\n\n)x"\nint z;'],
+  ['fuera de una directiva, sí', 'auto s = R"x(abc\n// no\n)x"; // privado', 'auto s = R"x(abc\n// no\n)x";'],
   ['un comentario de bloque sin cerrar', 'a; /* nunca', 'a;  '],
   ['un texto sin cerrar no se come el resto', 'Serial.print("hola\nint b; // x', 'Serial.print("hola\nint b;'],
   ['la división no es un comentario', 'int x = a / b / c;', 'int x = a / b / c;'],
@@ -49,6 +79,11 @@ for (const [nombre, entra, sale] of CASOS) {
   const t0 = Date.now();
   const rl = quitarComentarios(largo);
   revisar(Date.now() - t0 < 500 && !rl.includes('// x') && rl.includes('"// y"'), `un programa de ${(largo.length / 1024).toFixed(0)} KB se limpia en ${Date.now() - t0} ms`);
+  // Formas abusivas: muchos R" sin paréntesis, muchos espacios antes de un comentario y muchos empalmes seguidos.
+  const abusivo = 'R"'.repeat(30000) + '\n' + ' '.repeat(100000) + 'x // c\n' + ('a ' + ' '.repeat(50) + '\\\n').repeat(5000) + '// d';
+  const t1 = Date.now();
+  const ra = quitarComentarios(abusivo);
+  revisar(Date.now() - t1 < 500 && !ra.includes('// c') && !ra.includes('// d'), `un programa abusivo de ${(abusivo.length / 1024).toFixed(0)} KB se limpia en ${Date.now() - t1} ms`);
 }
 
 console.log('— El código del equipo');

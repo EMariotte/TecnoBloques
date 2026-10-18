@@ -885,3 +885,75 @@ PROC-001 se devuelve por dos omisiones de evidencia (preparación verificable de
 Segunda revisión de la entrega CLA-20261018-003: PROC-R1/R2/R3 cerrados por cotejo exacto y regresión documental. Evidencia, hashes de los archivos sin commit y precisión sobre la tabla inicial en PROC-001, TecnoSuite. Comprobador: 18 fichas, 43 documentos, cero errores/avisos; herramienta: 10 OK. Los cuerpos técnicos permanecen íntegros. Codex actualiza ficha, registro y su canal; no edita CLAUDE.md ni PROCESO.
 
 Tercer cierre documental del piloto: datos del primer balance presentados en INVESTIGACION.md; pendientes la opinión corta de Claude y decisión de Efraín. Sin cierres funcionales nuevos, pruebas de producto, hardware, commit ni publicación.
+
+## 2026-10-18 09:50 · Claude: AUD-01 corregido, en revisión
+
+`quitarComentarios` (`src/registro.js`) pasa de buscar `//` y `/*` carácter por carácter a leer el C++ como avr-g++ 7.3.0 con `-std=gnu++11`:
+- une primero las líneas que terminan en `\` (el empalme), con LF, CRLF o `\r` solo y espacios, tabuladores, `\f` o `\v` antes del salto;
+- lee los nombres enteros y reconoce el texto crudo solo con `R`, `u8R`, `uR`, `UR` o `LR` justo antes de la comilla, con una marca de hasta 16 caracteres básicos;
+- respeta los sufijos de los textos (`"x"u8R`) y los números (`1.R`);
+- `$` no forma parte de un nombre;
+- un `\r` solo, un comentario y un `\n` no se juntan en un `\r\n`.
+
+Lo que no es comentario se copia tal cual, y las líneas no cambian de número. La interfaz es la misma y `app.js` no cambió.
+
+**Reproducción antes del cambio:** 7 casos del informe y sus vecinos. Con el código anterior también se recortaban textos, por ejemplo `u8R"(a " b // c)"`.
+
+**Prueba nueva**, `npm run test:registro-preprocesador`. Contrasta el limpiador con `avr-g++ -E` en tres puntos:
+- el compilador ve los mismos símbolos;
+- según `-E -C`, no queda ningún comentario;
+- las líneas no cambian.
+
+Incluye 39 casos fijos, 4 comprobaciones de límites y miles de programas al azar con semilla fija. Contra el código anterior fallaron 20 de los casos fijos de ese momento y 1550 de 2000 programas. Con el nuevo pasan los 2000 de la semilla por defecto y los 5000 de la semilla 7. En esta última, 2 programas tienen una `\` suelta antes de un comentario: es un límite conocido, el compilador los rechaza (`stray '\' in program`) y ninguno deja un comentario.
+
+**Límites anotados:**
+- en `#include <a//b.h>` quita `//b.h>`;
+- una `\` suelta justo antes de un comentario queda pegada a un salto.
+
+**Otras pruebas:** `test:registro` da 78 OK (antes 58; 12 de las regresiones nuevas fallan con el código anterior), con una entrada abusiva de 420 KB en 37 ms. `test:registro-app` da 36 OK, `test:simulador` 53 OK, y `test:app` y `npm test` terminan con salida 0 y `ERRORES` vacío. Las pruebas de Electron corrieron con cargador. El diagnóstico histórico de la auditoría se detiene en AUD-01 porque ya no encuentra el defecto.
+
+Sondas del compilador hechas en Node: desde Git Bash, `$'…\\\n…'` escribe `\` y `n`, no un empalme. Codex verifica. Sin commit ni push.
+
+## 2026-10-18 10:09 · Codex: AUD-01 devuelta tras verificación independiente
+
+Revisada CLA-20261018-005 sobre TB 8897b85 y src/registro.js SHA256 792cb03ecc7fef575d9c0e1a9ed63fa57aed17664dda0d21adda24fcc2356135. Siete casos originales corregidos; subsisten comentario privado en número empalmado de macro (alta), alteración de macro multilínea/include válido (media) y falso negativo del oráculo (media). Informe y diagnóstico propios en TecnoCircuito/docs/VERIFICACION-AUD01-CODEX-2026-10-18.md y verificar-aud01-2026-10-18.cjs; entrega COD-20261018-003 y estado pendiente en la ficha.
+
+Pruebas propias: Node 78 OK, Electron 36 OK sin errores, cargador Online. Preprocesador con semilla 18102026 y CASOS=5000: exit 0, 39 casos fijos, 5000 aleatorios con cuatro diferencias disculpadas por el límite de stray y cuatro comprobaciones de límites; V3 demuestra el falso negativo para macros. Diagnóstico adverso exit 1: reproduce incumplimientos, no acredita regresión aprobada. Codex no editó producto, pruebas ni memoria de Claude. Claude corrige con reservas coordinadas; sin commit, push, publicación ni validación física nueva.
+
+## 2026-10-18 13:40 · Claude: AUD-01 corregido otra vez (V1, V2, V3 y tres defectos más), en revisión
+
+**Lo que se corrigió**, sobre `quitarComentarios`:
+- **V1:** en un número, el signo sigue a la `e`/`p` que ve el compilador, aunque haya un empalme entre ellos.
+- **V2:** el limpiador sigue las directivas.
+  - En `#include`, `#include_next` e `#import` (también `%:`), `<…>` y `"…"` son nombres de archivo.
+  - Un `/* */` de varias líneas dentro de una directiva, o antes de un `#` en medio de la línea, deja `\` + salto. Así no corta el `#define` ni vuelve directiva ese `#`.
+
+**Lo que encontró el juez nuevo**, y también se corrigió:
+- La mirada hacia adelante no saltaba otros `/* */` seguidos.
+- Dentro de una directiva, avr-g++ corta en su línea un texto crudo sin cerrar. El limpiador lo extendía y **conservaba un comentario** de la línea siguiente.
+- Una `\` suelta antes de un comentario se unía al salto. En un `#define` sin usar eso cambia un programa válido. Ahora la separa un `/**/` vacío, que no lleva nada del comentario (**decisión de Efraín**).
+
+**V3, el juez** (`test/registro-preprocesador.js`):
+- Usa `-dD -undef`, y `-CC` para encontrar comentarios, también los de un `#define`.
+- Los `#include` van a cabeceras vacías de prueba, y los programas válidos se compilan con `-mmcu=atmega328p` antes y después de limpiarlos.
+- Ya no disculpa nada: solo deja pasar el `/**/`, igual en los dos lados.
+- Tiene 66 casos fijos, entre ellos las 80 variantes de V1 (LF y CRLF), y 7 programas que deben compilar. El generador ahora incluye directivas, números con `e` y textos crudos con saltos.
+
+**Pruebas finales** (13:16–13:35, con cargador; hashes en la ficha):
+- `test:registro`: 89 OK.
+- Preprocesador: aprobado con 2000 programas (semilla por defecto), 5000 (semilla 7) y 5000 (semilla 18102026), sin fallas.
+- `test:registro-app`: 36 OK. `test:simulador`: 53 OK. `test:app` y `npm test`: salida 0 y `ERRORES` vacío.
+- El diagnóstico de Codex `verificar-aud01` sale con 0.
+- Contra la versión entregada antes (`792cb03e…`), el juez nuevo da 24 fallas y 493 de 2000 programas al azar, y 9 regresiones de `test:registro` fallan.
+
+**Sin cubrir:** comentarios en líneas de `#if` y en bloques `#if 0`, porque `-E` no los muestra.
+
+Una suspensión de Windows (10:43–12:31) invalidó una corrida, que se repitió. Sin commit ni push.
+
+## 2026-10-18 14:26 · Codex: cierre verificado de AUD-01
+
+Verificada CLA-20261018-006 sobre src/registro.js SHA256 bff77d8ab7307dd498c74b726153a1f42e4c2b476b419c27f74366a698b8f4d7, sin commit. V1/V2/V3 cerrados: casos originales y variantes limpios, programas válidos preservados y juez capaz de rechazar las tres salidas defectuosas capturadas de la entrega anterior. Informe posterior: TecnoCircuito/docs/CIERRE-AUD01-CODEX-2026-10-18.md. No se reescribió el informe de devolución.
+
+Pruebas propias: Node 89 OK, 66 comprobaciones fijas con 80 variantes, siete programas válidos, 2000 aleatorios sin excepciones y ocho fronteras adicionales. Electron tuvo una falla inicial al cerrar herramientas sin PIN; la repetición completa sin otra suite pasó 36/36, sin cambiar aserciones y sin acreditar una causa. Excepción /**/ vacío de Efraín respetada y remitida a REG-005 para documentarla.
+
+Primer cierre funcional del grupo para el segundo balance; AUD-02/04 siguen sus fichas y Efraín conserva prioridades. Codex no modificó producto, tests ni CLAUDE.md. Sin instalador, hardware, commit, push ni publicación nuevos.
