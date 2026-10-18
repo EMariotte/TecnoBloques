@@ -840,3 +840,32 @@ Va en el mismo commit `4d428b9` que la entrada anterior, que no lo menciona:
 - **F12 (pedido de Efraín):** con las herramientas de desarrollo se podía apagar el registro desde la consola. En la app instalada, F12 solo las abre después de que el instructor entra con su PIN en esa sesión, y si se abren por otro camino se cierran solas. En desarrollo siguen libres (`TB_HERRAMIENTAS=instructor` hace que se comporten como en la instalada; la variable solo restringe).
 - Efraín aprobó las decisiones de la interfaz: sin código del equipo no se insiste ni se registra; el PIN se guarda solo como resumen; en un PC compartido, el clic en el aviso cambia de equipo.
 - `test:registro-app` pasa a **36 OK** (no 33): suma F12 sin PIN, F12 abierto por otro camino y F12 con PIN.
+
+## 2026-10-17 — Codex (Sol): aviso de auditoría preparado para Claude Code
+
+Efraín pidió documentar y notificar los resultados de la auditoría al agente programador Claude, que trabaja en VS Code. Se dejó un aviso al inicio de CLAUDE.md con el [traspaso](../TecnoCircuito/docs/TRASPASO-CLAUDE-AUDITORIA-2026-10-17.md) y el [informe](../TecnoCircuito/docs/AUDITORIA-CODEX-2026-10-17.md). **Es una comunicación por archivos compartidos: no consta envío directo a la conversación de VS Code ni acuse de recibo.**
+
+Prioridades para el traspaso: AUD-01, AUD-02 y AUD-04 (altos, registro de TecnoBloques); coordinar AUD-03 (medio, protocolo de eventos de TecnoCircuito). Nano/AUD-05 conserva su asignación a Codex. Antes de editar, acordar IDs y archivos para evitar trabajo simultáneo. El implementador devuelve correcciones con regresiones y Codex verifica el cierre; los cinco hallazgos siguen abiertos.
+
+Referencias auditadas: TecnoBloques `5b6d37a1f4b65474ec52a162fb5c3c330bc48445` y TecnoCircuito `390ef34a119df754a06ff35c96e2286800819f21`. Esta entrada solo documenta el traspaso; no añade pruebas, correcciones funcionales, medidas ni autorización de commit, push o publicación.
+
+## 2026-10-17 — Codex (Sol): contrato permanente entre agentes por pedido de Efraín
+
+Efraín pidió formalizar roles y comunicación por .md para que ambos agentes lo lean al iniciar sesión y le adviertan si se omite un paso. Fuente única: [CONTRATO-COORDINACION-AGENTES.md](../TecnoCircuito/docs/CONTRATO-COORDINACION-AGENTES.md), versión 1. Se enlaza desde CLAUDE.md y el nuevo AGENTS.md de TecnoBloques, y desde los archivos de inicio de TecnoCircuito.
+
+Canales por remitente: [Codex para Claude](../TecnoCircuito/coordinacion/CODEX-A-CLAUDE.md) y [Claude para Codex](../TecnoCircuito/coordinacion/CLAUDE-A-CODEX.md). Codex publicó COD-20261017-001 con el acuerdo y el traspaso de auditoría. **No hay acuse de Claude ni mensaje escrito en su nombre.** Cada agente añade entradas solo en su canal; publicar no ejecuta al receptor. Se conservan Claude como programador de sus tareas asignadas y Codex como auditor/supervisor e implementador Nano, salvo reasignación expresa de Efraín.
+
+El acuerdo obliga a señalar pasos omitidos con evidencia y solución, sin pedir autorizaciones repetidas ni bloquear trabajo independiente. Distingue corregido/verificado y software/hardware; respeta decisiones y excepciones de Efraín. Solo documentación: sin pruebas funcionales nuevas, correcciones, commit, push ni publicación.
+
+## 2026-10-17 — Codex (Sol): piloto completo de trabajo en la suite Tecno
+
+Efraín autorizó aplicar el piloto a **todo TecnoBloques y TecnoCircuito**, con investigación paralela y registro a cargo de Codex; TecnoRuta queda previsto. Se preparó el repositorio local [TecnoSuite](../TecnoSuite/README.md), sin commit ni remoto, como coordinación neutral de los productos. Su [acuerdo v2](../TecnoSuite/PROCESO.md) sustituye operativamente v1, cuyo texto íntegro se conserva en docs de TecnoCircuito. El contrato de software no cambia.
+
+Se actualizaron AGENTS.md, CLAUDE.md y README.md de ambos productos; metodología/contrato/canales locales dirigen al proceso común. Fichas únicas y tablero generado abarcan los cinco hallazgos, fases del registro, laboratorio Nano/T3, UX, distribución, evolución e incorporación futura. Codex mantiene la investigación y sesiones observadas; no se inventan tiempos ni acuses. Canales vigentes desde COD-20261017-002; no consta lectura de Claude.
+
+Se conciliaron descripciones vencidas de etiqueta/instalador y contactos de expansión con los registros existentes. No se modifica código funcional, esquemas, medidas, versiones ni pendientes de hardware; ninguna corrección AUD se cierra por esta adopción. Las bitácoras e informes conservan su historia. Ver [entrega de instalación y comprobaciones](../TecnoSuite/registro/INSTALACION-2026-10-17.md) para evidencia documental, referencias exactas y límites. No se repite la suite funcional por documentación. Sin commit, push, etiqueta ni publicación; las instrucciones sin commit requieren copia controlada antes de usarse en otro worktree.
+
+
+## 2026-10-18 — Claude: roles permanentes de implementación
+
+Por decisión permanente de Efraín, **Claude es el único implementador y programador** de TecnoBloques, TecnoCircuito y sus dependencias; Codex audita, supervisa y verifica sin implementar código de producto. La asignación de Nano a Codex en TecnoCircuito fue una prueba. Se actualizaron AGENTS.md y CLAUDE.md; detalle en la bitácora de TecnoCircuito y en TecnoSuite. Sin cambios de código; sin commit ni push.

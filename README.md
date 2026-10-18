@@ -73,15 +73,19 @@ npm run instalador         # arma el instalador de Windows
 La documentación técnica completa está en [`CLAUDE.md`](CLAUDE.md): arquitectura, cómo agregar
 bloques o placas, decisiones y hoja de ruta. El historial del proyecto está en [`BITACORA.md`](BITACORA.md).
 
+## Colaboración en la suite
+
+El piloto de trabajo de TecnoBloques y TecnoCircuito se coordina en [TecnoSuite](../TecnoSuite/README.md): proceso común, fichas, tablero generado, canales y registro de investigación a cargo de Codex. Empieza por [AGENTS.md](AGENTS.md) antes de editar. TecnoRuta se incorporará posteriormente; la documentación técnica y la historia permanecen en cada producto.
+
 ## Hoja de ruta
 
 - [x] **Fase 1:** editor, generador C++, funciones, Mis bloques, C++ libre, monitor serial
-- [x] **Fase 2:** app de escritorio (Electron + arduino-cli) que compila y sube con un botón, con instalador y actualización automática (falta probar con placas reales)
+- [x] **Fase 2:** app de escritorio (Electron + arduino-cli) que compila y sube con un botón, con instalador y actualización automática; carga y monitor probados con Uno, Nano y Mega, con recorridos por módulos todavía pendientes
 - [x] **Niveles 1 · 2 · 3** de bloques y nombres para los pines (`#define LedRojo 13`)
 - [x] **Librerías nuevas:** MPU6050, PCA9685 (Adafruit_PWMServoDriver) e I2C
 - [x] **Listas y matrices** (nivel 3)
 - [x] **Monitor serial para analizar:** gráfico y exportación a CSV
-- [ ] **Simulador TecnoCircuito** en el instalador del aula (con su primera versión, `v0.1.0`, después de validarlo con la placa real)
+- [x] **Simulador TecnoCircuito `v0.1.0`** incorporado al instalador 0.3.0 armado/probado el 16 oct, según la bitácora; Release todavía sin publicar en ese registro. Los pendientes físicos y la comprobación del próximo candidato se mantienen por separado.
 - [ ] **Fase 3:** Arduino Uno R4
 - [ ] **Fase 4:** pantallas OLED
 - [ ] **Fase 5:** diseñador de bloques para instructores

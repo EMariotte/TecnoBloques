@@ -1,7 +1,11 @@
 # CLAUDE.md — TecnoBloques
 
-> Memoria técnica del proyecto para Claude Code / Claude en Cowork.
-> Actualizado: 16 de octubre de 2026 · **TecnoCircuito `v0.1.0` etiquetado y TecnoBloques 0.3.0 con el simulador en el instalador (armado y probado, sin publicar el Release).** · **Proyecto hermano TecnoCircuito (simulador):** funciona dentro de la app en desarrollo (`npm run app:simulador` / `node build.js --simulador-local`) con las tareas T1, T2 y T3; su primera versión `v0.1.0` está preparada y se etiqueta después de validar la T3 en el laboratorio (ver «Proyecto hermano»). Estado de TecnoBloques: **v0.2.5 publicada (7 oct)**, la del aula. Desde entonces, en el código (sin publicar): ejemplos de validación, panel de mediciones, paneles plegables, monitor serial con gráfico y CSV (Fase 2d), y el instalador que exige una etiqueta fija del simulador.
+**Inicio de cada sesión — Claude y Codex:** leer AGENTS.md, [TecnoSuite/PROCESO.md v2](../TecnoSuite/PROCESO.md), [tablero/ficha activa](../TecnoSuite/TABLERO.md), este estado técnico y los canales nuevos de la suite. Comprobar Git, rol, tarea autorizada y archivos reservados. Ambos avisan si falta un paso necesario y completan lo autorizado. Codex mantiene el registro e investigación del piloto.
+
+**Traspaso a Claude Code:** lee [COD-20261017-002 y el anterior 001](../TecnoSuite/canales/CODEX-A-CLAUDE.md), el [traspaso técnico](../TecnoCircuito/docs/TRASPASO-CLAUDE-AUDITORIA-2026-10-17.md) y su informe. Publicado por archivos compartidos; no consta acuse ni envío a la conversación de VS Code. El receptor escribe su propio acuse y declara tareas/archivos. Asignaciones vigentes y estado operativo solo en las fichas de TecnoSuite; desde el 18 oct, Claude es el único implementador (también Nano/AUD-05) y Codex audita y verifica: roles permanentes de Efraín. No hubo correcciones funcionales al instalar el piloto.
+
+> Memoria técnica para Claude Code / Claude en Cowork. Actualizada: 18 de octubre de 2026.
+> Según la bitácora del 16 oct, TecnoCircuito `v0.1.0` está etiquetado y el instalador TecnoBloques 0.3.0 está armado/probado con esa dependencia, sin Release publicado. No se ejecutó nuevamente el instalador ni se consultó publicación remota al adoptar el piloto. La auditoría del 17 oct verificó integración **local**, documentó cinco defectos entre los proyectos y conservó los pendientes físicos. La versión del aula publicada documentada es v0.2.5 (7 oct). Consulta el estado operativo actual en [TecnoSuite](../TecnoSuite/TABLERO.md); la evidencia fechada no se convierte en prueba nueva.
 
 ---
 
@@ -16,7 +20,7 @@ Se entrega de **dos formas desde el mismo código** (`src/` → `dist/TecnoBloqu
 - **App de escritorio (aula):** Electron + arduino-cli embebido. Compila y sube sin internet. Instalador para Windows con actualización automática desde GitHub Releases.
 - **Página web (casa):** el mismo HTML sin compilador. Sirve para programar, guardar el proyecto y descargar el `.ino`.
 
-- **El simulador es un proyecto aparte:** TecnoCircuito (`..\TecnoCircuito`). TecnoBloques lo embebe y le entrega el `.hex`; hoy solo en desarrollo (`npm run app:simulador`), el instalador del aula sale sin él. Ver «Proyecto hermano».
+- **El simulador es un proyecto aparte:** TecnoCircuito (`..\TecnoCircuito`). TecnoBloques lo embebe y le entrega el `.hex`. Desarrollo e integración usan la copia local; el instalador 0.3.0 preparado toma `#v0.1.0` como dependencia fija. Ver «Proyecto hermano» para evidencia y límites de distribución.
 - Lo construye Efraín (instructor) junto con Claude. Los **usuarios finales son aprendices**, así que los textos de la interfaz son en español, cortos y sin jerga.
 - Autor: ver [`ABOUTME.md`](ABOUTME.md).
 
@@ -178,7 +182,7 @@ npm run test:placas -- uno:COM12:eco:monitor nano:COM5:otto   # con placas reale
 
 # Simulador TecnoCircuito (necesita ..\TecnoCircuito\prototipo\dist\tecnocircuito.js: npm run construir allá)
 npm run app:simulador            # la app con la copia local del simulador (pestaña «Circuito» y botón «Simular»)
-npm run test:simulador           # prueba la integración: compila programas de bloques y los simula (19 comprobaciones)
+npm run test:simulador           # prueba la integración: compila programas de bloques y los simula (comprobaciones de integración)
 npm run instalador               # arma %LOCALAPPDATA%\TecnoBloques-build\TecnoBloques-Setup-<versión>.exe
 npm run publicar                 # arma y sube el Release a GitHub (necesita GH_TOKEN; ver "Publicar una versión")
 ```
@@ -541,7 +545,7 @@ Comprobado: `test:simulador` **51 OK, sin errores JS**, compilando con los FQBN 
   - **monitor pequeño** al pie de la pestaña (`#salidaSim`, `#formSim`), para ver el LED y escribirle al programa a la vez. El monitor serial de siempre también muestra la simulación (dice «Simulación»); conectar una placa real detiene la simulación;
   - **línea de estado** «Simulando · 3,2 s · velocidad 100 %», que avisa si el programa cambió («pulsa Simular de nuevo»).
 - ✅ **El circuito se guarda en el proyecto:** `lienzo.alCambiar` lo pone en `extrasProyecto.circuito` y autoguarda. TecnoBloques no lo interpreta.
-- ✅ **Scripts:** `app:simulador` y `build:simulador` (`node build.js --simulador-local`) y `test:simulador`. `build.js` embebe la copia local solo con esa bandera (o una versión etiquetada en `node_modules/tecnocircuito`); el build normal y el instalador salen sin simulador.
+- ✅ **Scripts:** `app:simulador` y `build:simulador` (`node build.js --simulador-local`) y `test:simulador`. `build.js` embebe la copia local solo con esa bandera (o una versión etiquetada en `node_modules/tecnocircuito`); el build normal toma la dependencia etiquetada instalada y el instalador exige su versión fija (incorporada el 16 oct).
 - ✅ **Seguro del instalador:** `empaquetar.js` se niega a empaquetar si el HTML trae `TB_SIMULADOR_ORIGEN = "local"`.
 - ✅ **Registro de eventos** (16 oct, Claude; contrato, sección 6.1 con las decisiones del 16 oct). Identifica al **equipo** con un código sin datos de los aprendices.
   - **Apagado por defecto.** El instructor lo enciende en cada PC con **Ctrl+Alt+Mayús+R** y un **PIN** de 4 a 8 dígitos que crea la primera vez (`registro-config.json` en userData guarda solo su resumen scrypt; 5 intentos fallidos = 1 minuto de espera). En el mismo panel: encender/apagar, «Exportar registros» (copia los `.jsonl` a una carpeta nueva en la USB) y cambiar el PIN. **F12** (herramientas de desarrollo) en la app instalada solo funciona después del PIN del instructor en esa sesión; en desarrollo queda libre (`TB_HERRAMIENTAS=instructor` lo restringe para probar).
@@ -549,12 +553,13 @@ Comprobado: `test:simulador` **51 OK, sin errores JS**, compilando con los FQBN 
   - `src/registro.js` (puro, probado con Node): `quitarComentarios` (respeta comillas, escapes y R"(…)"; conserva el número de líneas), `codigoParaArchivo`, `resumenBloques` y `crearRegistroEventos` (el sobre). `escritorio/registro-disco.js`: PIN, encendido, escritura y exportación; el proceso principal revisa que esté encendido y limpia el nombre del archivo.
   - Eventos del editor: `sesion_iniciada`, `ejemplo_cargado`, `proyecto_abierto` (**sin el nombre**), `bloques_cambiados` (3 s después del último cambio), `codigo_compilado` (C++ sin comentarios, tipo de error y `bytes`, al simular y al subir), `programa_subido` y `sesion_terminada` (al cerrar). Más todos los del lienzo y el simulador.
   - Pruebas: `npm run test:registro` (Node, contra el esquema de TecnoCircuito) y `npm run test:registro-app` (Electron de punta a punta; necesita arduino-cli).
-  - ⬜ **Próximas sesiones** (orden en el CLAUDE.md de TecnoCircuito, «Próxima sesión»): fase 4 (un script que cuente la historia de un `.jsonl` y la prueba de Efraín en la app), fase 5 (`/code-review`, Codex y versiones: TecnoBloques 0.4.0 con TecnoCircuito `v0.2.0`) y, en gestación, la **subida automática a una base central de la suite TecnoRuta** (Supabase) en vez de la USB: un subidor en el proceso principal con un token por PC que solo inserta, `subidos.json` y un `id` por línea. Borrador: `../TecnoCircuito/docs/PLAN-REGISTRO-CENTRAL-TECNORUTA.md`.
+  - ⬜ **Plan técnico del registro** (prioridad y responsables vigentes en las fichas de TecnoSuite; alcance en CLAUDE.md de TecnoCircuito): fase 4 (un script que cuente la historia de un `.jsonl` y la prueba de Efraín en la app), fase 5 (`/code-review`, Codex y versiones: TecnoBloques 0.4.0 con TecnoCircuito `v0.2.0`) y, en gestación, la **subida automática a una base central de la suite TecnoRuta** (Supabase) en vez de la USB: un subidor en el proceso principal con un token por PC que solo inserta, `subidos.json` y un `id` por línea. Borrador: `../TecnoCircuito/docs/PLAN-REGISTRO-CENTRAL-TECNORUTA.md`.
 - ✅ **Contrato:** `sim.destruir()` y `sim.medidas()` (con respaldo a `_destruir()`/`_medidas()` para paquetes anteriores).
 - ✅ **Agrandar el circuito:** divisor arrastrable entre bloques y panel (`iniciarDivisor`, preferencia `anchoPanel`), vista «Circuito» (`cambiarVista('circuito')`, solo con simulador) y botón «Ampliar»/«Reducir». En las vistas de solo panel, pestaña y vista van juntas (`ponerPestanas`).
 - ✅ **«Guardar imagen»:** vista previa y descarga del SVG del circuito (`lienzo.exportarSVG()`, contrato 1). La imagen trae abajo a la derecha la marca «Hecho con TecnoCircuito · SENA – TecnoAcademia Tolima» (la pone TecnoCircuito).
 - ✅ **Monitor de la simulación y mediciones plegables** (10 oct): botón arriba a la derecha de cada uno («Ocultar» / «Mostrar»), con el estado guardado en las preferencias y un punto que avisa texto nuevo con el monitor recogido.
-- ◐ **Publicación de TecnoCircuito v0.1.0 preparada, sin etiquetar** (11 oct): el día de la etiqueta, en `package.json` va `"tecnocircuito": "github:EMariotte/TecnoCircuito#v0.1.0"`, se corre `npm install`, `npm test`, `npm run test:simulador` y `npm run test:app`, y se commitea `chore: TecnoCircuito v0.1.0`. `node build.js` (sin `--simulador-local`) ya toma el simulador de `node_modules/tecnocircuito`, y `escritorio/empaquetar.js` exige que venga de una etiqueta fija con esa misma versión instalada (probado con un paquete local).
+- ✅ **Preparación de publicación del 11 oct concluida el 16 oct:** TecnoCircuito `v0.1.0` etiquetado, dependencia fija incorporada y TB 0.3.0 armado/probado sin publicar el Release; detalle en «Versión etiquetada» más abajo. No ejecutar preparación/publicación como comprobación de solo lectura.
+
 - ✅ **Revisión de Codex en TecnoCircuito** (11 oct, contrato 1): falla nueva `corriente_chip` (entre todos, los pines pasan de 200 mA por las patas VCC o GND del chip; `componente` `placa.VCC` o `placa.GND`), dentro de `limitePin`. TecnoBloques solo muestra su `mensaje`: no hay que cambiar nada. El `.hex` se revisa línea por línea, y los conectores de servo de la shield cuentan como pines de la placa. Llega con la etiqueta `v0.1.0`.
 - ✅ **Cable de balance y probador de celdas** (10 oct, contrato 1): `bateria_lipo` gana `BAL0`, `BAL1`, `BAL2` y la carga `desbalanceada`; pieza nueva `probador_lipo` (`NEG`, `C1`–`C8`, `umbral`); fallas `bateria_desbalanceada` y `probador_alarma`. Ejemplo «Validar: probador de celdas LiPo».
 - ✅ **Shield L293D, motor TT y batería LiPo** (10 oct, contrato 1): piezas `shield_l293d`, `motor_tt` y `bateria_lipo` en el lienzo, y `caidaL293D` funcionando. Ejemplo «Validar: carro con la shield L293D». Llegan a la app con la etiqueta `v0.1.0`.
@@ -573,7 +578,7 @@ Comprobado: `test:simulador` **51 OK, sin errores JS**, compilando con los FQBN 
    - TecnoCircuito guarda en `prototipo/pruebas/fixtures/` proyectos `.tbq.json` y `.hex` generados por TecnoBloques (✅ `npm run fixtures` allá, 8 oct). Se commitean, así que sus pruebas corren sin el proyecto hermano. Allá se revisa cada proyecto, su circuito contra `contrato/circuito.schema.json`, y cada `.hex` corre en el chip simulado.
    - ✅ **Caso con circuito (8 oct):** `t1_protoboard` (`test/prueba.py`, circuito en `test/circuitos/t1_protoboard.json`), compilado por `npm run compilar`. TecnoCircuito lo corre con su circuito.
    - ✅ `test:simulador` revisa el circuito que guarda la app con `../TecnoCircuito/prototipo/pruebas/contrato.js` (esquema y referencias). Si falta la carpeta hermana, se salta.
-   - TecnoBloques tendrá `npm run test:simulador`: compila los programas de prueba, los corre en la versión fija del simulador con Node y comprueba que guardar y abrir conserva el circuito.
+   - `npm run test:simulador` construye con `--simulador-local` y recorre Electron con compilación real, guardado/apertura y contrato. `test:registro-app` también usa la copia local. No acreditan el instalador ni la dependencia etiquetada actuales: ese recorrido se comprueba por separado sobre el candidato exacto.
 5. **Trabajo en los dos a la vez.** `npm run app:simulador` embebe la copia local (`..\TecnoCircuito\prototipo\dist\tecnocircuito.js`); el build normal no la lleva. **`empaquetar.js` se niega a armar el instalador si el HTML trae la copia local.** Así un simulador en desarrollo nunca llega al aula.
 6. **Versión congelada.** Mientras el simulador se use en un estudio con aprendices, la etiqueta queda fija. Se pueden publicar versiones de TecnoBloques, pero ninguna cambia esa etiqueta.
 7. **Documentación cruzada.** Todo cambio del contrato se anota en las dos bitácoras con el mismo título («Contrato N: …») y se actualiza esta sección.
@@ -714,7 +719,9 @@ LiquidCrystal I2C 1.1.2, MPU6050_light 1.2.1, Adafruit PWM Servo Driver 3.0.3 + 
 
 Uso de memoria: carro en Uno usa 36 % de flash y 29 % de RAM. El programa con todos los bloques usa 68 % de flash y 53 % de RAM en el Uno. **Ojo con la OLED en Uno/Nano:** el buffer de SSD1306 ocupa 1 KB de los 2 KB de RAM.
 
-### Próxima sesión: prueba con hardware en el ambiente (Efraín, con todas las placas)
+### Plan histórico de pruebas con hardware y pendientes por módulo
+
+El bloque siguiente conserva pruebas y referencias de versiones anteriores (6–7 oct); no es la próxima sesión vigente ni una instrucción para reconstruir/publicar aquel instalador. Para trabajo y prioridad actuales, consulta las fichas de TecnoSuite y la bitácora más reciente.
 
 **Publicado:** v0.2.0 a v0.2.3 como versiones de prueba (6 oct) y **v0.2.4 como primera versión para el aula (7 oct)**, después de pasar el bloque A.
 El instalador está en `%LOCALAPPDATA%\TecnoBloques-build\TecnoBloques-Setup-0.2.4.exe` (176 MB) y en el Release v0.2.4 de GitHub. Trae el driver CH340 y las 10 librerías. Si cambia `src/`, se rearma con `npm run instalador`.
