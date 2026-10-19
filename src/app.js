@@ -1464,6 +1464,7 @@ const simulador = {
     typeof TecnoCircuito.crearLienzo === 'function' && typeof TecnoCircuito.crearSimulador === 'function'),
   lienzo: null,
   sim: null,
+  cerrando: null, // el simulador que ya se soltó y cuyo cierre sigue esperando al Worker (AUD-03-V2)
   codigo: '', // el C++ que se está simulando, para avisar si el programa cambió
   compilando: false,
   eventos: [], // los últimos eventos del lienzo y del simulador, en memoria (el registro en disco va aparte)
@@ -1903,17 +1904,26 @@ function enviarSim(texto) {
  * Detiene y suelta el simulador. Contrato 1: destruir() devuelve una promesa que se cumple cuando sale
  * simulacion_detenida (el cierre espera al Worker para traer todas las fallas, AUD-03); aquí se devuelve esa promesa
  * (los paquetes anteriores no devolvían nada, solo tenían _destruir()). { sinEsperar: true }: el cierre sale ya.
+ * Si Detener ya soltó la simulación y su cierre sigue esperando, quien llama después (cambiar de equipo, apagar el
+ * registro, volver a simular, cerrar la ventana) espera ese mismo cierre: destruir() otra vez devuelve la misma promesa
+ * y, con sinEsperar, lo termina ya (AUD-03-V2).
  */
 function detenerSimulacion(opciones) {
-  const sim = simulador.sim;
+  const sim = simulador.sim || simulador.cerrando;
   if (!sim) return Promise.resolve();
-  simulador.sim = null;
+  const soltar = sim === simulador.sim;
+  if (soltar) {
+    simulador.sim = null;
+    simulador.cerrando = sim;
+  }
   let fin;
   try { fin = sim.destruir ? sim.destruir(opciones) : sim._destruir ? sim._destruir(opciones) : sim.detener(); } catch (e) { /* ya estaba detenida */ }
-  uiSimulador();
-  pintarMediciones();
-  uiSerial();
-  return Promise.resolve(fin).catch(() => {});
+  if (soltar) {
+    uiSimulador();
+    pintarMediciones();
+    uiSerial();
+  }
+  return Promise.resolve(fin).catch(() => {}).then(() => { if (simulador.cerrando === sim) simulador.cerrando = null; });
 }
 /** El circuito como imagen SVG (lienzo.exportarSVG, contrato 1): para la documentación del proyecto o una evidencia en TecnoRuta. */
 function guardarImagenCircuito() {

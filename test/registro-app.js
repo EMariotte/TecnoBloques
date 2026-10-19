@@ -369,13 +369,99 @@ const LED = {
     !eventosSim('I6').length && !tiposDe('I6').includes('codigo_compilado'),
   `AUD-04-V1 con cambio: la compilación queda en H5 (la hizo H5), sin corrida nueva; I6 no tiene ninguna (H5: ${tiposDe('H5').join(', ')})`);
 
-  // Apagar el registro: I6 simula y el instructor lo apaga (más abajo, con el panel del instructor)
-  revisar(await simularLED(), 'AUD-04: I6 simula');
+  // 6d. AUD-03-V2: Detener ya soltó la simulación y su cierre espera al Worker, con fotos en camino. Lo que viene
+  // después (cambiar de equipo, volver a simular, apagar el registro) espera ese mismo cierre: la corrida queda entera,
+  // con sus fallas, en el equipo que la empezó. El Worker, el núcleo y el registro son los reales; solo se retiene la
+  // entrega de sus fotos y de su «detenido», en orden, hasta soltarlas (la idea es de la verificación de Codex, 19 oct).
+  const instalarRetencion = () => win.evaluate(() => {
+    const Nativo = window.Worker;
+    window.__ret = { siguiente: false, trabajadores: [], cola: [], copias: [] };
+    window.Worker = class extends Nativo {
+      constructor(...a) { super(...a); this.retener = __ret.siguiente; __ret.siguiente = false; __ret.trabajadores.push(this); }
+      set onmessage(fn) {
+        super.onmessage = (e) => {
+          const t = e.data && e.data.tipo;
+          if (this.retener && (t === 'foto' || t === 'detenido')) { __ret.copias.push(e.data); __ret.cola.push(() => fn(e)); } else fn(e);
+        };
+      }
+    };
+    __ret.soltar = () => { __ret.trabajadores.forEach((w) => { w.retener = false; }); __ret.cola.splice(0).forEach((entregar) => entregar()); };
+    // Detener (lo mismo que el botón) y esperar a que el Worker confirme; su «detenido» queda retenido
+    __ret.detener = async () => {
+      window.__detener = detenerSimulacion();
+      while (!__ret.copias.some((m) => m.tipo === 'detenido')) await new Promise((r) => setTimeout(r, 5));
+    };
+  });
+  await instalarRetencion();
+  const QUEMAR = 'void setup() { pinMode(13, OUTPUT); digitalWrite(13, HIGH); }\nvoid loop() {}\n'; // el LED sin resistencia se quema
+  /** Simula el LED en D13 con el Worker retenido, hasta que el Worker manda la foto con las dos fallas. */
+  async function simularRetenido() {
+    await win.evaluate(({ circuito, prog }) => {
+      __ret.siguiente = true; __ret.copias = [];
+      const p = proyectoActual(); delete p.texto; p.circuito = circuito; cargarProyecto(p, true);
+      entrarModoTexto(prog, '');
+      window.__simulando = simular();
+    }, { circuito: LED, prog: QUEMAR });
+    return esperar(win, () => __ret.copias.some((m) => m.tipo === 'foto' && (m.fallas || []).length >= 2));
+  }
+  const ultimaCorrida = (equipo) => Math.max(...deEquipo(equipo).filter((l) => l.tipo === 'simulacion_iniciada').map((l) => l.corrida));
+  /** Las fallas de una corrida en el registro del equipo, y las de su cierre: las dos, una vez cada una. */
+  function fallasEnteras(equipo, corrida) {
+    const ls = deEquipo(equipo);
+    const sueltas = ls.filter((l) => l.tipo === 'falla' && l.corrida === corrida).map((l) => l.datos.tipo).sort().join();
+    const cierre = ls.find((l) => l.tipo === 'simulacion_detenida' && l.corrida === corrida);
+    return sueltas === 'corriente_pin,led_quemado' && !!cierre && cierre.datos.fallas.map((f) => f.tipo).sort().join() === sueltas;
+  }
+  const nadaDelSimulador = (equipo) => !deEquipo(equipo).some((l) => l.origen === 'simulador');
+
+  // Detener y cambiar de equipo: I6 pulsa Detener y, con su cierre pendiente, confirma J7
+  revisar(await simularRetenido(), 'AUD-03-V2: I6 simula el LED sin resistencia (Worker retenido con la foto de las dos fallas)');
+  const v2equipo = await win.evaluate(async () => {
+    const t0 = performance.now();
+    await __ret.detener();
+    confirmarEquipo('J7');
+    $('modalAcciones').querySelector('.primario').click(); // «Sí, somos ese equipo», con el cierre de I6 pendiente
+    await new Promise((r) => setTimeout(r, 30));
+    const antes = { equipo: registroEventos.equipo(), cambiando: cambiandoEquipo, ms: Math.round(performance.now() - t0) };
+    __ret.soltar();
+    await __detener;
+    return antes;
+  });
+  await esperar(win, () => registroEventos.equipo() === 'J7', 5000);
+  const corridaI6 = ultimaCorrida('I6');
+  revisar(v2equipo.equipo === 'I6' && v2equipo.cambiando && v2equipo.ms < 400,
+    `AUD-03-V2 equipo: con el cierre de I6 pendiente, la sesión de I6 sigue abierta (${v2equipo.ms} ms después de Detener, antes del tope de 500)`);
+  revisar(fallasEnteras('I6', corridaI6) && corridasCompletas('I6') && finDe('I6', 2) === 'simulacion_detenida,sesion_terminada' && nadaDelSimulador('J7'),
+    `AUD-03-V2 equipo: la corrida ${corridaI6} queda en I6 con sus dos fallas y su cierre antes de sesion_terminada; J7 no hereda nada (I6 termina: ${finDe('I6', 3)})`);
+
+  // Detener y volver a simular: J7 pulsa Detener y, con su cierre pendiente, pulsa Simular
+  revisar(await simularRetenido(), 'AUD-03-V2: J7 simula (Worker retenido)');
+  const v2simular = await win.evaluate(async () => {
+    await __ret.detener();
+    let cumplida = false;
+    detenerSimulacion().then(() => { cumplida = true; }); // la espera que comparte quien llega después
+    window.__simulando = simular();
+    await new Promise((r) => setTimeout(r, 30));
+    const antes = { cumplida, cerrando: !!simulador.cerrando };
+    __ret.soltar();
+    await __detener;
+    await __simulando;
+    return antes;
+  });
+  const corridaJ7 = ultimaCorrida('J7') - 1;
+  const ordenJ7 = (tipo, corrida) => deEquipo('J7').findIndex((l) => l.tipo === tipo && l.corrida === corrida);
+  revisar(!v2simular.cumplida && v2simular.cerrando,
+    'AUD-03-V2 simular: con el cierre pendiente, una segunda llamada a detenerSimulacion() espera ese mismo cierre (no responde al instante)');
+  revisar(await esperar(win, () => simulador.sim && simulador.sim.medidas().estado === 'corriendo', 40000) && fallasEnteras('J7', corridaJ7) &&
+    ordenJ7('simulacion_detenida', corridaJ7) >= 0 && ordenJ7('simulacion_detenida', corridaJ7) < ordenJ7('simulacion_iniciada', corridaJ7 + 1),
+  `AUD-03-V2 simular: la corrida ${corridaJ7} cierra con sus dos fallas antes de que empiece la ${corridaJ7 + 1}`);
+
+  // Apagar el registro, camino directo (AUD-04): la corrida de J7 sigue corriendo y el instructor lo apaga
   if (fs.existsSync(REVISOR)) {
     const { revisarEvento } = require(REVISOR);
-    const lineas = ['C3', 'D1', 'E2', 'F3', 'G4', 'H5'].flatMap(deEquipo);
+    const lineas = ['C3', 'D1', 'E2', 'F3', 'G4', 'H5', 'I6'].flatMap(deEquipo);
     const problemas = lineas.flatMap((l, i) => { const { archivo, ...linea } = l; return revisarEvento(linea).map((p) => `${i + 1} (${l.tipo}): ${p}`); });
-    revisar(!problemas.length, `AUD-04: las ${lineas.length} líneas de C3 a H5 cumplen contrato/evento.schema.json` + (problemas.length ? ':\n  ' + problemas.slice(0, 10).join('\n  ') : ''));
+    revisar(!problemas.length, `AUD-04: las ${lineas.length} líneas de C3 a I6 cumplen contrato/evento.schema.json` + (problemas.length ? ':\n  ' + problemas.slice(0, 10).join('\n  ') : ''));
   }
 
   await win.keyboard.press('Control+Alt+Shift+KeyR');
@@ -390,8 +476,65 @@ const LED = {
   await boton(win, 'Apagar el registro');
   await win.waitForTimeout(300);
   revisar(await win.evaluate(() => $('avisoRegistro').hidden), 'apagado: el aviso desaparece');
-  revisar(corridasCompletas('I6') && finDe('I6', 2) === 'simulacion_detenida,sesion_terminada',
-    `AUD-04 apagar: la corrida de I6 se cierra antes de su sesion_terminada (${tiposDe('I6').slice(-2).join(', ')})`);
+  revisar(corridasCompletas('J7') && finDe('J7', 2) === 'simulacion_detenida,sesion_terminada',
+    `AUD-04 apagar: la corrida de J7 se cierra antes de su sesion_terminada (${tiposDe('J7').slice(-2).join(', ')})`);
+
+  // AUD-03-V2, cerrar la ventana y apagar: el instructor vuelve a encender; K8 pulsa Detener y se cierra la app; al
+  // abrir, L9 pulsa Detener y, con su cierre pendiente, el instructor apaga el registro
+  await win.keyboard.press('Control+Alt+Shift+KeyR');
+  await win.waitForTimeout(300);
+  await win.locator('#pinInstructor').fill('2468');
+  await boton(win, 'Entrar');
+  await win.waitForTimeout(300);
+  await boton(win, 'Encender el registro');
+  await win.waitForTimeout(400);
+  await win.locator('#codigoEquipo').fill('K8');
+  await win.locator('#codigoEquipo').press('Enter');
+  await win.waitForTimeout(200);
+  await boton(win, 'Sí, somos ese equipo');
+  await win.waitForTimeout(300);
+  revisar(await simularRetenido(), 'AUD-03-V2: K8 simula (Worker retenido)');
+  // Detener y cerrar la ventana: no se puede esperar al Worker (sinEsperar), pero el cierre que ya estaba en camino sale
+  // ya, antes de sesion_terminada (sus fotos retenidas no llegan: es el límite declarado de cerrar la ventana)
+  await win.evaluate(() => __ret.detener());
+  await app.close();
+  await new Promise((r) => setTimeout(r, 500));
+  revisar(corridasCompletas('K8') && finDe('K8', 2) === 'simulacion_detenida,sesion_terminada',
+    `AUD-03-V2 cerrar: con el cierre de K8 pendiente, cerrar la ventana lo saca antes de sesion_terminada (K8 termina: ${finDe('K8', 3)})`);
+  ({ app, win } = await abrir());
+  revisar(await titulo(win) === 'Código del equipo', 'al abrir otra vez, pide el código');
+  await win.locator('#codigoEquipo').fill('L9');
+  await win.locator('#codigoEquipo').press('Enter');
+  await win.waitForTimeout(200);
+  await boton(win, 'Sí, somos ese equipo');
+  await win.waitForTimeout(300);
+  await instalarRetencion();
+  revisar(await simularRetenido(), 'AUD-03-V2: L9 simula (Worker retenido)');
+  await win.keyboard.press('Control+Alt+Shift+KeyR');
+  await win.waitForTimeout(300);
+  await win.locator('#pinInstructor').fill('2468');
+  await boton(win, 'Entrar');
+  await win.waitForTimeout(300);
+  const v2apagar = await win.evaluate(async () => {
+    await __ret.detener();
+    [...$('modalAcciones').querySelectorAll('button')].find((b) => b.textContent === 'Apagar el registro').click();
+    await new Promise((r) => setTimeout(r, 30));
+    const antes = { equipo: registroEventos.equipo() };
+    __ret.soltar();
+    await __detener;
+    return antes;
+  });
+  revisar(await esperar(win, () => $('avisoRegistro').hidden, 5000) && v2apagar.equipo === 'L9',
+    'AUD-03-V2 apagar: con el cierre pendiente, la sesión de L9 sigue abierta hasta que sale; después se apaga');
+  const corridaL9 = ultimaCorrida('L9');
+  revisar(fallasEnteras('L9', corridaL9) && corridasCompletas('L9') && finDe('L9', 2) === 'simulacion_detenida,sesion_terminada',
+    `AUD-03-V2 apagar: la corrida ${corridaL9} queda en L9 con sus dos fallas y su cierre antes de sesion_terminada (L9 termina: ${finDe('L9', 3)})`);
+  if (fs.existsSync(REVISOR)) {
+    const { revisarEvento } = require(REVISOR);
+    const lineas = ['I6', 'J7', 'K8', 'L9'].flatMap(deEquipo);
+    const problemas = lineas.flatMap((l, i) => { const { archivo, ...linea } = l; return revisarEvento(linea).map((p) => `${i + 1} (${l.tipo}): ${p}`); });
+    revisar(!problemas.length, `AUD-03-V2: las ${lineas.length} líneas de I6 a L9 cumplen contrato/evento.schema.json` + (problemas.length ? ':\n  ' + problemas.slice(0, 10).join('\n  ') : ''));
+  }
   await app.close();
   await new Promise((r) => setTimeout(r, 300));
   ({ app, win } = await abrir());
