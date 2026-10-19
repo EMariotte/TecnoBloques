@@ -229,6 +229,155 @@ const LED = {
     revisar(!problemas.length, `las ${c3.length} líneas de C3 cumplen contrato/evento.schema.json` + (problemas.length ? ':\n  ' + problemas.slice(0, 10).join('\n  ') : ''));
   }
 
+  // 6c. AUD-04: lo que hace un equipo queda en su sesión. La simulación se detiene antes de cerrar la sesión, el
+  // resumen de bloques que espera se escribe en ella y una compilación en curso se descarta (decisión de Efraín, 18 oct).
+  const deEquipo = (equipo) => leerRegistro().filter((l) => l.equipo === equipo);
+  const tiposDe = (equipo) => deEquipo(equipo).map((l) => l.tipo);
+  // El final de la sesión sin el resumen de bloques: si esperaba, sale (bien) entre el cierre de la corrida y sesion_terminada.
+  const finDe = (equipo, n) => tiposDe(equipo).filter((t) => t !== 'bloques_cambiados').slice(-n).join();
+  const eventosSim = (equipo) => deEquipo(equipo).filter((l) => l.origen === 'simulador' && l.tipo.startsWith('simulacion_'));
+  /** Cada corrida del equipo: inicio con circuito, cierre después, y los dos antes de sesion_terminada. */
+  function corridasCompletas(equipo) {
+    const ls = deEquipo(equipo);
+    const fin = ls.findIndex((l) => l.tipo === 'sesion_terminada');
+    const corridas = [...new Set(ls.filter((l) => l.tipo === 'simulacion_iniciada').map((l) => l.corrida))];
+    return corridas.length > 0 && ls.every((l) => l.sesion === ls[0].sesion) && corridas.every((n) => {
+      const i = ls.findIndex((l) => l.tipo === 'simulacion_iniciada' && l.corrida === n);
+      const d = ls.findIndex((l) => l.tipo === 'simulacion_detenida' && l.corrida === n);
+      return ls[i].datos.circuito && d > i && (fin < 0 || d < fin) && Array.isArray(ls[d].datos.fallas);
+    }) && ls.filter((l) => l.origen === 'simulador').every((l) => corridas.includes(l.corrida));
+  }
+  async function cambiarCodigo(codigo) {
+    await win.locator('#avisoRegistro').click();
+    await win.waitForTimeout(200);
+    await win.locator('#codigoEquipo').fill(codigo);
+    await win.locator('#codigoEquipo').press('Enter');
+    await win.waitForTimeout(200);
+    await boton(win, 'Sí, somos ese equipo');
+    await win.waitForTimeout(300);
+  }
+  async function simularLED() {
+    await win.evaluate((circuito) => { const p = proyectoActual(); p.circuito = circuito; cargarProyecto(p, true); }, LED);
+    await win.locator('#btnSimularBarra').click();
+    return esperar(win, () => simulador.sim && simulador.sim.medidas().estado === 'corriendo' && simulador.sim.medidas().msSimulados > 300);
+  }
+  const toast = () => win.evaluate(() => (!$('toast').hidden ? $('toast').textContent : ''));
+
+  // Corriendo: C3 simula y cambia a D1
+  revisar(await simularLED(), 'AUD-04: C3 simula');
+  await cambiarCodigo('D1');
+  revisar(await win.evaluate(() => simulador.sim === null && registroEventos.equipo() === 'D1') &&
+    await toast() === 'La simulación se detuvo porque cambió el equipo. Pulsen «Simular» para empezar la suya.',
+  'AUD-04 corriendo: al cambiar a D1 la simulación se detiene y la app lo dice');
+  revisar(corridasCompletas('C3') && finDe('C3', 2) === 'simulacion_detenida,sesion_terminada' && !eventosSim('D1').length,
+    `AUD-04 corriendo: la corrida queda entera en C3 (inicio, circuito, cierre con fallas, antes de sesion_terminada) y D1 no tiene ninguna (C3 termina: ${tiposDe('C3').slice(-3).join(', ')})`);
+
+  // En pausa: D1 simula, pausa y cambia a E2
+  revisar(await simularLED(), 'AUD-04: D1 simula');
+  await win.evaluate(() => simulador.sim.pausar());
+  await win.waitForTimeout(200);
+  await cambiarCodigo('E2');
+  revisar(corridasCompletas('D1') && finDe('D1', 3) === 'simulacion_pausada,simulacion_detenida,sesion_terminada' && !eventosSim('E2').length,
+    `AUD-04 en pausa: D1 cierra su corrida pausada antes de terminar y E2 no hereda nada (${tiposDe('D1').slice(-3).join(', ')})`);
+
+  // Mismo código: E2 simula y confirma E2 otra vez
+  revisar(await simularLED(), 'AUD-04: E2 simula');
+  const sesionE2 = deEquipo('E2')[0].sesion;
+  await cambiarCodigo('E2');
+  revisar(await win.evaluate(() => simulador.sim && simulador.sim.medidas().estado === 'corriendo') && !tiposDe('E2').includes('sesion_terminada') &&
+    deEquipo('E2').every((l) => l.sesion === sesionE2),
+  'AUD-04 mismo código: E2 sigue en su sesión y su simulación sigue corriendo');
+  await win.evaluate(() => detenerSimulacion());
+  await win.waitForTimeout(200);
+
+  // Compilando: E2 pulsa Simular y, antes de que termine la compilación, confirma F3
+  const compiladasE2 = tiposDe('E2').filter((t) => t === 'codigo_compilado').length;
+  const compilando = await win.evaluate(async () => {
+    const p = simular();
+    const enCurso = simulador.compilando;
+    confirmarEquipo('F3');
+    $('modalAcciones').querySelector('.primario').click(); // «Sí, somos ese equipo», con la compilación en curso
+    await p;
+    return { enCurso, sim: !!simulador.sim, equipo: registroEventos.equipo(), toast: $('toast').textContent };
+  });
+  await win.waitForTimeout(300);
+  revisar(compilando.enCurso && !compilando.sim && compilando.equipo === 'F3' && compilando.toast === 'Cambió el equipo mientras se preparaba el programa. Pulsen «Simular» otra vez.',
+    `AUD-04 compilando: la compilación se descarta, no empieza la simulación y la app lo dice («${compilando.toast}»)`);
+  revisar(tiposDe('E2').filter((t) => t === 'codigo_compilado').length === compiladasE2 && tiposDe('E2').slice(-1)[0] === 'sesion_terminada' &&
+    !tiposDe('F3').includes('codigo_compilado') && !eventosSim('F3').length,
+  'AUD-04 compilando: ni E2 ni F3 registran esa compilación ni una corrida');
+
+  // Resumen de bloques pendiente: F3 cambia un bloque y, antes de 3 s, confirma G4
+  await win.evaluate(() => {
+    const prog = espacio.getBlocksByType('programa')[0];
+    const b = Blockly.serialization.blocks.append({ type: 'esperar', inputs: { MS: { shadow: { type: 'math_number', fields: { NUM: 200 } } } } }, espacio);
+    prog.getInput('LOOP').connection.connect(b.previousConnection);
+  });
+  await win.waitForTimeout(300);
+  await cambiarCodigo('G4');
+  await win.waitForTimeout(3500);
+  revisar(tiposDe('F3').slice(-2).join() === 'bloques_cambiados,sesion_terminada' && !tiposDe('G4').includes('bloques_cambiados'),
+    `AUD-04 bloques: el resumen que esperaba queda en F3, antes de su sesion_terminada, y no pasa a G4 (F3 termina: ${tiposDe('F3').slice(-2).join(', ')})`);
+
+  // Cerrar la ventana: G4 simula y se cierra la app
+  revisar(await simularLED(), 'AUD-04: G4 simula');
+  await app.close();
+  await new Promise((r) => setTimeout(r, 500));
+  revisar(corridasCompletas('G4') && finDe('G4', 2) === 'simulacion_detenida,sesion_terminada',
+    `AUD-04 cerrar: al cerrar la app, la corrida de G4 se cierra antes de su sesion_terminada (${tiposDe('G4').slice(-2).join(', ')})`);
+
+  // AUD-04-V1: al simular con el monitor serial conectado, la placa se desconecta antes de empezar. Si el equipo cambia
+  // mientras se cierra el puerto, la simulación no empieza para el equipo nuevo. El puerto es un objeto de prueba cuyo
+  // close() queda pendiente hasta soltarlo; desconectarSerial() es la de la app (la idea es de la verificación de Codex).
+  ({ app, win } = await abrir());
+  await win.locator('#codigoEquipo').fill('H5');
+  await win.locator('#codigoEquipo').press('Enter');
+  await win.waitForTimeout(200);
+  await boton(win, 'Sí, somos ese equipo');
+  await win.waitForTimeout(300);
+  async function simularConCierrePendiente() {
+    await win.evaluate((circuito) => { const p = proyectoActual(); p.circuito = circuito; cargarProyecto(p, true); }, LED);
+    await win.evaluate(() => {
+      window.__cerrando = false;
+      serial.lector = null;
+      serial.bucle = null;
+      serial.conectado = true;
+      serial.puerto = { close: () => { window.__cerrando = true; return new Promise((soltar) => { window.__soltarCierre = soltar; }); } };
+      window.__simulando = simular();
+    });
+    return esperar(win, () => window.__cerrando);
+  }
+  const soltarCierre = () => win.evaluate(async () => { window.__soltarCierre(); await window.__simulando; });
+  const cuenta = (equipo, tipo) => tiposDe(equipo).filter((t) => t === tipo).length;
+  // Sin cambio: al cerrarse el puerto, la simulación de H5 empieza
+  revisar(await simularConCierrePendiente(), 'AUD-04-V1: H5 pulsa Simular y el puerto serial queda cerrándose');
+  await soltarCierre();
+  revisar(await esperar(win, () => simulador.sim && simulador.sim.medidas().estado === 'corriendo' && registroEventos.equipo() === 'H5', 5000) &&
+    cuenta('H5', 'codigo_compilado') === 1 && cuenta('H5', 'simulacion_iniciada') === 1,
+  'AUD-04-V1 sin cambio: al cerrarse el puerto, la simulación de H5 empieza en su sesión');
+  await win.evaluate(() => detenerSimulacion());
+  await win.waitForTimeout(200);
+  // Con cambio: H5 pulsa Simular, confirma I6 mientras el puerto se cierra y después se suelta el cierre
+  revisar(await simularConCierrePendiente(), 'AUD-04-V1: H5 pulsa Simular otra vez y el puerto queda cerrándose');
+  await cambiarCodigo('I6');
+  await soltarCierre();
+  await win.waitForTimeout(500);
+  revisar(await win.evaluate(() => simulador.sim === null && registroEventos.equipo() === 'I6') &&
+    await toast() === 'Cambió el equipo mientras se preparaba el programa. Pulsen «Simular» otra vez.',
+  'AUD-04-V1 con cambio: la simulación preparada por H5 no empieza para I6 y la app pide pulsar «Simular»');
+  revisar(cuenta('H5', 'codigo_compilado') === 2 && cuenta('H5', 'simulacion_iniciada') === 1 && corridasCompletas('H5') && finDe('H5', 1) === 'sesion_terminada' &&
+    !eventosSim('I6').length && !tiposDe('I6').includes('codigo_compilado'),
+  `AUD-04-V1 con cambio: la compilación queda en H5 (la hizo H5), sin corrida nueva; I6 no tiene ninguna (H5: ${tiposDe('H5').join(', ')})`);
+
+  // Apagar el registro: I6 simula y el instructor lo apaga (más abajo, con el panel del instructor)
+  revisar(await simularLED(), 'AUD-04: I6 simula');
+  if (fs.existsSync(REVISOR)) {
+    const { revisarEvento } = require(REVISOR);
+    const lineas = ['C3', 'D1', 'E2', 'F3', 'G4', 'H5'].flatMap(deEquipo);
+    const problemas = lineas.flatMap((l, i) => { const { archivo, ...linea } = l; return revisarEvento(linea).map((p) => `${i + 1} (${l.tipo}): ${p}`); });
+    revisar(!problemas.length, `AUD-04: las ${lineas.length} líneas de C3 a H5 cumplen contrato/evento.schema.json` + (problemas.length ? ':\n  ' + problemas.slice(0, 10).join('\n  ') : ''));
+  }
+
   await win.keyboard.press('Control+Alt+Shift+KeyR');
   await win.waitForTimeout(300);
   await win.locator('#pinInstructor').fill('1111');
@@ -241,6 +390,8 @@ const LED = {
   await boton(win, 'Apagar el registro');
   await win.waitForTimeout(300);
   revisar(await win.evaluate(() => $('avisoRegistro').hidden), 'apagado: el aviso desaparece');
+  revisar(corridasCompletas('I6') && finDe('I6', 2) === 'simulacion_detenida,sesion_terminada',
+    `AUD-04 apagar: la corrida de I6 se cierra antes de su sesion_terminada (${tiposDe('I6').slice(-2).join(', ')})`);
   await app.close();
   await new Promise((r) => setTimeout(r, 300));
   ({ app, win } = await abrir());

@@ -1358,6 +1358,7 @@ async function subirPlaca(forzar) {
     return;
   }
   if (!estado.texto) actualizar(); // el código más reciente de los bloques
+  const turno = turnoEquipo; // antes de la primera espera: la subida es del equipo que pulsó Subir (AUD-04)
   const reconectar = serial.conectado;
   if (reconectar) await desconectarSerial(); // el puerto no se puede compartir con la carga
   puertos.ocupado = true;
@@ -1380,8 +1381,10 @@ async function subirPlaca(forzar) {
   try { r = await escritorio.subir({ codigo: codigoSubido, fqbn: placa().fqbn, puerto }); }
   catch (e) { r = { ok: false, etapa: 'app', salida: e.message }; }
   finally { quitar(); puertos.ocupado = false; }
-  registrarCompilacion(r, codigoSubido);
-  if (r.etapa === 'subir') registrarEditor('programa_subido', { ok: r.ok, placa: placaActual });
+  if (turno === turnoEquipo) { // si cambió el equipo mientras subía, no es del equipo nuevo (AUD-04)
+    registrarCompilacion(r, codigoSubido);
+    if (r.etapa === 'subir') registrarEditor('programa_subido', { ok: r.ok, placa: placaActual });
+  }
   if (r.ok) {
     const m = r.memoria || {};
     const cuerpo = [el('p', null, 'Tu programa ya está en la placa.')];
@@ -1491,6 +1494,9 @@ let registroFalla = null;
 // nada y la esquina lo avisa hasta que el instructor cree un PIN nuevo (AUD-02-V2).
 let registroConfigIlegible = false;
 let tResumenBloques = null;
+// AUD-04: lo que hace un equipo queda en su sesión. turnoEquipo sube cada vez que cambia el equipo (o termina su
+// sesión): una compilación que empezó con otro turno ya no es de nadie y se descarta (decisión de Efraín, 18 oct).
+let turnoEquipo = 0;
 
 function pintarAvisoRegistro() {
   const a = $('avisoRegistro');
@@ -1572,12 +1578,28 @@ function confirmarEquipo(codigo) {
     botones: [
       { texto: 'Corregir', accion: () => { setTimeout(() => pedirEquipo(codigo), 50); } },
       { texto: 'Sí, somos ese equipo', primario: true, accion: () => {
-        registroEventos.empezar(codigo, { placa: placaActual, nivel: nivelActual });
+        // El mismo equipo sigue en su sesión, con su simulación (AUD-04).
+        if (registroEventos.equipo() !== codigo) {
+          if (cerrarTrabajoDelEquipo()) mostrarToast('La simulación se detuvo porque cambió el equipo. Pulsen «Simular» para empezar la suya.');
+          registroEventos.empezar(codigo, { placa: placaActual, nivel: nivelActual });
+        }
         pintarAvisoRegistro();
       } }
     ],
     cancelar: pintarAvisoRegistro
   });
+}
+/**
+ * Antes de que termine la sesión de un equipo (cambia el código, el instructor apaga el registro o se cierra la app):
+ * su simulación se detiene, así su simulacion_detenida (con las fallas) queda en su sesión; su resumen de bloques
+ * pendiente se escribe ya, y una compilación en curso deja de ser suya (AUD-04). Devuelve true si detuvo una simulación.
+ */
+function cerrarTrabajoDelEquipo() {
+  const habiaSimulacion = !!simulador.sim;
+  detenerSimulacion();
+  if (tResumenBloques) escribirResumenBloques();
+  turnoEquipo++;
+  return habiaSimulacion;
 }
 /** Lo que pasa en el editor: si no hay equipo, registroEventos no escribe nada. */
 function registrarEditor(tipo, datos) { registroEventos.editor(tipo, datos); }
@@ -1585,7 +1607,12 @@ function registrarEditor(tipo, datos) { registroEventos.editor(tipo, datos); }
 function programarResumenBloques() {
   if (!registroEventos.activo()) return;
   clearTimeout(tResumenBloques);
-  tResumenBloques = setTimeout(() => registrarEditor('bloques_cambiados', resumenBloques(espacio.getAllBlocks(false).map(b => b.type))), 3000);
+  tResumenBloques = setTimeout(escribirResumenBloques, 3000);
+}
+function escribirResumenBloques() {
+  clearTimeout(tResumenBloques);
+  tResumenBloques = null;
+  registrarEditor('bloques_cambiados', resumenBloques(espacio.getAllBlocks(false).map(b => b.type)));
 }
 /** El tipo de error de una compilación (el mismo criterio de explicarError y traducirErrorCpp), sin el texto. */
 function tipoErrorCompilacion(r) {
@@ -1696,7 +1723,7 @@ function panelInstructor(pin, estado) {
         return false;
       } }] : []),
       { texto: estado.activo ? 'Apagar el registro' : 'Encender el registro', accion: async () => {
-        if (estado.activo) registroEventos.terminar(); // la última línea del equipo, antes de apagar
+        if (estado.activo) { cerrarTrabajoDelEquipo(); registroEventos.terminar(); } // la última línea del equipo, antes de apagar
         const r = await escritorio.registro.instructor({ accion: 'activar', pin, activo: !estado.activo });
         if (!r.ok) { nota.textContent = MOTIVOS_PIN[r.motivo] || 'No se pudo cambiar.'; return false; }
         registroEncendido = r.activo;
@@ -1784,13 +1811,23 @@ async function simular() {
   detenerSimulacion();
   if (!estado.texto) actualizar(); // el código más reciente de los bloques
   const codigo = codigoActual();
+  const turno = turnoEquipo;
   simulador.compilando = true;
   uiSimulador('Preparando tu programa…');
   let r;
   try { r = await escritorio.compilarHex({ codigo, fqbn: placa().fqbn }); }
   catch (e) { r = { ok: false, etapa: 'app', salida: e.message }; }
+  if (turno === turnoEquipo) registrarCompilacion(r, codigo);
+  // El monitor muestra la simulación: la placa real se desconecta antes. Es la última espera; después ya no hay
+  // ninguna hasta iniciar, así que el turno se revisa una sola vez y nada preparado queda para otro equipo (AUD-04-V1).
+  if (turno === turnoEquipo && r.ok && r.hex && serial.conectado) await desconectarSerial();
   simulador.compilando = false;
-  registrarCompilacion(r, codigo);
+  if (turno !== turnoEquipo) {
+    // El equipo cambió mientras se preparaba: la simulación no es del equipo nuevo (AUD-04).
+    uiSimulador();
+    mostrarToast('Cambió el equipo mientras se preparaba el programa. Pulsen «Simular» otra vez.');
+    return;
+  }
   if (!r.ok || !r.hex) {
     uiSimulador();
     const ex = explicarError(r, '');
@@ -1808,7 +1845,6 @@ async function simular() {
       mostrarToast(f.mensaje);
     });
     sim.alEstado(() => uiSimulador());
-    if (serial.conectado) await desconectarSerial(); // el monitor muestra la simulación
     $('fallasSim').innerHTML = ''; $('fallasSim').hidden = true;
     simulador.sim = sim;
     simulador.codigo = codigo;
@@ -2144,7 +2180,10 @@ function iniciar() {
     if (registroFalla) explicarFallaRegistro();
     else pedirEquipo(registroEventos.equipo() || '');
   });
-  window.addEventListener('pagehide', () => registroEventos.terminar());
+  window.addEventListener('pagehide', () => {
+    if (registroEventos.activo()) cerrarTrabajoDelEquipo(); // la corrida termina en la sesión que la empezó (AUD-04)
+    registroEventos.terminar();
+  });
   iniciarRegistro();
   window.addEventListener('resize', () => Blockly.svgResize(espacio));
 }

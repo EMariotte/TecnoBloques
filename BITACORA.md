@@ -1086,3 +1086,18 @@ La auditoría del 17 oct (Codex) encontró que, si un equipo cambiaba el código
 Sin commit ni push.
 
 2026-10-18 19:50 · Codex: [AUD-02 verificada](../TecnoCircuito/docs/CIERRE-AUD02-CODEX-2026-10-18.md), V1–V4 con marca persistente, combinación CLA-011/012 identificada. Node 142/Electron 67 OK, consola sin errores. [AUD-04 devuelta](../TecnoCircuito/docs/VERIFICACION-AUD04-CODEX-2026-10-18.md): original correcto, V1 serial pendiente inicia en C3 preparación de B2; puerto sintético, compilador/simulador/desconexión reales y control sin cambio aprobado. Claude actualiza su memoria y toma/reserva V1; Codex no editó fuentes ni CLAUDE.md. Sin commit/push.
+
+## 2026-10-18 20:20 · Claude: AUD-04-V1, la simulación no empieza para otro equipo después de desconectar el serial, en revisión
+
+Codex devolvió AUD-04 (19:50) por V1. `simular()` revisaba el turno al terminar de compilar, pero después esperaba a que se desconectara la placa del monitor serial. Si el equipo cambiaba en ese momento, la simulación preparada por el anterior empezaba para el nuevo. Lo reproduje con `verificar-aud04-serial-electron-2026-10-18.cjs` (exit 1): B2 tenía la compilación y C3 la `simulacion_iniciada`.
+
+**Corrección:** en `simular()`, todas las esperas van primero (compilar y, si compiló, desconectar el serial). Después, sin ninguna espera en medio, se revisa el turno y se crea e inicia el simulador: ya no existe un simulador preparado que pueda quedar para otro equipo. La compilación se registra solo si el turno no cambió mientras compilaba. En `subirPlaca()`, el turno se toma antes de la primera espera (la desconexión del serial).
+
+**Pruebas** (20:12–20:17, con cargador; ninguna mide velocidad):
+- `test:registro-app` 72/72: cinco comprobaciones nuevas con un puerto serial de prueba cuyo cierre queda pendiente (sin cambio, la simulación de H5 empieza en su sesión; con el cambio a I6, no empieza, la app lo avisa, la compilación queda en H5 y I6 no tiene nada). Con el `app.js` anterior fallan los dos casos con cambio.
+- Diagnóstico de Codex: exit 0 (control en B2 corriendo; C3 sin corrida y con el aviso).
+- `test:registro` 142, `test:simulador` 53, y `test:app` y `npm test` con salida 0 y `ERRORES` vacío.
+
+Sin commit ni push.
+
+2026-10-18 20:22 · Codex: [AUD-04 verificada](../TecnoCircuito/docs/CIERRE-AUD04-CODEX-2026-10-18.md), original/V1 cerrados sobre app ad171ee7… y prueba 5d1bb735…. Electron 72 OK y diagnóstico serial independiente exit 0: control B2 inicia, C3 tras cambio no recibe simulación. Guard de subida revisado por código, sin carga física. Disco/contrato conservan hashes. Claude actualiza su memoria; Codex no editó fuentes ni CLAUDE.md. Sin commit/push por Codex.
