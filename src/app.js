@@ -1497,6 +1497,7 @@ let tResumenBloques = null;
 // AUD-04: lo que hace un equipo queda en su sesión. turnoEquipo sube cada vez que cambia el equipo (o termina su
 // sesión): una compilación que empezó con otro turno ya no es de nadie y se descarta (decisión de Efraín, 18 oct).
 let turnoEquipo = 0;
+let cambiandoEquipo = false; // mientras se espera el cierre de la corrida del equipo anterior (AUD-03)
 
 function pintarAvisoRegistro() {
   const a = $('avisoRegistro');
@@ -1577,11 +1578,15 @@ function confirmarEquipo(codigo) {
     cuerpo: 'Revisen que sea su código. Si no lo es, corríjanlo.',
     botones: [
       { texto: 'Corregir', accion: () => { setTimeout(() => pedirEquipo(codigo), 50); } },
-      { texto: 'Sí, somos ese equipo', primario: true, accion: () => {
-        // El mismo equipo sigue en su sesión, con su simulación (AUD-04).
-        if (registroEventos.equipo() !== codigo) {
-          if (cerrarTrabajoDelEquipo()) mostrarToast('La simulación se detuvo porque cambió el equipo. Pulsen «Simular» para empezar la suya.');
-          registroEventos.empezar(codigo, { placa: placaActual, nivel: nivelActual });
+      { texto: 'Sí, somos ese equipo', primario: true, accion: async () => {
+        // El mismo equipo sigue en su sesión, con su simulación (AUD-04). Un segundo clic mientras se cierra la
+        // corrida del equipo anterior no abre otra sesión.
+        if (registroEventos.equipo() !== codigo && !cambiandoEquipo) {
+          cambiandoEquipo = true;
+          try {
+            if (await cerrarTrabajoDelEquipo()) mostrarToast('La simulación se detuvo porque cambió el equipo. Pulsen «Simular» para empezar la suya.');
+            registroEventos.empezar(codigo, { placa: placaActual, nivel: nivelActual });
+          } finally { cambiandoEquipo = false; }
         }
         pintarAvisoRegistro();
       } }
@@ -1591,15 +1596,16 @@ function confirmarEquipo(codigo) {
 }
 /**
  * Antes de que termine la sesión de un equipo (cambia el código, el instructor apaga el registro o se cierra la app):
- * su simulación se detiene, así su simulacion_detenida (con las fallas) queda en su sesión; su resumen de bloques
- * pendiente se escribe ya, y una compilación en curso deja de ser suya (AUD-04). Devuelve true si detuvo una simulación.
+ * una compilación en curso deja de ser suya, su resumen de bloques pendiente se escribe ya y su simulación se detiene
+ * (AUD-04). La promesa se cumple cuando sale su simulacion_detenida, con todas las fallas de la corrida (AUD-03): quien
+ * cierra la sesión la espera. Se cumple con true si detuvo una simulación. Al cerrar la ventana no se puede esperar:
+ * { sinEsperar: true } saca el cierre en el mismo instante.
  */
-function cerrarTrabajoDelEquipo() {
+function cerrarTrabajoDelEquipo(opciones) {
   const habiaSimulacion = !!simulador.sim;
-  detenerSimulacion();
-  if (tResumenBloques) escribirResumenBloques();
   turnoEquipo++;
-  return habiaSimulacion;
+  if (tResumenBloques) escribirResumenBloques();
+  return detenerSimulacion(opciones).then(() => habiaSimulacion);
 }
 /** Lo que pasa en el editor: si no hay equipo, registroEventos no escribe nada. */
 function registrarEditor(tipo, datos) { registroEventos.editor(tipo, datos); }
@@ -1723,7 +1729,7 @@ function panelInstructor(pin, estado) {
         return false;
       } }] : []),
       { texto: estado.activo ? 'Apagar el registro' : 'Encender el registro', accion: async () => {
-        if (estado.activo) { cerrarTrabajoDelEquipo(); registroEventos.terminar(); } // la última línea del equipo, antes de apagar
+        if (estado.activo) { await cerrarTrabajoDelEquipo(); registroEventos.terminar(); } // la última línea del equipo, antes de apagar
         const r = await escritorio.registro.instructor({ accion: 'activar', pin, activo: !estado.activo });
         if (!r.ok) { nota.textContent = MOTIVOS_PIN[r.motivo] || 'No se pudo cambiar.'; return false; }
         registroEncendido = r.activo;
@@ -1808,12 +1814,13 @@ async function simular() {
   if (!simulador.disponible || simulador.compilando) return;
   seleccionarPestana('circuito');
   if (!simulador.lienzo) return;
-  detenerSimulacion();
+  const cierreAnterior = detenerSimulacion();
   if (!estado.texto) actualizar(); // el código más reciente de los bloques
   const codigo = codigoActual();
   const turno = turnoEquipo;
   simulador.compilando = true;
   uiSimulador('Preparando tu programa…');
+  await cierreAnterior; // el cierre de la corrida anterior queda antes que lo de esta (AUD-03)
   let r;
   try { r = await escritorio.compilarHex({ codigo, fqbn: placa().fqbn }); }
   catch (e) { r = { ok: false, etapa: 'app', salida: e.message }; }
@@ -1892,15 +1899,21 @@ function enviarSim(texto) {
   salidaSim('→ ' + texto + '\n', 'enviado');
   lineaEspecial('→ ' + texto, 'enviado');
 }
-function detenerSimulacion() {
+/**
+ * Detiene y suelta el simulador. Contrato 1: destruir() devuelve una promesa que se cumple cuando sale
+ * simulacion_detenida (el cierre espera al Worker para traer todas las fallas, AUD-03); aquí se devuelve esa promesa
+ * (los paquetes anteriores no devolvían nada, solo tenían _destruir()). { sinEsperar: true }: el cierre sale ya.
+ */
+function detenerSimulacion(opciones) {
   const sim = simulador.sim;
-  if (!sim) return;
+  if (!sim) return Promise.resolve();
   simulador.sim = null;
-  // Contrato 1: destruir() detiene y libera el Worker. Los paquetes anteriores solo tenían _destruir().
-  try { if (sim.destruir) sim.destruir(); else if (sim._destruir) sim._destruir(); else sim.detener(); } catch (e) { /* ya estaba detenida */ }
+  let fin;
+  try { fin = sim.destruir ? sim.destruir(opciones) : sim._destruir ? sim._destruir(opciones) : sim.detener(); } catch (e) { /* ya estaba detenida */ }
   uiSimulador();
   pintarMediciones();
   uiSerial();
+  return Promise.resolve(fin).catch(() => {});
 }
 /** El circuito como imagen SVG (lienzo.exportarSVG, contrato 1): para la documentación del proyecto o una evidencia en TecnoRuta. */
 function guardarImagenCircuito() {
@@ -2048,7 +2061,7 @@ function iniciar() {
     $('tCircuito').addEventListener('click', () => seleccionarPestana('circuito'));
     $('btnSimular').addEventListener('click', simular);
     $('btnSimularBarra').addEventListener('click', simular);
-    $('btnDetenerSim').addEventListener('click', detenerSimulacion);
+    $('btnDetenerSim').addEventListener('click', () => detenerSimulacion());
     $('btnImagenCircuito').addEventListener('click', guardarImagenCircuito);
     $('btnKicadCircuito').addEventListener('click', guardarNetlistCircuito);
     setInterval(pintarMediciones, 250); // la tabla se pinta solo con el circuito ampliado
@@ -2181,7 +2194,9 @@ function iniciar() {
     else pedirEquipo(registroEventos.equipo() || '');
   });
   window.addEventListener('pagehide', () => {
-    if (registroEventos.activo()) cerrarTrabajoDelEquipo(); // la corrida termina en la sesión que la empezó (AUD-04)
+    // La corrida termina en la sesión que la empezó (AUD-04). Al cerrar la ventana no se puede esperar al Worker: el
+    // cierre sale ya, con las fallas que llegaron (AUD-03, límite declarado).
+    if (registroEventos.activo()) cerrarTrabajoDelEquipo({ sinEsperar: true });
     registroEventos.terminar();
   });
   iniciarRegistro();

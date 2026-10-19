@@ -1101,3 +1101,25 @@ Codex devolvió AUD-04 (19:50) por V1. `simular()` revisaba el turno al terminar
 Sin commit ni push.
 
 2026-10-18 20:22 · Codex: [AUD-04 verificada](../TecnoCircuito/docs/CIERRE-AUD04-CODEX-2026-10-18.md), original/V1 cerrados sobre app ad171ee7… y prueba 5d1bb735…. Electron 72 OK y diagnóstico serial independiente exit 0: control B2 inicia, C3 tras cambio no recibe simulación. Guard de subida revisado por código, sin carga física. Disco/contrato conservan hashes. Claude actualiza su memoria; Codex no editó fuentes ni CLAUDE.md. Sin commit/push por Codex.
+
+2026-10-18 21:20 · Codex: integración de las entregas locales TC AUD-03/AUD-05: test:simulador 53 OK, test:registro-app 72 OK y test:graficador 28 OK, exit 0, sin errores JS/consola en aplicación. [Cierre del corte lógico AUD-05](../TecnoCircuito/docs/CIERRE-AUD05-CODEX-2026-10-18.md). [AUD-03 devuelta](../TecnoCircuito/docs/VERIFICACION-AUD03-CODEX-2026-10-18.md): controlador/núcleo reales con Worker controlado y crearRegistroEventos real pierden dos fallas al detener/destruir antes de entregar la foto. El control de pausa conserva ambas; no reabre la atribución de equipos AUD-04. Suite TC fallida por T1/T2, aunque repetición aislada/continuación pasan; límite registrado, sin candidato global aprobado ni hardware/instalador acreditados. Sin fuentes, CLAUDE.md, commit ni publicación de Codex.
+
+## 2026-10-18 22:25 · Claude: Contrato 1: el cierre de la corrida espera al Worker (AUD-03), en revisión
+
+Codex devolvió AUD-03 (21:20) por V1: si se pulsaba Detener, o TecnoBloques destruía el simulador, mientras viajaba una foto con fallas, esas fallas no llegaban al cierre de la corrida. Era el límite que yo había declarado, y la aceptación incluye el cierre. Efraín eligió el «cierre que espera».
+
+**Contrato 1 (aditivo):** `sim.detener()` y `sim.destruir()` devuelven una promesa que se cumple cuando sale `simulacion_detenida`. La simulación se ve detenida al instante, pero el cierre espera a que el Worker confirme que paró (`detenido`, después de una última foto). Como los mensajes llegan en orden, antes llegan las fotos en camino y sus fallas entran en el cierre. Si el Worker no confirma en 500 ms, el cierre sale con lo que llegó. `{ sinEsperar: true }` lo saca ya. CONTRATO, sección 2 y su historial.
+
+**TecnoCircuito:** `simulador.js` (el cierre abierto, el tope, `destruir()` que espera y después libera el Worker, `iniciar()` que cierra primero la corrida anterior) y `trabajador.js` (la última foto y `detenido`). COMO-FUNCIONA, sección 66, corregida: el `ms_sim` de una falla que llega en la pausa puede ser mayor que el de la pausa (lo mostró Codex).
+
+**TecnoBloques:** `detenerSimulacion()` devuelve la promesa. `cerrarTrabajoDelEquipo()` sube el turno al instante y espera el cierre antes de cerrar la sesión (cambiar de código, apagar el registro). `simular()` espera el cierre anterior antes de compilar. Al cerrar la ventana se usa `sinEsperar` (límite declarado). Un segundo clic en «Sí, somos ese equipo» mientras espera no abre otra sesión.
+
+**T1/T2 con semilla fija** (decisión de Efraín): la prueba falló una vez a Codex por azar. Con 1000 semillas, HEAD y AUD-05 dan lo mismo semilla por semilla, y más de 2 cambios en 3 s sale en el 0,2 % de las semillas. `pagina.html?semilla=` pasa `_semilla` (interna, no es del contrato) y la prueba fija la suya.
+
+**Pruebas** (22:00–22:24, con cargador):
+- `probar:fotos` 31 OK, con el cierre que espera.
+- `npm run probar` completo: exit 0, 28 grupos, 1221 OK, cero fallas.
+- TecnoBloques: `test:registro-app` 72/72 y `test:simulador` 53.
+- El diagnóstico de Codex, en una copia que solo agrega la confirmación del Worker: 0 casos residuales.
+
+Sin commit ni push.
