@@ -21,6 +21,9 @@
     "test:registro": "node test/registro.js",
     "test:registro-preprocesador": "node test/registro-preprocesador.js",
     "test:registro-app": "node build.js --simulador-local && node test/registro-app.js",
+    "test:herramientas": "node build.js && node test/herramientas-app.js",
+    "test:historia": "node test/historia-registro.js",
+    "historia": "node herramientas/historia-registro.js",
     "test:simulador": "node build.js --simulador-local && node test/simulador.js"
   },
   "devDependencies": {

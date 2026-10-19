@@ -573,6 +573,19 @@ const LED = {
   await app.close();
 
   revisar(!errores.length, 'sin errores en la consola' + (errores.length ? ': ' + errores.slice(0, 3).join(' | ') : ''));
+
+  // 8. REG-004: la historia de todos estos registros reales. Ninguna sesión tiene avisos de integridad, y las corridas
+  // que se quemaron el LED (I6, J7 y L9) cuentan sus dos fallas.
+  const { leerArchivos, contarHistoria, narrar } = require('../herramientas/historia-registro.js');
+  const leidos = leerArchivos([registros]);
+  const historias = contarHistoria(leidos.lineas);
+  const conAvisos = historias.filter((h) => h.avisos.length);
+  revisar(!leidos.problemas.length && historias.length === 11 && !conAvisos.length,
+    `REG-004: ${historias.length} sesiones reales leídas, sin avisos` + (conAvisos.length ? ':\n  ' + conAvisos.map((h) => `${h.equipo}: ${h.avisos.join(' | ')}`).join('\n  ') : ''));
+  const quemadas = (equipo) => (historias.find((h) => h.equipo === equipo) || { corridas: [] }).corridas
+    .some((c) => (c.cierre || []).map((f) => f.tipo).sort().join() === 'corriente_pin,led_quemado');
+  revisar(quemadas('I6') && quemadas('J7') && quemadas('L9'), 'REG-004: la historia de I6, J7 y L9 cuenta el LED quemado y la corriente del pin');
+  console.log('\n' + narrar(historias.filter((h) => h.equipo === 'J7')));
   fs.rmSync(datos, { recursive: true, force: true });
   console.log(fallos ? `\n${fallos} FALLA(S)` : '\nTODO BIEN');
   process.exit(fallos ? 1 : 0);

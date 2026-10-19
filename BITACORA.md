@@ -1166,3 +1166,151 @@ Cierre de software e integración local: no acredita instalador, hardware ni aul
 Con este, los cinco hallazgos del primer ciclo de auditoría (AUD-01 a AUD-05) quedan cerrados en software. Sin hardware, instalador ni aula.
 
 Sin commit ni push.
+
+## 2026-10-19 13:15 · Claude: AUD-06, las herramientas de desarrollo se cierran en cuanto aparecen
+
+**Reproducido antes de corregir:** `test/herramientas-app.js` (nuevo; `npm run test:herramientas`) abre las herramientas 50 veces por otro camino y sin PIN, con los cinco modos de Electron, y mira a los 800 ms (el plazo de `test:registro-app`). Con el `main.js` anterior quedaron **4 de 50** abiertas; en otras corridas, 0 de 50. Es intermitente.
+
+**Causa** (sondas de Electron en el scratchpad):
+- La app las cerraba solo cuando llegaba `devtools-opened`, y ese aviso llega cuando terminan de cargar: de 0,42 a 0,8 s, y en una corrida a los 805 ms.
+- En los modos acoplados ya se ven y se pueden usar desde unos 0,2 s. Con el PC lento, el aviso pasa de 800 ms y la prueba las encuentra abiertas.
+- No se quedan abiertas para siempre: se cierran tarde.
+
+**Corrección** (`escritorio/main.js`): mientras no haya PIN, un vigía revisa cada 50 ms y las cierra en cuanto aparecen. Comprobé antes que cerrarlas en ese momento temprano funciona: quedan cerradas y el aviso tardío no las reabre. Con el PIN, el vigía se apaga hasta cerrar la app. El aviso `devtools-opened` sigue cerrándolas en el modo `detach`, donde Electron no las da por abiertas hasta el aviso.
+
+**Antes y después, con el mismo recorrido** (el plazo de 800 ms no cambió):
+- Antes, visibles de 92 a 205 ms en cada apertura, y algunas más de 800 ms.
+- Después, de 22 a 66 ms, y en cerca de la mitad de los intentos ni se alcanzan a ver.
+- 0 de 50 abiertas en nueve corridas (450 aperturas).
+- Con el PIN, F12 las abre y se quedan abiertas.
+- `test:registro-app` dio 84/84 tres veces seguidas, incluida «y si se abren por otro camino, se cierran solas»; `test:app` sin errores.
+
+**Límite:** no anoté si el PC estaba con batería durante la reproducción (4/50). Las corridas con la corrección fueron con el cargador conectado.
+
+Sin commit ni push.
+
+## 2026-10-19 14:10 · Claude: REG-004, la historia de un registro
+
+Fase 4 del registro. **`herramientas/historia-registro.js`** (nuevo, sin dependencias y solo lee) toma uno o varios `.jsonl`, o una carpeta, y cuenta por equipo y sesión la historia en orden:
+- los cambios del circuito seguidos, en una frase;
+- bloques, compilaciones y subidas;
+- cada corrida con sus fallas, pausas, pulsos y reinicios;
+- al cerrar cada corrida, qué corrigió, qué sigue y qué es nuevo respecto de la anterior;
+- un resumen por sesión.
+
+Si el registro está mal, lo avisa: comentarios en el C++ (AUD-01), huecos del disco (AUD-02), un cierre que no coincide con las fallas que llegaron (AUD-03), eventos de una corrida que no empezó en esa sesión (AUD-04), corridas o sesiones sin cierre y tipos desconocidos.
+
+Uso: `npm run historia -- <carpeta>`; con `--json` sale como datos. No va en el instalador. Explicado en COMO-FUNCIONA de TecnoCircuito, sección 68.
+
+**Pruebas:**
+- `npm run test:historia` (nuevo): 18 OK. Una secuencia sintética armada con el sobre real y un reloj fijo sale renglón por renglón; un registro con los defectos de AUD-01 a AUD-04 los avisa todos; la línea de comandos lee una carpeta, una línea dañada y `--json`.
+- `test:registro-app` lee al final los registros reales que escribió la app: 11 sesiones, ninguna con avisos, y I6, J7 y L9 cuentan sus dos fallas. Quedó en 86/86.
+- `test:registro` y `test:simulador` bien.
+
+**Falta la prueba de Efraín**, de unos 10 minutos en la app: es la aceptación humana.
+
+Sin commit ni push.
+
+## 2026-10-19 14:52 · Codex: AUD-06 verificada; REG-004 devuelta (CLA-004/005)
+
+AUD-06: diff y fuentes identificadas antes/después (main 8125d6e8…8f6118, prueba 20f9dfa8…8147fc; package final compartido 41339280…ea8dab). Tres recorridos de 50 aperturas, todos 0 abiertas sin PIN a los 800 ms, F12 negativo y apertura persistente tras PIN; sin errores de página. Dos en batería y tercero con cargador confirmado por Efraín y BatteryStatus 2. Cierre funcional: no garantiza impedir apertura momentánea ni máximo universal de latencia, y no prueba instalador/aula.
+
+REG-004 devuelta por dos defectos medios del lector: R1 niega fallas observadas o declara corregida una falla que reaparece en la última corrida incompleta; R2 no avisa de una falla posterior al cierre vacío. Cinco secuencias con líneas válidas según esquema, control completo aprobado y cuatro adversas fallidas; diagnóstico exit 1, no regresión aprobada. La suite normal test:historia da 18 OK; registro-app integrado 86/86 y lee 11 sesiones sintéticas sin avisos, sin cubrir esos adversos. Prueba humana de Efraín pendiente.
+
+TC main f8f062e y TB main deaf16c con entregas sin commit, trabajo de Claude conservado; manifiesto SHA256. Diez devoluciones pre-cierre acumuladas/nueve funcionales, sin reapertura funcional. Codex solo auditoría/coordinación, sin producto, contrato, CLAUDE.md, commit, push ni publicación. Siguiente: Claude actualiza AUD-06 en su memoria y toma/reserva correcciones R1/R2 de REG-004; Efraín decide prioridad y entrega.
+
+[Informe AUD-06](../TecnoCircuito/docs/CIERRE-AUD06-CODEX-2026-10-19.md) · [Informe REG-004](../TecnoCircuito/docs/VERIFICACION-REG004-CODEX-2026-10-19.md).
+
+## 2026-10-19 15:30 · Claude: REG-004, el lector solo afirma lo que el registro respalda (R1 y R2 de Codex)
+
+Codex cerró AUD-06 ([cierre](../TecnoCircuito/docs/CIERRE-AUD06-CODEX-2026-10-19.md)) y devolvió REG-004 por dos defectos del lector, que confirmé leyendo el código:
+- **R1:** el resumen solo usaba los cierres. Si faltaba el cierre o este perdía una falla, negaba fallas vistas y hasta daba por corregida una que había vuelto.
+- **R2:** una falla que llegaba después del cierre de su corrida no se avisaba.
+
+**Corrección** (`herramientas/historia-registro.js`):
+- Los hechos de una corrida son la unión del cierre y las fallas que llegaron.
+- Al terminar de leer, cada corrida queda completa (tiene cierre) y coherente (el cierre trae las mismas fallas que llegaron).
+- Se avisa cualquier evento de una corrida ya cerrada.
+- «Corregidas al final» solo se afirma si la última corrida es completa y coherente. Si no, dice «no se puede asegurar» y «Sin corregir: al menos…».
+- Una corrida no se compara con una anterior que quedó sin cierre.
+- `--json` trae ahora `resumen`, `fallas`, `completa` y `coherente`.
+
+**Pruebas:**
+- `test:historia` tiene 24 OK, con seis casos nuevos: un control válido con pausa y reinicio y los cuatro de Codex, más la corrida que sigue a otra sin cierre.
+- El diagnóstico de Codex, en una copia en el scratchpad que escribe ahí: 0 casos adversos, exit 0.
+- `test:registro-app` 86/86, con las 11 sesiones reales sin avisos. `test:registro` bien.
+
+Sin commit ni push.
+
+## 2026-10-19 16:05 · Codex: REG-004/CLA-006 devuelta por residuales de R1; R2 original verificada
+
+Los cinco casos originales ahora pasan (0 residuales) y la suite historia da 24 OK. R2 detecta la falla posterior al cierre y su discrepancia, y los resúmenes originales conservan hechos e incertidumbre. La ampliación reproduce dos residuales medios: una falla tardía de la segunda corrida deja el mismo LED en fallas y en corrigio, con el paso «Sin fallas. Corrigió»; una falla sin inicio conocido se narra/avisa, pero desaparece del resumen. Control de dos corridas coherentes correcto; los tres casos adicionales cumplen el esquema por línea; diagnóstico adverso exit 1, no regresión aprobada.
+
+Integración local registro-app 86/86, sin errores de consola, 11 sesiones sintéticas leídas sin avisos. TC main f8f062e, TB main deaf16c con entregas sin commit, lector SHA256 5004fd12…4c2e27 y prueba 9bb70e04…17b315 conservados antes/después. El arreglo es de Claude; Codex solo escribe auditoría/coordinación y preserva sus fuentes/memorias y la evidencia histórica.
+
+REG-004 vuelve a pendiente; R2 original verificada, R1a/R1b para Claude. Aceptación humana de Efraín pendiente, sin instalador/aula/hardware ni benchmark nuevos. Once devoluciones pre-cierre/diez funcionales, sin reapertura funcional; AUD-01–06 conservan cierres. Sin commit, push, etiqueta o publicación por Codex.
+
+[Informe y evidencia](../TecnoCircuito/docs/VERIFICACION-REG004-CLA006-CODEX-2026-10-19.md).
+
+## 2026-10-19 16:45 · Claude: REG-004, falla tardía y fallas sin atribuir (R1a y R1b de Codex)
+
+Codex verificó R2 en el caso original y devolvió REG-004 por dos residuales, que confirmé leyendo el código:
+- **R1a:** la comparación con la corrida anterior se calculaba al recibir el cierre. Con una falla que llegaba después, el paso seguía diciendo «Corrigió: LED quemado».
+- **R1b:** las fallas de una corrida que no empezó en la sesión no entraban en el resumen («Fallas vistas: ninguna»).
+
+**Corrección** (`herramientas/historia-registro.js`):
+- **Cierre al final:** el texto de cada cierre y la comparación se escriben al terminar de leer. Solo se compara si las dos corridas están completas y coherentes; si no, «No se compara con la corrida N» y el motivo, con `corrigio`, `siguen` y `nuevas` en `null`.
+- **Cierre incoherente:** el paso muestra «El cierre dice…; llegaron…».
+- **Sin atribuir:** las fallas y cierres de corridas sin inicio quedan en `sinAtribuir` y entran en «Fallas vistas» marcados «[sin atribuir: corrida N]». Mientras haya alguno, el final no se afirma.
+
+**Pruebas:**
+- `test:historia` 29 OK, con cinco casos nuevos: control de dos corridas coherentes, falla tardía en la segunda y en la anterior, fallas y cierre sin inicio, y una corrida propia junto a una falla sin atribuir.
+- Los dos diagnósticos de Codex, en copias en el scratchpad: 0 residuales.
+- `test:registro-app` 86/86, con el PC en batería; `test:registro` bien.
+
+Sin commit ni push.
+
+## 2026-10-19 16:45 · Codex: REG-004/CLA-007, R1a/R1b verificados y residual R1c
+
+Los cinco casos iniciales y tres de CLA-006 pasan (0 residuales); historia 29 OK e integración local registro-app 86/86, consola sin errores y 11 sesiones sintéticas sin avisos. R1a consolida comparaciones y textos con todos los hechos; R1b conserva eventos sin inicio como sin atribuir. Fuentes cbdefdcc…cfda532 / 69747b22…fa367b identificadas y conservadas antes/después sobre TB main deaf16c y TC main f8f062e, sin commit.
+
+Entrega devuelta por R1c medio: dos cierres distintos de la misma corrida sustituyen el anterior y pueden borrar su LED quemado, único hecho recibido de esa falla. Con inicio, el resumen afirma ausencia y coherente=true pese al doble cierre avisado; sin inicio, sinAtribuir queda vacío. Cuatro casos válidos por línea: dos controles conservan el hecho y dos variantes de cierre repetido lo pierden; diagnóstico exit 1, no regresión aprobada. No se atribuye esa secuencia al emisor actual.
+
+REG-004 pendiente de corrección de Claude y aceptación humana posterior de Efraín. Doce devoluciones pre-cierre/once funcionales, sin reapertura funcional. Codex solo auditoría/coordinación, sin producto/contrato/CLAUDE.md, commit, push ni publicación. Sin instalador/aula/hardware o benchmark nuevos; AUD-01–06 conservan cierres.
+
+[Informe y evidencia](../TecnoCircuito/docs/VERIFICACION-REG004-CLA007-CODEX-2026-10-19.md).
+
+## 2026-10-19 17:30 · Claude: REG-004, todos los cierres de una corrida (R1c de Codex)
+
+Codex verificó R1a y R1b y devolvió REG-004 por **R1c**, que confirmé en el código: un segundo `simulacion_detenida` de la misma corrida reemplazaba al primero, y una falla que solo traía el primero desaparecía. Pasaba tanto en las corridas propias como en las sin atribuir.
+
+**Corrección** (`herramientas/historia-registro.js`):
+- Cada corrida guarda todos sus cierres (`cierres`). Sus hechos son la unión de todos ellos y de las fallas sueltas, y `cierre` queda como la unión.
+- Es coherente si los cierres coinciden entre sí y con las fallas que llegaron. Si no coinciden entre sí, se avisa y el final no se afirma.
+- Cada cierre conserva su paso («cierre 1 de 2: …»); el último lleva el resumen.
+- Un cierre repetido idéntico se avisa, pero no rompe la comparación.
+
+**Pruebas:**
+- `test:historia` 33 OK, con cuatro casos nuevos: un cierre único sin falla suelta, dos cierres contradictorios con y sin inicio, y un cierre repetido idéntico.
+- **Contra la versión anterior** (copia guardada, sha256 igual al de CLA-007) fallan exactamente los dos casos de R1c.
+- Los tres modos del diagnóstico de Codex, en copias en el scratchpad: 0 en todo.
+- `test:registro-app` 86/86, con el PC en batería; `test:registro` bien.
+
+Sin commit ni push.
+
+## 2026-10-19 16:59 · Codex: REG-004/CLA-008, software e integración verificados
+
+R1c verificado en sus dos reproducciones; R1/R1a/R1b y R2 conservan verificación en los casos ejecutados. Historia 33 OK, integración local Electron 86/86 sin errores de consola, 11 sesiones sintéticas leídas sin avisos. Dieciséis casos independientes aprobados: 5 originales, 3 residuales anteriores, 4 cierres y 4 ampliados; cero errores de esquema por línea. Los dos casos antes fallidos conservan sus hechos. Las contradicciones impiden comparar y el repetido idéntico mantiene la comparación válida.
+
+REG-004 pendiente_externo de aceptación humana de Efraín (unos 10 minutos); Codex registra/verifica el resultado técnico público, sin datos reales. No se acredita hardware, aula o instalador. No se suma cierre total, devolución ni reapertura: doce devoluciones acumuladas/once funcionales; AUD-01–06 conservan cierres.
+
+TC main f8f062e, TB main deaf16c, TS main 9ab3c86, entrega sin commit; lector 4ca98bf9…dfaf64 y prueba 1b3f8fb5…ffae0d estables antes/después. Trabajo existente y evidencia histórica preservados; sin producto/contrato/memorias ajenas, commit, push, etiqueta ni publicación por Codex. [Informe y evidencia](../TecnoCircuito/docs/VERIFICACION-REG004-CLA008-CODEX-2026-10-19.md).
+
+## 2026-10-19 17:45 · Codex verifica el lector de REG-004
+
+Codex verificó el software y la integración del lector ([verificación](../TecnoCircuito/docs/VERIFICACION-REG004-CLA008-CODEX-2026-10-19.md)):
+- 16 casos independientes aprobados;
+- `test:historia` 33 OK;
+- `test:registro-app` 86/86.
+
+REG-004 queda en `pendiente_externo` hasta la prueba de unos 10 minutos de Efraín. AUD-06 sigue cerrado. Commit y push con el sí de Efraín.

@@ -45,8 +45,16 @@ function crearVentana() {
   ventana.webContents.on('before-input-event', (e, input) => {
     if (input.type === 'keyDown' && input.key === 'F12' && puedeAbrirHerramientas()) ventana.webContents.toggleDevTools();
   });
-  // Si se abrieran por otro camino, se cierran
+  // Si se abrieran por otro camino, se cierran. Electron avisa devtools-opened cuando terminan de cargar (de 0,4 a más
+  // de 0,8 s con el PC lento), pero se ven y se pueden usar desde antes: mientras no haya PIN, un vigía las cierra en
+  // cuanto aparecen (AUD-06). Con el PIN, el vigía se apaga hasta cerrar la app.
   ventana.webContents.on('devtools-opened', () => { if (!puedeAbrirHerramientas()) ventana.webContents.closeDevTools(); });
+  const esta = ventana;
+  const vigia = setInterval(() => {
+    if (puedeAbrirHerramientas() || esta.isDestroyed()) clearInterval(vigia);
+    else if (esta.webContents.isDevToolsOpened()) esta.webContents.closeDevTools();
+  }, 50);
+  esta.on('closed', () => clearInterval(vigia));
 }
 
 function configurarSerial() {
