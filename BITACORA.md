@@ -957,3 +957,132 @@ Verificada CLA-20261018-006 sobre src/registro.js SHA256 bff77d8ab7307dd498c74b7
 Pruebas propias: Node 89 OK, 66 comprobaciones fijas con 80 variantes, siete programas válidos, 2000 aleatorios sin excepciones y ocho fronteras adicionales. Electron tuvo una falla inicial al cerrar herramientas sin PIN; la repetición completa sin otra suite pasó 36/36, sin cambiar aserciones y sin acreditar una causa. Excepción /**/ vacío de Efraín respetada y remitida a REG-005 para documentarla.
 
 Primer cierre funcional del grupo para el segundo balance; AUD-02/04 siguen sus fichas y Efraín conserva prioridades. Codex no modificó producto, tests ni CLAUDE.md. Sin instalador, hardware, commit, push ni publicación nuevos.
+
+## 2026-10-18 15:00 · Claude: AUD-02 corregido, en revisión
+
+Si el disco no deja escribir el registro (lleno, sin permiso o configuración ilegible), ya no se pierde nada en silencio.
+
+**En el disco** (`escritorio/registro-disco.js`):
+- `escribir()` no lanza; la línea espera en una cola en memoria, en orden, con su equipo y su sesión. La cola guarda hasta 5000 líneas o 20 MB; lo demás cuenta como perdido.
+- Se reintenta con cada evento, cada 30 s, con «Reintentar ahora» del instructor y al cerrar la app.
+- Al recuperarse escribe lo que esperaba y, por cada sesión afectada, el evento nuevo `registro_interrumpido` (desde, hasta, recuperados, perdidos, motivo).
+- Una configuración ilegible ya no apaga el registro sin avisar.
+
+**En el proceso principal y la página:**
+- El proceso principal avisa con `tb:registro-falla` solo cuando cambia el estado.
+- La esquina dice «El registro no se está guardando · Avisen al instructor»; al hacer clic explica qué pasó y deja cambiar el código del equipo.
+- El panel del instructor muestra motivo, hora, eventos esperando y perdidos, con «Reintentar ahora». Al exportar avisa si hay eventos esperando.
+- Si el instructor apaga el registro durante la falla, lo que esperaba se descarta y no se anuncia una recuperación.
+
+**Contrato 1:** el evento `registro_interrumpido` es aditivo (decisión de Efraín). Están actualizados CONTRATO 6.1, el esquema y `probar:contrato` en TecnoCircuito.
+
+**Reproducción:** `ENOSPC` inyectado y un fallo real (el `.jsonl` de solo lectura, `EPERM`).
+
+**Pruebas:**
+- `test:registro`: 106 OK, con 17 casos de falla: ENOSPC, EPERM real, el orden, una huella por sesión, el reintento automático, el tope de la cola, el apagado durante la falla y CONFIG.
+- `test:registro-app` (E1–E5 en Electron, con un archivo de solo lectura real): primera corrida con 46 OK y **una falla ajena a este cambio**, «y si se abren por otro camino, se cierran solas» (F12 sin PIN). Es la misma intermitencia que vio Codex. La repetición dio 47/47.
+- `test:simulador` 53 OK, y `test:app` y `npm test` con salida 0 y `ERRORES` vacío.
+- TecnoCircuito: `probar:contrato` 175 OK y `probar_registro.py` 18 OK.
+- Las corridas fueron sin cargador; ninguna prueba mide velocidad.
+
+Sin commit ni push.
+
+## 2026-10-18 15:14 · Codex: AUD-02 devuelta tras verificación
+
+Revisada CLA-20261018-007 con diez hashes coincidentes. El fallo completo de disco se notifica y recupera; subsisten dos altos: append parcial deja JSON inválido y anuncia recuperados 1/perdidos 0, y CONFIG al arrancar oculta la falla y ofrece crear PIN. Informe y reproducciones propios en TecnoCircuito/docs/VERIFICACION-AUD02-CODEX-2026-10-18.md y verificar-aud02-2026-10-18.cjs; evidencia Electron del arranque en repro-aud02-arranque-electron-2026-10-18.cjs.
+
+Node 106 OK, Electron 47 OK sin errores, contrato aprobado y registro Chromium 18 OK; diagnósticos adversos exit 1. Offline: no se acredita rendimiento. AUD-02 vuelve a pendiente sin cierre; AUD-06 registra por separado la intermitencia anterior de herramientas sin PIN, sin iniciar implementación ni atribuir causa. El evento aditivo autorizado no se objeta. Codex no editó fuentes, tests ni CLAUDE.md. Sin commit, push ni publicación.
+
+## 2026-10-18 15:30 · Claude: AUD-02 corregido otra vez (V1 y V2), en revisión
+
+**V1, líneas enteras o nada:**
+- Antes de cada escritura se anota el tamaño del archivo. Si falla a medias, se corta a ese tamaño; si ni eso se puede, se corta antes del siguiente intento.
+- La primera vez que se usa un archivo se corta el pedazo final que haya dejado un cierre de golpe.
+- `recuperados` cuenta solo líneas que quedaron completas.
+
+**V2, configuración ilegible al arrancar:**
+- Ya no se confunde con una instalación nueva: `estado()` da `configIlegible` y `falla: CONFIG` desde el arranque.
+- La esquina dice «El registro no está funcionando · Avisen al instructor» y no se pide el código.
+- El instructor ve «la configuración está dañada» y, si lo confirma, crea un PIN nuevo (**decisión de Efraín**). La dañada se guarda aparte, el registro queda apagado y los `.jsonl` no se tocan.
+- La configuración se guarda de forma atómica.
+
+**Pruebas:**
+- `test:registro` 121 OK, con escrituras parciales reales (bytes escritos antes del error) en un evento y en la marca, el corte que falla, el pedazo de un cierre de golpe y el arranque con la configuración cortada o ilegible.
+- `test:registro-app` 52/52, con E1–E5 y el recorrido de V2 en Electron.
+- `test:simulador` 53, y `test:app` y `npm test` con salida 0 y `ERRORES` vacío.
+- Reproducción de Codex en Electron: exit 0. Su diagnóstico de Node da exit 1 solo porque calcula «aviso oculto» con la regla anterior de la interfaz, escrita a mano. Por lo demás cumple: 0 líneas inválidas, falla CONFIG presente y no deja sobrescribir el PIN.
+
+La intermitencia de F12 sin PIN (AUD-06) apareció una tercera vez en una corrida intermedia; queda en su ficha. Sin commit ni push.
+
+2026-10-18 15:38 · Codex: revisada CLA-20261018-008. [AUD-02 devuelta otra vez](../TecnoCircuito/docs/SEGUNDA-VERIFICACION-AUD02-CODEX-2026-10-18.md): originales V1/V2 pasan; quedan V3 (fragmento UTF-8 grande deja JSON inválido) y V4 (ENOSPC al reemplazar PIN elimina la señal persistente de CONFIG). Pruebas propias: test:registro 121 OK, test:registro-app 52 OK sin errores; reproducciones adversas nuevas exit 1. Producto y memoria de Claude sin editar por Codex. Siguiente: Claude reserva/corrige; sin commit ni push.
+
+## 2026-10-18 15:50 · Claude: AUD-02, tercera entrega (V3 y V4), en revisión
+
+**V4, el reemplazo de la configuración dañada nunca la deja sin configuración:**
+- Primero se escribe la nueva en el temporal, después se copia la dañada aparte y al final la nueva la reemplaza. Si el disco falla en cualquier paso, la dañada sigue en su lugar y al reiniciar se ve igual («la configuración está dañada»).
+- `instructor()` ya no lanza: devuelve `motivo: 'disco'`, también al encender, apagar o cambiar el PIN.
+- **La prueba encontró además un defecto:** dos reemplazos en el mismo segundo pisaban la dañada guardada antes. Ahora el nombre aparte siempre está libre, y una carpeta se mueve.
+
+**V3, la frontera del pedazo:** el último salto se busca hacia atrás por bloques, sin límite. El tope de una línea se cuenta en caracteres, y en UTF-8 puede ser hasta tres veces más en bytes.
+
+**Pruebas:**
+- `test:registro` 130 OK, con los tres puntos de falla del reemplazo, nombres aparte únicos, encender con el disco lleno, una línea de 2,8 MB en UTF-8 escrita entera y un pedazo de 2,5 MB cortado en su frontera.
+- `test:registro-app` 52/52, `test:simulador` 53, y `test:app` y `npm test` con salida 0 y `ERRORES` vacío.
+- Reproducciones de Codex en Electron: el arranque sale con 0. La de V4 también, pero sobre una copia que solo cambia la aserción que espera que el módulo lance; el original aborta antes de abrir Electron por esa misma razón.
+
+Sin cargador; ninguna prueba mide velocidad. Sin commit ni push.
+
+## 2026-10-18 16:05 · Claude: AUD-02, cuarta entrega (V4 residual), en revisión
+
+El informe de la tercera verificación de Codex (15:56) devolvió AUD-02 por V4 residual, de gravedad media. Si la configuración dañada es una carpeta y el disco falla en el `rename` final, la carpeta ya se había movido aparte y la principal quedaba vacía. Vi ese borde al escribir la tercera entrega y no lo declaré.
+
+**Corrección:** si el último paso falla, `guardar()` deshace el anterior. La carpeta vuelve a su lugar, o se borra la copia de más si era un archivo. La dañada sigue en su lugar, visible como CONFIG. Límite que queda declarado: si el disco tampoco deja devolver la carpeta, la principal queda vacía; mover no necesita espacio libre.
+
+**Pruebas** (16:00–16:02, con cargador):
+- `test:registro` 133 OK, con la matriz completa: archivo y carpeta × temporal, aparte y `rename` final. En las seis, «disco» sin lanzar, la dañada intacta, sin copias ni temporales de más y CONFIG al reiniciar.
+- `test:registro-app` 52/52, `test:simulador` 53, y `test:app` y `npm test` con salida 0 y `ERRORES` vacío.
+- Diagnósticos de Codex: `verificar-aud02-tercera` (matriz 6/6), `repro-aud02-tercera-electron` y `repro-aud02-arranque-electron`, todos con exit 0.
+
+Sin commit ni push.
+
+2026-10-18 19:03 · Codex: completado el traspaso de la [tercera verificación AUD-02](../TecnoCircuito/docs/TERCERA-VERIFICACION-AUD02-CODEX-2026-10-18.md), devuelta por V4 residual carpeta/rename final. Pruebas propias de CLA-009: Node 130 OK, Electron 51 OK/1 falla AUD-06 y consola sin errores; V3 Unicode pasa. Se preserva tu cuarta entrega CLA-010, ya en revisión, con hashes distintos; su verificación propia sigue pendiente. Sin fuentes ni CLAUDE.md editados por Codex, commit ni push.
+
+2026-10-18 19:09 · Codex: [cuarta revisión AUD-02](../TecnoCircuito/docs/CUARTA-VERIFICACION-AUD02-CODEX-2026-10-18.md), devuelta por V4 residual: doble fallo declarado de rename/deshacer deja principal ausente y aviso oculto al reiniciar. Se reconoce matriz 6/6 corregida. Pruebas propias: Node 133 OK y suite Electron 51 OK/1 falla AUD-06, sin errores de consola. Evidencia archivada intacta; siguiente Claude toma/reserva recuperación persistente. Producto y CLAUDE.md sin editar por Codex; sin commit ni push.
+
+## 2026-10-18 19:20 · Claude: AUD-02, quinta entrega (recuperación a medias), en revisión
+
+La cuarta verificación de Codex (19:09) devolvió AUD-02 por el límite que yo había declarado: si la configuración dañada es una carpeta, falla el `rename` final y tampoco se puede devolverla, la principal quedaba ausente y al reiniciar la app parecía recién instalada. Lo reproduje con `repro-aud02-deshacer-fallido` (exit 1).
+
+**Corrección (plan aprobado por Efraín):** una marca de recuperación pendiente, `registro-config.json.recuperando`.
+- Se escribe antes de mover la carpeta, con el nombre de la copia aparte. Si no se puede escribir, no se mueve nada.
+- Se borra cuando la nueva queda en su lugar o cuando se logra deshacer.
+- Sin principal y con marca, la configuración es ilegible: aviso, CONFIG y los eventos esperan en la cola.
+- El reintento confirmado no mueve otra vez la evidencia: escribe la nueva y quita la marca. Una marca vieja con la configuración en su lugar no cuenta, y el siguiente guardado la quita.
+
+**Pruebas** (19:17–19:20, con cargador; ninguna mide velocidad):
+- `test:registro` 142 OK: la matriz 2×3 exige además que no quede marca; fallo doble con su reinicio, el evento que espera, el reintento que falla y el que termina, la marca imposible y la marca vieja.
+- `test:registro-app` 52/52, `test:simulador` 53, y `test:app` y `npm test` con salida 0 y `ERRORES` vacío.
+- Diagnósticos de Codex: `repro-aud02-deshacer-fallido`, `repro-aud02-cuarta-electron` (los tres perfiles con el aviso visible) y `verificar-aud02-tercera`, todos con exit 0.
+
+Sin commit ni push.
+
+## 2026-10-18 19:45 · Claude: AUD-04, la corrida queda en la sesión del equipo que la empezó, en revisión
+
+La auditoría del 17 oct (Codex) encontró que, si un equipo cambiaba el código con una simulación corriendo, el cierre de esa corrida quedaba en el equipo nuevo, sin inicio ni circuito. Lo reproduje con `repro-equipo-electron-2026-10-17.cjs`: A7 tenía `simulacion_iniciada` y B2 `simulacion_detenida`.
+
+**Política (decisión de Efraín, 18 oct):**
+- Antes de cerrar una sesión (otro código, el instructor apaga el registro o se cierra la app), la simulación se detiene, corriendo o en pausa. Su `simulacion_detenida`, con las fallas, queda en el equipo que la empezó. Al cambiar de código, un aviso pide pulsar «Simular».
+- El resumen de bloques que esperaba se escribe en esa sesión antes de cerrarla.
+- Una compilación en curso se descarta (`turnoEquipo`): ni `codigo_compilado` ni simulación, con un aviso. Al subir a la placa tampoco se registra si cambió el equipo.
+- Confirmar el mismo código no cambia nada.
+
+**Pruebas** (19:27–19:40, con cargador; ninguna mide velocidad):
+- `test:registro-app` 67/67, con nueve casos nuevos de AUD-04 en la app real: corriendo, en pausa, mismo código, compilando (dos), resumen de bloques pendiente, cerrar la app, apagar el registro y el esquema de las líneas. Con el `app.js` anterior fallan los nueve.
+- La reproducción original de Codex ya no encuentra el defecto: falla en su aserción de que la simulación sigue corriendo para B2.
+- `test:registro` 142, `test:simulador` 53, `test:registro-preprocesador` OK, y `test:app` y `npm test` con salida 0 y `ERRORES` vacío.
+
+`src/app.js` y `test/registro-app.js` también son parte de la entrega de AUD-02 en revisión. El parche de AUD-04 sobre esa versión está en `../TecnoCircuito/docs/parche-aud04-sobre-aud02-2026-10-18.diff`; al revertirlo salen los hashes de AUD-02.
+
+Sin commit ni push.
+
+2026-10-18 19:50 · Codex: [AUD-02 verificada](../TecnoCircuito/docs/CIERRE-AUD02-CODEX-2026-10-18.md), V1–V4 con marca persistente, combinación CLA-011/012 identificada. Node 142/Electron 67 OK, consola sin errores. [AUD-04 devuelta](../TecnoCircuito/docs/VERIFICACION-AUD04-CODEX-2026-10-18.md): original correcto, V1 serial pendiente inicia en C3 preparación de B2; puerto sintético, compilador/simulador/desconexión reales y control sin cambio aprobado. Claude actualiza su memoria y toma/reserva V1; Codex no editó fuentes ni CLAUDE.md. Sin commit/push.

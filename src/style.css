@@ -326,6 +326,9 @@ details.subir-detalle pre { max-height: 220px; overflow: auto; font-family: var(
 #avisoRegistro::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 7px; border-radius: 50%; background: var(--accent); vertical-align: 1px; }
 #avisoRegistro:hover, #avisoRegistro:focus-visible { border-color: var(--accent); }
 #avisoRegistro[hidden] { display: none; }
+/* El disco no deja guardar el registro (AUD-02): el aviso cambia de color, sin tapar nada */
+#avisoRegistro.falla { background: var(--warn-soft); border-color: var(--danger); font-weight: 600; }
+#avisoRegistro.falla::before { background: var(--danger); }
 #avisoRegistro:not([hidden]) ~ #avisoActualizacion { bottom: 56px; }
 
 /* ---------- Blockly ---------- */

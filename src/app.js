@@ -1484,18 +1484,69 @@ const registroEventos = crearRegistroEventos({
   nuevaSesion: () => (window.crypto && crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2)),
 });
 let registroEncendido = false;
+// Si el disco no deja escribir (lleno, sin permiso…), la app de escritorio lo avisa: {motivo, desde, pendientes,
+// perdidos}. Lo que no se pudo escribir espera y se escribe al recuperarse (AUD-02).
+let registroFalla = null;
+// La configuración del registro existe pero no se puede leer: no se sabe si estaba encendido, así que no se registra
+// nada y la esquina lo avisa hasta que el instructor cree un PIN nuevo (AUD-02-V2).
+let registroConfigIlegible = false;
 let tResumenBloques = null;
 
 function pintarAvisoRegistro() {
   const a = $('avisoRegistro');
-  a.hidden = !registroEncendido;
-  a.textContent = registroEventos.activo() ? `Esta sesión se registra · Equipo ${registroEventos.equipo()}` : 'Esta sesión se registra · Falta el código del equipo';
+  const falla = !!registroFalla || registroConfigIlegible;
+  a.hidden = !registroEncendido && !registroConfigIlegible;
+  a.classList.toggle('falla', falla);
+  a.title = falla ? 'Qué pasó con el registro' : 'Cambiar el código del equipo';
+  a.textContent = registroConfigIlegible ? 'El registro no está funcionando · Avisen al instructor'
+    : registroFalla ? 'El registro no se está guardando · Avisen al instructor'
+      : registroEventos.activo() ? `Esta sesión se registra · Equipo ${registroEventos.equipo()}` : 'Esta sesión se registra · Falta el código del equipo';
 }
 async function iniciarRegistro() {
   if (!registroDisponible) return;
-  try { registroEncendido = (await escritorio.registro.estado()).activo; } catch (e) { registroEncendido = false; }
+  try {
+    const estado = await escritorio.registro.estado();
+    registroEncendido = estado.activo;
+    registroFalla = estado.falla || null;
+    registroConfigIlegible = !!estado.configIlegible;
+  } catch (e) { registroEncendido = false; }
+  if (escritorio.registro.alFalla) escritorio.registro.alFalla(({ falla, fin }) => {
+    const habiaFalla = !!registroFalla;
+    registroFalla = falla || null;
+    pintarAvisoRegistro();
+    if (habiaFalla && !registroFalla && fin === 'escrito') mostrarToast('El registro volvió a guardarse.');
+  });
   pintarAvisoRegistro();
   if (registroEncendido) pedirEquipo();
+}
+/** El aviso de la esquina con la configuración ilegible: no se registra nada hasta que el instructor la arregle. */
+function explicarConfigIlegible() {
+  modal({
+    titulo: 'El registro no está funcionando',
+    cuerpo: 'La configuración del registro de este computador está dañada, así que no se está registrando nada. Pueden seguir trabajando; avisen al instructor.',
+    botones: [{ texto: 'Entendido', primario: true }]
+  });
+}
+/** El aviso de la esquina en falla: qué pasó, sin detener el trabajo. */
+function explicarFallaRegistro() {
+  modal({
+    titulo: 'El registro no se está guardando',
+    cuerpo: 'Este computador no pudo guardar el registro (por ejemplo, el disco está lleno). Pueden seguir trabajando; avisen al instructor.',
+    botones: [
+      { texto: 'Cambiar el código del equipo', accion: () => { setTimeout(() => pedirEquipo(registroEventos.equipo() || ''), 50); } },
+      { texto: 'Entendido', primario: true }
+    ]
+  });
+}
+const MOTIVOS_DISCO = {
+  ENOSPC: 'el disco está lleno', EPERM: 'sin permiso para escribir', EACCES: 'sin permiso para escribir',
+  EROFS: 'el disco es de solo lectura', EBUSY: 'el archivo está ocupado', CONFIG: 'no se pudo leer la configuración del registro'
+};
+/** Para el instructor: «No se guarda desde las 14:40 · sin permiso para escribir · 7 eventos esperando». */
+function textoFallaRegistro(f) {
+  const hora = new Date(f.desde).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: false });
+  return `No se guarda desde las ${hora} · ${MOTIVOS_DISCO[f.motivo] || `error del disco (${f.motivo})`} · ` +
+    `${f.pendientes} ${f.pendientes === 1 ? 'evento esperando' : 'eventos esperando'}` + (f.perdidos ? ` · ${f.perdidos} perdidos` : '');
 }
 /** El equipo escribe su código y lo confirma («¿Son el equipo A7?»): así un PC compartido no mezcla registros. */
 function pedirEquipo(previo) {
@@ -1568,24 +1619,44 @@ function registrarCompilacion(r, codigo) {
 function campoPin(id, etiqueta) {
   return el('label', { for: id }, etiqueta, el('input', { class: 'entrada', id, type: 'password', inputmode: 'numeric', autocomplete: 'off', maxlength: '8' }));
 }
-const MOTIVOS_PIN = { pin: 'Ese no es el PIN.', 'pin-invalido': 'El PIN debe tener de 4 a 8 dígitos.', espera: 'Demasiados intentos. Espera un minuto.' };
+const MOTIVOS_PIN = {
+  pin: 'Ese no es el PIN.', 'pin-invalido': 'El PIN debe tener de 4 a 8 dígitos.', espera: 'Demasiados intentos. Espera un minuto.',
+  'config-ilegible': 'La configuración está dañada: confirma que quieres crear un PIN nuevo.', disco: 'No se pudo guardar en el disco.'
+};
+/** Crear el PIN del instructor: la primera vez o, con la configuración dañada, uno nuevo (`reemplazarIlegible`). */
+function crearPinInstructor(reemplazarIlegible) {
+  const error = el('p', { class: 'error' });
+  modal({
+    titulo: reemplazarIlegible ? 'Registro de eventos: crear un PIN nuevo' : 'Registro de eventos: crear el PIN del instructor',
+    cuerpo: [el('p', null, 'Este PIN protege la opción de encender el registro y de exportar los archivos. Es de 4 a 8 dígitos y vale solo para este computador.'),
+      campoPin('pinNuevo', 'PIN'), campoPin('pinRepetido', 'Repite el PIN'), error],
+    botones: [{ texto: 'Cancelar' }, { texto: 'Crear PIN', primario: true, accion: async () => {
+      const pin = $('pinNuevo').value;
+      if (pin !== $('pinRepetido').value) { error.textContent = 'Los dos PIN no son iguales.'; return false; }
+      const r = await escritorio.registro.instructor({ accion: 'crear-pin', pin, reemplazarIlegible: !!reemplazarIlegible });
+      if (!r.ok) { error.textContent = MOTIVOS_PIN[r.motivo] || 'No se pudo crear el PIN.'; return false; }
+      registroConfigIlegible = !!r.configIlegible;
+      pintarAvisoRegistro();
+      setTimeout(() => panelInstructor(pin, r), 50);
+    } }]
+  });
+}
 async function abrirInstructor() {
   if (!registroDisponible) return;
   const e = await escritorio.registro.estado();
   const error = el('p', { class: 'error' });
-  if (!e.tienePin) {
+  if (e.configIlegible) {
+    // AUD-02-V2: no es una instalación nueva. Se dice qué pasó y el PIN nuevo se crea solo si el instructor lo confirma.
     modal({
-      titulo: 'Registro de eventos: crear el PIN del instructor',
-      cuerpo: [el('p', null, 'Este PIN protege la opción de encender el registro y de exportar los archivos. Es de 4 a 8 dígitos y vale solo para este computador.'),
-        campoPin('pinNuevo', 'PIN'), campoPin('pinRepetido', 'Repite el PIN'), error],
-      botones: [{ texto: 'Cancelar' }, { texto: 'Crear PIN', primario: true, accion: async () => {
-        const pin = $('pinNuevo').value;
-        if (pin !== $('pinRepetido').value) { error.textContent = 'Los dos PIN no son iguales.'; return false; }
-        const r = await escritorio.registro.instructor({ accion: 'crear-pin', pin });
-        if (!r.ok) { error.textContent = MOTIVOS_PIN[r.motivo] || 'No se pudo crear el PIN.'; return false; }
-        setTimeout(() => panelInstructor(pin, r), 50);
-      } }]
+      titulo: 'Registro de eventos: la configuración está dañada',
+      cuerpo: [el('p', null, el('b', null, 'No se puede leer la configuración del registro de este computador:'), ' ni el PIN ni si estaba encendido. Por eso no se está registrando nada.'),
+        el('p', null, 'Para volver a usarlo, crea un PIN nuevo. El archivo dañado se guarda aparte, los registros guardados no se tocan y el registro queda apagado hasta que lo enciendas.')],
+      botones: [{ texto: 'Cancelar' }, { texto: 'Crear un PIN nuevo', primario: true, accion: () => { setTimeout(() => crearPinInstructor(true), 50); } }]
     });
+    return;
+  }
+  if (!e.tienePin) {
+    crearPinInstructor(false);
     return;
   }
   modal({
@@ -1602,28 +1673,45 @@ async function abrirInstructor() {
 }
 function panelInstructor(pin, estado) {
   const nota = el('p', { class: 'muted' });
+  // Si el disco falla: qué pasa, desde cuándo y cuánto espera, con «Reintentar ahora» (AUD-02)
+  const lineaFalla = el('p', { class: 'error', id: 'fallaRegistro' }, estado.falla ? textoFallaRegistro(estado.falla) : null);
+  lineaFalla.hidden = !estado.falla;
   modal({
     titulo: 'Registro de eventos (instructor)',
     cuerpo: [
       el('p', null, estado.activo
         ? el('b', null, 'El registro está encendido en este computador.')
         : el('b', null, 'El registro está apagado en este computador.')),
+      lineaFalla,
       el('p', null, 'Enciéndelo solo con el consentimiento de los acudientes y el asentimiento de los aprendices. Con el registro encendido, cada equipo escribe su código al abrir y la app lo avisa en pantalla.'),
       el('p', { class: 'muted' }, `Archivos guardados: ${estado.archivos || 0} (en %APPDATA%\\TecnoBloques\\registros).`), nota
     ],
     botones: [
+      ...(estado.falla ? [{ texto: 'Reintentar ahora', accion: async () => {
+        const r = await escritorio.registro.instructor({ accion: 'reintentar', pin });
+        if (!r.ok) { nota.textContent = MOTIVOS_PIN[r.motivo] || 'No se pudo reintentar.'; return false; }
+        lineaFalla.hidden = !r.falla;
+        lineaFalla.textContent = r.falla ? textoFallaRegistro(r.falla) : '';
+        nota.textContent = r.falla ? 'Todavía no se puede escribir. Revisa el espacio y los permisos del disco.' : 'Listo: el registro volvió a guardarse.';
+        return false;
+      } }] : []),
       { texto: estado.activo ? 'Apagar el registro' : 'Encender el registro', accion: async () => {
         if (estado.activo) registroEventos.terminar(); // la última línea del equipo, antes de apagar
         const r = await escritorio.registro.instructor({ accion: 'activar', pin, activo: !estado.activo });
         if (!r.ok) { nota.textContent = MOTIVOS_PIN[r.motivo] || 'No se pudo cambiar.'; return false; }
         registroEncendido = r.activo;
+        registroFalla = r.falla || null;
         pintarAvisoRegistro();
         mostrarToast(r.activo ? 'Registro encendido en este computador.' : 'Registro apagado en este computador.');
         if (r.activo) setTimeout(pedirEquipo, 50);
       } },
       { texto: 'Exportar registros', accion: async () => {
         const r = await escritorio.registro.exportar(pin);
-        if (r.ok) { nota.textContent = `Se copiaron ${r.archivos} archivos a ${r.carpeta}.`; return false; }
+        if (r.ok) {
+          nota.textContent = `Se copiaron ${r.archivos} archivos a ${r.carpeta}.` +
+            (r.pendientes ? ` Hay ${r.pendientes} eventos esperando que no están en la copia.` : '');
+          return false;
+        }
         if (r.motivo !== 'cancelado') nota.textContent = r.motivo === 'sin-archivos' ? 'Todavía no hay registros en este computador.' : (MOTIVOS_PIN[r.motivo] || 'No se pudo copiar: ' + (r.mensaje || r.motivo));
         return false;
       } },
@@ -2050,7 +2138,12 @@ function iniciar() {
     if (e.ctrlKey && e.altKey && e.shiftKey && e.code === 'KeyR') { e.preventDefault(); abrirInstructor(); }
   });
   // Registro de eventos: el equipo escribe su código al abrir (si el instructor lo encendió en este PC)
-  $('avisoRegistro').addEventListener('click', () => { if (registroEncendido) pedirEquipo(registroEventos.equipo() || ''); });
+  $('avisoRegistro').addEventListener('click', () => {
+    if (registroConfigIlegible) { explicarConfigIlegible(); return; }
+    if (!registroEncendido) return;
+    if (registroFalla) explicarFallaRegistro();
+    else pedirEquipo(registroEventos.equipo() || '');
+  });
   window.addEventListener('pagehide', () => registroEventos.terminar());
   iniciarRegistro();
   window.addEventListener('resize', () => Blockly.svgResize(espacio));

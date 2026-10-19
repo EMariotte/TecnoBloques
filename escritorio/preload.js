@@ -15,10 +15,12 @@ contextBridge.exposeInMainWorld('tbEscritorio', {
   /** Registro de eventos por equipo (contrato con TecnoCircuito, sección 6.1) */
   registro: {
     estado: () => ipcRenderer.invoke('tb:registro-estado'),
-    /** {accion: 'crear-pin' | 'entrar' | 'activar' | 'cambiar-pin', pin, nuevoPin, activo} */
+    /** {accion: 'crear-pin' | 'entrar' | 'activar' | 'cambiar-pin' | 'reintentar', pin, nuevoPin, activo} */
     instructor: (peticion) => ipcRenderer.invoke('tb:registro-instructor', peticion),
     exportar: (pin) => ipcRenderer.invoke('tb:registro-exportar', { pin }),
     escribir: (linea) => ipcRenderer.send('tb:registrar', linea),
+    /** fn({falla, fin}): falla = {motivo, desde, pendientes, perdidos} o null; fin = 'escrito' | 'apagado' al terminar */
+    alFalla: (fn) => { ipcRenderer.on('tb:registro-falla', (_e, d) => fn(d)); },
   },
   alProgreso: (fn) => {
     const h = (_e, m) => fn(m);

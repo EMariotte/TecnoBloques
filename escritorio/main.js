@@ -9,8 +9,12 @@ const { crearRegistroDisco } = require('./registro-disco');
 
 const recursos = app.isPackaged ? process.resourcesPath : path.join(__dirname, 'recursos');
 const arduino = new Arduino({ recursos, trabajo: path.join(app.getPath('userData'), 'arduino') });
-// Registro de eventos por equipo: %APPDATA%\TecnoBloques\registros\ (contrato con TecnoCircuito, sección 6.1)
-const registroEventos = crearRegistroDisco({ carpeta: app.getPath('userData') });
+// Registro de eventos por equipo: %APPDATA%\TecnoBloques\registros\ (contrato con TecnoCircuito, sección 6.1). Si el
+// disco falla, la página lo sabe por tb:registro-falla y lo muestra (AUD-02).
+const registroEventos = crearRegistroDisco({
+  carpeta: app.getPath('userData'),
+  alCambiar: (falla, fin) => { if (ventana && !ventana.isDestroyed()) ventana.webContents.send('tb:registro-falla', { falla, fin }); }
+});
 let ventana = null;
 let puertoPreferido = null; // lo elige el aprendiz en el editor; lo usa el monitor serial (Web Serial)
 let ocupado = false;
@@ -94,7 +98,8 @@ ipcMain.handle('tb:registro-exportar', async (_e, { pin } = {}) => {
   try { return registroEventos.exportar({ pin, destino: r.filePaths[0] }); } catch (e) { return { ok: false, motivo: 'disco', mensaje: e.message }; }
 });
 // Una línea por evento, en orden: send (no invoke) para que el último evento salga aunque la ventana se esté cerrando.
-ipcMain.on('tb:registrar', (_e, linea) => { try { registroEventos.escribir(linea); } catch (e) { /* sin permiso de escritura: no molestar */ } });
+// escribir() no lanza: si el disco falla, la línea espera y la página recibe tb:registro-falla.
+ipcMain.on('tb:registrar', (_e, linea) => registroEventos.escribir(linea));
 
 /* ---------- Actualización automática desde GitHub Releases ---------- */
 // Registro de la actualización: %APPDATA%\TecnoBloques\registro-actualizacion.txt (se reinicia si pasa de 1 MB)
@@ -147,3 +152,5 @@ app.whenReady().then(() => {
   setTimeout(buscarActualizacion, 5000);
 });
 app.on('window-all-closed', () => app.quit());
+// Si el disco falló, un último intento de escribir lo que espera antes de cerrar.
+app.on('will-quit', () => registroEventos.reintentar());

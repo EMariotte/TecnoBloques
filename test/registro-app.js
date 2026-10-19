@@ -164,6 +164,71 @@ const LED = {
   await win.evaluate(() => cargarEjemplo(EJEMPLOS.find((e) => e.id === 'eco')));
   await win.waitForTimeout(300);
   revisar(leerRegistro().length === antes, 'sin código del equipo no se escribe nada');
+
+  // 6b. AUD-02: el disco deja de escribir (el archivo del día, de solo lectura: un fallo real, sin ganchos de prueba)
+  await win.locator('#avisoRegistro').click();
+  await win.waitForTimeout(200);
+  await win.locator('#codigoEquipo').fill('C3');
+  await win.locator('#codigoEquipo').press('Enter');
+  await win.waitForTimeout(200);
+  await boton(win, 'Sí, somos ese equipo');
+  await win.waitForTimeout(300);
+  const archivoC3 = fs.readdirSync(registros).find((f) => f.startsWith('C3-'));
+  fs.chmodSync(path.join(registros, archivoC3), 0o444);
+  await win.evaluate(() => cargarEjemplo(EJEMPLOS.find((e) => e.id === 'eco')));
+  revisar(await esperar(win, () => $('avisoRegistro').classList.contains('falla'), 5000) &&
+    await win.evaluate(() => $('avisoRegistro').textContent) === 'El registro no se está guardando · Avisen al instructor',
+  'E1: el disco no deja escribir y la esquina lo dice: «El registro no se está guardando · Avisen al instructor»');
+  await win.screenshot({ path: path.join(SALIDA, 'registro_4_falla.png') });
+  await win.evaluate((circuito) => { const p = proyectoActual(); p.circuito = circuito; cargarProyecto(p, true); }, LED);
+  await win.locator('#btnSimularBarra').click();
+  revisar(await esperar(win, () => simulador.sim && simulador.sim.medidas().msSimulados > 300), 'E1: con la falla, compilar y simular siguen funcionando');
+  await win.evaluate(() => detenerSimulacion());
+  await win.waitForTimeout(300);
+  await win.locator('#avisoRegistro').click();
+  await win.waitForTimeout(200);
+  revisar(await titulo(win) === 'El registro no se está guardando' && /Pueden seguir trabajando; avisen al instructor/.test(await win.locator('#modalCuerpo').textContent()),
+    'E2: el aviso explica qué pasó, sin detener el trabajo');
+  await boton(win, 'Entendido');
+  await win.waitForTimeout(200);
+  await win.keyboard.press('Control+Alt+Shift+KeyR');
+  await win.waitForTimeout(300);
+  await win.locator('#pinInstructor').fill('2468');
+  await boton(win, 'Entrar');
+  await win.waitForTimeout(300);
+  const lineaFalla = await win.evaluate(() => ($('fallaRegistro') && !$('fallaRegistro').hidden ? $('fallaRegistro').textContent : ''));
+  const esperando = Number((lineaFalla.match(/(\d+) eventos? esperando/) || [])[1]);
+  revisar(/^No se guarda desde las \d{2}:\d{2} · sin permiso para escribir · \d+ eventos? esperando$/.test(lineaFalla) && esperando > 2,
+    `E3: el panel del instructor lo detalla: «${lineaFalla}»`);
+  await win.screenshot({ path: path.join(SALIDA, 'registro_5_falla_instructor.png') });
+  revisar(leerRegistro().filter((l) => l.equipo === 'C3').length === 1, 'mientras falla, el archivo no cambia (solo sesion_iniciada)');
+  fs.chmodSync(path.join(registros, archivoC3), 0o666);
+  await boton(win, 'Reintentar ahora');
+  await win.waitForTimeout(400);
+  revisar(/volvió a guardarse/.test(await win.locator('#modalCuerpo').textContent()) && await win.evaluate(() => $('fallaRegistro').hidden),
+    'E4: «Reintentar ahora» escribe lo que esperaba');
+  revisar(await win.evaluate(() => !$('toast').hidden && $('toast').textContent === 'El registro volvió a guardarse.'), 'E4: y la app lo dice: «El registro volvió a guardarse.»');
+  await boton(win, 'Cerrar');
+  await win.waitForTimeout(200);
+  revisar(await win.evaluate(() => !$('avisoRegistro').classList.contains('falla') && $('avisoRegistro').textContent === 'Esta sesión se registra · Equipo C3'),
+    'E4: la esquina vuelve a «Esta sesión se registra · Equipo C3»');
+  const c3 = leerRegistro().filter((l) => l.equipo === 'C3');
+  const marca = c3[c3.length - 1];
+  console.log('      C3:', c3.map((l) => l.tipo).join(', '));
+  // Entre E3 y el reintento puede sumarse el resumen de bloques (sale 3 s después del último cambio)
+  const recuperadas = c3.slice(1, -1);
+  revisar(c3[0].tipo === 'sesion_iniciada' && recuperadas.length >= esperando && c3.every((l) => l.sesion === c3[0].sesion) &&
+    c3.slice(0, -1).every((l, i, a) => i === 0 || l.t >= a[i - 1].t),
+  `E4: los ${recuperadas.length} eventos que esperaban quedaron en orden y con su sesión original`);
+  revisar(marca.tipo === 'registro_interrumpido' && marca.datos.recuperados === recuperadas.length && marca.datos.perdidos === 0 &&
+    ['EPERM', 'EACCES'].includes(marca.datos.motivo) && marca.datos.hasta >= marca.datos.desde,
+  `E5: al final, registro_interrumpido (recuperados ${marca.datos && marca.datos.recuperados}, perdidos ${marca.datos && marca.datos.perdidos}, ${marca.datos && marca.datos.motivo})`);
+  if (fs.existsSync(REVISOR)) {
+    const { revisarEvento } = require(REVISOR);
+    const problemas = c3.flatMap((l, i) => { const { archivo, ...linea } = l; return revisarEvento(linea).map((p) => `${i + 1} (${l.tipo}): ${p}`); });
+    revisar(!problemas.length, `las ${c3.length} líneas de C3 cumplen contrato/evento.schema.json` + (problemas.length ? ':\n  ' + problemas.slice(0, 10).join('\n  ') : ''));
+  }
+
   await win.keyboard.press('Control+Alt+Shift+KeyR');
   await win.waitForTimeout(300);
   await win.locator('#pinInstructor').fill('1111');
@@ -180,6 +245,37 @@ const LED = {
   await new Promise((r) => setTimeout(r, 300));
   ({ app, win } = await abrir());
   revisar(await titulo(win) === null, 'apagado: al abrir ya no pide el código');
+  await app.close();
+  await new Promise((r) => setTimeout(r, 300));
+
+  // 7. AUD-02-V2: la configuración se daña con la app cerrada. No es una instalación nueva: se ve desde el arranque.
+  fs.writeFileSync(path.join(datos, 'registro-config.json'), '{ roto');
+  ({ app, win } = await abrir());
+  const arranque = await win.evaluate(() => ({ visible: !$('avisoRegistro').hidden, falla: $('avisoRegistro').classList.contains('falla'), texto: $('avisoRegistro').textContent }));
+  revisar(arranque.visible && arranque.falla && arranque.texto === 'El registro no está funcionando · Avisen al instructor' && await titulo(win) === null,
+    `V2: con la configuración dañada, la esquina lo dice desde el arranque y no pide el código: «${arranque.texto}»`);
+  await win.locator('#avisoRegistro').click();
+  await win.waitForTimeout(200);
+  revisar(await titulo(win) === 'El registro no está funcionando' && /no se está registrando nada/.test(await win.locator('#modalCuerpo').textContent()), 'V2: el aviso explica que no se registra nada');
+  await boton(win, 'Entendido');
+  await win.waitForTimeout(200);
+  await win.keyboard.press('Control+Alt+Shift+KeyR');
+  await win.waitForTimeout(300);
+  revisar(await titulo(win) === 'Registro de eventos: la configuración está dañada', 'V2: el instructor ve que está dañada (no «crear el PIN» como si fuera nueva)');
+  await win.screenshot({ path: path.join(SALIDA, 'registro_6_config_danada.png') });
+  await boton(win, 'Crear un PIN nuevo');
+  await win.waitForTimeout(300);
+  await win.locator('#pinNuevo').fill('8642');
+  await win.locator('#pinRepetido').fill('8642');
+  await boton(win, 'Crear PIN');
+  await win.waitForTimeout(400);
+  const aparte = fs.readdirSync(datos).filter((f) => /^registro-config-ilegible-.*\.json$/.test(f));
+  revisar(/apagado/.test(await win.locator('#modalCuerpo').textContent()) && aparte.length === 1 &&
+    fs.readFileSync(path.join(datos, aparte[0]), 'utf8') === '{ roto' && JSON.parse(fs.readFileSync(path.join(datos, 'registro-config.json'), 'utf8')).activo === false,
+  'V2: con el PIN nuevo, el registro queda apagado y la configuración dañada se guarda aparte');
+  await boton(win, 'Cerrar');
+  await win.waitForTimeout(200);
+  revisar(await win.evaluate(() => $('avisoRegistro').hidden) && fs.readdirSync(registros).length >= 2, 'V2: el aviso se quita y los registros guardados siguen ahí');
   await app.close();
 
   revisar(!errores.length, 'sin errores en la consola' + (errores.length ? ': ' + errores.slice(0, 3).join(' | ') : ''));
