@@ -38,8 +38,8 @@ const LED = {
   const registros = path.join(datos, 'registros');
   const errores = [];
 
-  async function abrir() {
-    const app = await electron.launch({ args: [RAIZ, `--user-data-dir=${datos}`], cwd: RAIZ, env });
+  async function abrir(carpetaDatos = datos) {
+    const app = await electron.launch({ args: [RAIZ, `--user-data-dir=${carpetaDatos}`], cwd: RAIZ, env });
     const win = await app.firstWindow();
     win.on('pageerror', (e) => errores.push(String(e)));
     win.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) errores.push(m.text()); });
@@ -602,6 +602,150 @@ const LED = {
   revisar(quemadas('I6') && quemadas('J7') && quemadas('L9'), 'REG-004: la historia de I6, J7 y L9 cuenta el LED quemado y la corriente del pin');
   console.log('\n' + narrar(historias.filter((h) => h.equipo === 'J7')));
   fs.rmSync(datos, { recursive: true, force: true });
+
+  // 9. AUD-07: un evento que no se puede guardar deja evento_descartado en su lugar, la esquina lo dice y el instructor lo
+  // ve. En otra carpeta de datos, para que las sesiones de arriba sigan sin avisos.
+  const datos2 = path.join(os.tmpdir(), 'tecnobloques-prueba-registro-app-2');
+  if (path.dirname(path.resolve(datos2)) !== path.resolve(os.tmpdir())) throw new Error('Ruta temporal inesperada');
+  fs.rmSync(datos2, { recursive: true, force: true });
+  const registros2 = path.join(datos2, 'registros');
+  const leerRegistro2 = () => (fs.existsSync(registros2) ? fs.readdirSync(registros2).filter((f) => f.endsWith('.jsonl')) : [])
+    .flatMap((f) => fs.readFileSync(path.join(registros2, f), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)));
+  ({ app, win } = await abrir(datos2));
+  await win.keyboard.press('Control+Alt+Shift+KeyR');
+  await win.waitForTimeout(300);
+  await win.locator('#pinNuevo').fill('1357');
+  await win.locator('#pinRepetido').fill('1357');
+  await boton(win, 'Crear PIN');
+  await win.waitForTimeout(300);
+  await boton(win, 'Encender el registro');
+  await win.waitForTimeout(400);
+  await win.locator('#codigoEquipo').fill('M1');
+  await win.locator('#codigoEquipo').press('Enter');
+  await win.waitForTimeout(200);
+  await boton(win, 'Sí, somos ese equipo');
+  await win.waitForTimeout(300);
+  const esquina = () => win.evaluate(() => ({ texto: $('avisoRegistro').textContent, falla: $('avisoRegistro').classList.contains('falla') }));
+  revisar((await esquina()).texto === 'Esta sesión se registra · Equipo M1', 'AUD-07: control, la esquina normal antes de perder nada');
+  // Un C++ de más de 2 097 152 caracteres: el proceso principal no lo guarda. La esquina avisa las pérdidas del equipo
+  // que está trabajando (decisión de Efraín, 21 oct)
+  const grande = () => win.evaluate(() => registroEventos.editor('codigo_compilado', { ok: true, error: null, bytes: 1, codigo: 'x'.repeat(2 * 1024 * 1024) }));
+  await grande();
+  revisar(await esperar(win, () => $('avisoRegistro').textContent === 'Equipo M1 · El registro perdió un evento · Avisen al instructor' && $('avisoRegistro').classList.contains('falla'), 5000),
+    `AUD-07: un evento demasiado grande: la esquina dice «${(await esquina()).texto}»`);
+  await win.screenshot({ path: path.join(SALIDA, 'registro_7_descartado.png') });
+  // Uno que ni siquiera llega a la app: trae algo que no se puede copiar
+  await win.evaluate(() => registroEventos.editor('ejemplo_cargado', { id: 'x', f: () => 1 }));
+  revisar(await esperar(win, () => $('avisoRegistro').textContent === 'Equipo M1 · El registro perdió 2 eventos · Avisen al instructor', 5000),
+    `AUD-07: un evento que no se puede copiar también se cuenta: «${(await esquina()).texto}»`);
+  await win.evaluate(() => cargarEjemplo(EJEMPLOS.find((e) => e.id === 'eco')));
+  await win.waitForTimeout(400);
+  await win.locator('#avisoRegistro').click();
+  await win.waitForTimeout(200);
+  revisar(await titulo(win) === 'El registro perdió 2 eventos' && /Quedó anotado que falta\. Pueden seguir trabajando; avisen al instructor/.test(await win.locator('#modalCuerpo').textContent()),
+    'AUD-07: la esquina explica qué pasó, sin detener el trabajo');
+  await boton(win, 'Entendido');
+  await win.waitForTimeout(200);
+  const entrarPanel = async () => {
+    await win.keyboard.press('Control+Alt+Shift+KeyR');
+    await win.waitForTimeout(300);
+    await win.locator('#pinInstructor').fill('1357');
+    await boton(win, 'Entrar');
+    await win.waitForTimeout(300);
+  };
+  const lineaPanel = () => win.evaluate(() => ($('descartadosRegistro') && !$('descartadosRegistro').hidden ? $('descartadosRegistro').textContent : ''));
+  await entrarPanel();
+  const lineaDescartados = await lineaPanel();
+  revisar(/^2 eventos no se guardaron desde que se abrió la app \(el último: ejemplo_cargado, no se pudo convertir a texto, a las \d{2}:\d{2}\)\. Quedaron anotados en el registro\.$/.test(lineaDescartados),
+    `AUD-07: el panel del instructor lo detalla: «${lineaDescartados}»`);
+  await win.screenshot({ path: path.join(SALIDA, 'registro_8_descartado_instructor.png') });
+  // F06: con el panel abierto, otra pérdida actualiza el panel y la esquina
+  await grande();
+  revisar(await esperar(win, () => /^3 eventos no se guardaron/.test($('descartadosRegistro').textContent) && /perdió 3 eventos/.test($('avisoRegistro').textContent), 5000),
+    `AUD-07 (F06): con el panel abierto, otra pérdida lo actualiza: «${await lineaPanel()}»`);
+  // AUD-08: dos exportaciones seguidas desde el panel (la carpeta la «elige» la prueba): dos carpetas, la primera intacta.
+  // Con carpetas señuelo del minuto actual y del siguiente, las dos tienen que usar el sufijo aunque cambie el minuto (A-10)
+  const usb2 = path.join(datos2, 'usb');
+  fs.mkdirSync(usb2, { recursive: true });
+  const dos = (n) => String(n).padStart(2, '0');
+  const sello = (d) => `TecnoBloques-registros-${d.getFullYear()}-${dos(d.getMonth() + 1)}-${dos(d.getDate())}_${dos(d.getHours())}${dos(d.getMinutes())}`;
+  const senuelos = [sello(new Date()), sello(new Date(Date.now() + 60000))];
+  for (const s of senuelos) fs.mkdirSync(path.join(usb2, s), { recursive: true });
+  await app.evaluate(({ dialog }, dir) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [dir] }); }, usb2);
+  const notaPanel = () => win.evaluate(() => [...document.querySelectorAll('#modalCuerpo p.muted')].pop().textContent);
+  const sha = (archivo) => require('crypto').createHash('sha256').update(fs.readFileSync(archivo)).digest('hex');
+  const nuevas = () => fs.readdirSync(usb2).filter((f) => !senuelos.includes(f)).sort();
+  await boton(win, 'Exportar registros');
+  await win.waitForTimeout(500);
+  const nota1 = await notaPanel();
+  const [exp1] = nuevas();
+  const copia1 = path.join(usb2, exp1, fs.readdirSync(path.join(usb2, exp1)).find((f) => f.startsWith('M1-')));
+  const sha1 = sha(copia1);
+  await win.evaluate(() => registroEventos.editor('ejemplo_cargado', { id: 'eco' })); // M1 cambia entre las dos
+  await win.waitForTimeout(200);
+  await boton(win, 'Exportar registros');
+  await win.waitForTimeout(500);
+  const nota2 = await notaPanel();
+  const exportaciones = nuevas();
+  const exp2 = exportaciones.find((f) => f !== exp1);
+  const manifiestoDe = (c) => JSON.parse(fs.readFileSync(path.join(usb2, c, 'exportacion.json'), 'utf8'));
+  revisar(exportaciones.length === 2 && exportaciones.every((f) => /^TecnoBloques-registros-\d{4}-\d{2}-\d{2}_\d{4}-\d+$/.test(f)) && sha(copia1) === sha1 &&
+    senuelos.every((s) => !fs.readdirSync(path.join(usb2, s)).length) &&
+    fs.statSync(path.join(usb2, exp2, path.basename(copia1))).size > fs.statSync(copia1).size &&
+    manifiestoDe(exp1).completa === true && manifiestoDe(exp2).completa === true && manifiestoDe(exp1).archivos.every((a) => sha(path.join(usb2, exp1, a.archivo)) === a.sha256) &&
+    nota1.includes(exp1) && nota2.includes(exp2) && /^Se copió 1 archivo a /.test(nota1),
+  `AUD-08: dos exportaciones desde el panel, las dos con sufijo por los señuelos: ${exportaciones.join(' y ')}; la primera intacta y cada una con su exportacion.json`);
+  await boton(win, 'Cerrar');
+  await win.waitForTimeout(200);
+  // A-05: al cambiar de equipo, las pérdidas del anterior ya no son del nuevo: la esquina vuelve a la normal
+  await win.locator('#avisoRegistro').click();
+  await win.waitForTimeout(200);
+  await boton(win, 'Cambiar el código del equipo');
+  await win.waitForTimeout(300);
+  await win.locator('#codigoEquipo').fill('M2');
+  await win.locator('#codigoEquipo').press('Enter');
+  await win.waitForTimeout(200);
+  await boton(win, 'Sí, somos ese equipo');
+  await win.waitForTimeout(400);
+  const deM2 = await esquina();
+  revisar(deM2.texto === 'Esta sesión se registra · Equipo M2' && !deM2.falla, `A-05: el equipo siguiente ve su esquina normal: «${deM2.texto}»`);
+  // Apagado no hay equipo: la esquina se oculta y la cuenta sigue en el panel del instructor (decisión de Efraín)
+  await entrarPanel();
+  revisar(/^3 eventos no se guardaron/.test(await lineaPanel()), 'A-05: el panel del instructor sigue con la cuenta de toda la app');
+  await boton(win, 'Apagar el registro');
+  await win.waitForTimeout(400);
+  revisar(await win.evaluate(() => $('avisoRegistro').hidden && registroDescartados.cantidad === 3), 'A-05: con el registro apagado la esquina se oculta, pero la cuenta se conserva');
+  await entrarPanel();
+  revisar(/^3 eventos no se guardaron/.test(await lineaPanel()), 'A-05: apagado, el panel del instructor la muestra');
+  await boton(win, 'Encender el registro');
+  await win.waitForTimeout(400);
+  await win.keyboard.press('Escape');
+  await win.waitForTimeout(300);
+  const sinEquipo = await esquina();
+  revisar(sinEquipo.texto === 'Esta sesión se registra · Falta el código del equipo' && !sinEquipo.falla, `A-05: sin equipo, la esquina dice que falta el código: «${sinEquipo.texto}»`);
+  await app.close();
+  await new Promise((r) => setTimeout(r, 300));
+  const m1 = leerRegistro2().filter((l) => l.equipo === 'M1');
+  const iGrande = m1.findIndex((l) => l.tipo === 'evento_descartado' && l.datos.motivo === 'tamano');
+  revisar(m1.filter((l) => l.tipo === 'evento_descartado').length === 3 && iGrande > 0 && m1[iGrande].datos.tipo === 'codigo_compilado' && m1[iGrande].datos.largo > m1[iGrande].datos.limite &&
+    m1[iGrande + 1].tipo === 'evento_descartado' && m1[iGrande + 1].datos.motivo === 'no_serializable' && m1[iGrande + 1].datos.tipo === 'ejemplo_cargado' &&
+    !m1.some((l) => l.tipo === 'codigo_compilado') && m1.every((l) => l.sesion === m1[0].sesion) && m1[m1.length - 1].tipo === 'sesion_terminada',
+  `AUD-07: el archivo tiene los tres evento_descartado en su lugar, con la sesión de M1 (${m1.map((l) => l.tipo).join(', ')})`);
+  if (fs.existsSync(REVISOR)) {
+    const { revisarEvento } = require(REVISOR);
+    const problemas = leerRegistro2().flatMap((l, i) => revisarEvento(l).map((p) => `${i + 1} (${l.tipo}): ${p}`));
+    revisar(!problemas.length, `AUD-07: las ${leerRegistro2().length} líneas de M1 y M2 cumplen contrato/evento.schema.json` + (problemas.length ? ':\n  ' + problemas.slice(0, 10).join('\n  ') : ''));
+  }
+  const historiaM1 = contarHistoria(leerArchivos([registros2]).lineas).find((h) => h.equipo === 'M1');
+  revisar(historiaM1 && historiaM1.avisos.filter((a) => /^Hay un hueco: no se guardó un evento/.test(a)).length === 3 && historiaM1.huecos.length === 3,
+    `AUD-07: la historia cuenta los tres huecos (${historiaM1 ? historiaM1.avisos.join(' | ') : 'sin historia'})`);
+  ({ app, win } = await abrir(datos2));
+  await win.keyboard.press('Escape');
+  await win.waitForTimeout(200);
+  revisar((await esquina()).texto === 'Esta sesión se registra · Falta el código del equipo', 'AUD-07: al abrir otra vez, la cuenta empieza de cero (es desde que se abrió la app)');
+  await app.close();
+  fs.rmSync(datos2, { recursive: true, force: true });
+  revisar(!errores.length, 'sin errores en la consola, también en la sección 9' + (errores.length ? ': ' + errores.slice(0, 3).join(' | ') : ''));
   console.log(fallos ? `\n${fallos} FALLA(S)` : '\nTODO BIEN');
   process.exit(fallos ? 1 : 0);
 })().catch((e) => { console.error(e); process.exit(1); });

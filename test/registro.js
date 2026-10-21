@@ -137,7 +137,7 @@ console.log('— El disco (escritorio/registro-disco.js)');
   const disco = crearRegistroDisco({ carpeta, ahora: () => reloj2 });
   const linea = (equipo, extra) => ({ v: 1, t: reloj2, origen: 'editor', tipo: 'ejemplo_cargado', datos: { id: 'x' }, equipo, sesion: 's1', version_tb: '0.4.0', version_tc: '0.2.0', ...extra });
 
-  revisar(igual(disco.estado(), { activo: false, tienePin: false, falla: null, configIlegible: false }), 'recién instalado: apagado, sin PIN, sin falla y con la configuración legible');
+  revisar(igual(disco.estado(), { activo: false, tienePin: false, falla: null, configIlegible: false, descartados: null }), 'recién instalado: apagado, sin PIN, sin falla y con la configuración legible');
   revisar(disco.escribir(linea('A7')) === false && !fs.existsSync(path.join(carpeta, 'registros')), 'apagado: no escribe nada ni crea la carpeta');
   revisar(disco.instructor({ accion: 'entrar', pin: '1234' }).motivo === 'sin-pin', 'sin PIN no se puede entrar');
   revisar(disco.instructor({ accion: 'crear-pin', pin: '12a4' }).motivo === 'pin-invalido' && disco.instructor({ accion: 'crear-pin', pin: '123' }).motivo === 'pin-invalido',
@@ -169,7 +169,8 @@ console.log('— El disco (escritorio/registro-disco.js)');
   fs.mkdirSync(usb);
   revisar(disco.exportar({ pin: '1357', destino: usb }).motivo === 'pin' && !fs.readdirSync(usb).length, 'exportar con el PIN equivocado no copia nada');
   const exp = disco.exportar({ pin: '2468', destino: usb });
-  revisar(exp.ok && exp.archivos === disco.archivos().length && fs.readdirSync(exp.carpeta).length === exp.archivos && /TecnoBloques-registros-2026-10-16_1031$/.test(exp.carpeta),
+  revisar(exp.ok && exp.archivos === disco.archivos().length && fs.readdirSync(exp.carpeta).filter((f) => f.endsWith('.jsonl')).length === exp.archivos &&
+    JSON.parse(fs.readFileSync(path.join(exp.carpeta, 'exportacion.json'), 'utf8')).completa === true && /TecnoBloques-registros-2026-10-16_1031$/.test(exp.carpeta),
     `exportar copia los ${exp.archivos} archivos a ${exp.carpeta && path.basename(exp.carpeta)}`);
   revisar(disco.instructor({ accion: 'cambiar-pin', pin: '2468', nuevoPin: '13579' }).ok && disco.instructor({ accion: 'entrar', pin: '13579' }).ok && !disco.instructor({ accion: 'entrar', pin: '2468' }).ok,
     'el instructor cambia el PIN');
@@ -370,7 +371,7 @@ console.log('— Escrituras a medias y configuración ilegible (AUD-02-V1 y V2)'
   revisar(!fs.existsSync(config + '.tmp'), 'la configuración se guarda entera: no queda el archivo temporal');
   fs.writeFileSync(config, '{ roto');
   disco = nuevoDisco();
-  revisar(igual(disco.estado(), { activo: false, tienePin: false, falla: { motivo: 'CONFIG', desde: reloj4, pendientes: 0, perdidos: 0 }, configIlegible: true }),
+  revisar(igual(disco.estado(), { activo: false, tienePin: false, falla: { motivo: 'CONFIG', desde: reloj4, pendientes: 0, perdidos: 0 }, configIlegible: true, descartados: null }),
     'al abrir con la configuración dañada: falla CONFIG y configIlegible desde el arranque, sin esperar un evento (no es lo mismo que recién instalado)');
   revisar(disco.instructor({ accion: 'crear-pin', pin: '1357' }).motivo === 'config-ilegible' && fs.readFileSync(config, 'utf8') === '{ roto',
     'sin la confirmación del instructor no se crea otro PIN encima');
@@ -509,6 +510,351 @@ console.log('— Escrituras a medias y configuración ilegible (AUD-02-V1 y V2)'
   const tras = leer();
   revisar(tras.malas === 0 && tras.ok.length === previas + 1 && tras.ok[tras.ok.length - 1].datos.bloques === 7,
     'un pedazo de 2,5 MB con letras de 2 bytes se corta en su frontera real: las líneas previas siguen y la nueva sale entera');
+  fs.rmSync(base, { recursive: true, force: true });
+}
+
+console.log('— Un evento que no se puede guardar (AUD-07)');
+{
+  const os = require('os');
+  const { crearRegistroDisco } = require('../escritorio/registro-disco.js');
+  const REVISOR = path.join(__dirname, '..', '..', 'TecnoCircuito', 'prototipo', 'pruebas', 'contrato_eventos.js');
+  const revisarEvento = fs.existsSync(REVISOR) ? require(REVISOR).revisarEvento : null;
+  const base = path.join(os.tmpdir(), 'tecnobloques-prueba-registro-descarte');
+  if (path.dirname(path.resolve(base)) !== path.resolve(os.tmpdir())) throw new Error('Ruta temporal inesperada');
+  fs.rmSync(base, { recursive: true, force: true });
+  const carpeta = path.join(base, 'appdata');
+  const reloj5 = new Date(2026, 9, 21, 11, 30).getTime();
+  const avisos = [];
+  const disco = crearRegistroDisco({ carpeta, ahora: () => reloj5, alDescartar: (d) => avisos.push(d), reintentoMs: 60000 });
+  disco.instructor({ accion: 'crear-pin', pin: '2468' });
+  const SOBRE = { equipo: 'D7', sesion: 's7', version_tb: '0.4.0', version_tc: '0.2.0' };
+  const compilado = (relleno, extra) => ({ v: 1, t: reloj5, origen: 'editor', tipo: 'codigo_compilado', datos: { ok: true, error: null, bytes: 1, codigo: relleno }, ...SOBRE, ...extra });
+  const archivo = path.join(carpeta, 'registros', 'D7-2026-10-21.jsonl');
+  const leer = () => (fs.existsSync(archivo) ? fs.readFileSync(archivo, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)) : []);
+  const LIMITE = 2 * 1024 * 1024;
+  // Un codigo_compilado cuyo JSON mide exactamente `largo` caracteres, con letras de `ancho` unidades (ñ: 1 unidad y 2
+  // bytes; 😀: 2 unidades y 4 bytes)
+  const deLargo = (largo, letra = 'x') => {
+    const vacio = JSON.stringify(compilado('')).length;
+    const ancho = letra.length;
+    const falta = largo - vacio;
+    return compilado(letra.repeat(Math.floor(falta / ancho)) + 'x'.repeat(falta % ancho));
+  };
+
+  revisar(disco.escribir(deLargo(LIMITE + 1)) === false && !leer().length && !avisos.length && disco.estado().descartados === null,
+    'control, registro apagado: una línea de más del límite no se escribe ni se cuenta');
+  disco.instructor({ accion: 'activar', pin: '2468', activo: true });
+  revisar(disco.escribir(compilado('void loop() {}')) && leer().length === 1 && !avisos.length, 'control, un evento pequeño se escribe sin aviso');
+
+  const fronteras = [['x', LIMITE - 1, true], ['x', LIMITE, true], ['x', LIMITE + 1, false], ['ñ', LIMITE, true], ['ñ', LIMITE + 1, false], ['😀', LIMITE, true], ['😀', LIMITE + 1, false], ['漢', LIMITE, true], ['漢', LIMITE + 1, false]];
+  for (const [letra, largo, cabe] of fronteras) {
+    const antes = leer().length;
+    const avisosAntes = avisos.length;
+    const l = deLargo(largo, letra);
+    const medida = JSON.stringify(l).length;
+    const r = disco.escribir(l);
+    const nuevas = leer().slice(antes);
+    const descarte = nuevas[0] || {};
+    revisar(medida === largo && (cabe ? r === true && nuevas.length === 1 && nuevas[0].tipo === 'codigo_compilado' && avisos.length === avisosAntes
+      : r === false && nuevas.length === 1 && descarte.tipo === 'evento_descartado' && descarte.sesion === 's7' && descarte.datos.motivo === 'tamano' &&
+        descarte.datos.tipo === 'codigo_compilado' && descarte.datos.origen === 'editor' && descarte.datos.largo === largo && descarte.datos.limite === LIMITE && avisos.length === avisosAntes + 1),
+    `${largo === LIMITE ? 'justo en el límite' : largo < LIMITE ? 'un carácter antes del límite' : 'un carácter después del límite'} con «${letra}» (${Buffer.byteLength(JSON.stringify(l))} bytes): ${cabe ? 'se escribe' : 'evento_descartado en su lugar y aviso'}`);
+  }
+  const estado = disco.estado();
+  revisar(estado.descartados && estado.descartados.cantidad === 4 && estado.descartados.sinAnotar === 0 && igual(estado.descartados.ultimo, { tipo: 'codigo_compilado', motivo: 'tamano', t: reloj5 }) &&
+    igual(avisos[avisos.length - 1], estado.descartados), `el estado cuenta los descartados y el aviso trae lo mismo (${JSON.stringify(estado.descartados)})`);
+
+  // Lo que no se puede convertir a texto: un ciclo, un BigInt y un toJSON que no devuelve nada; y un evento sin tipo
+  const ciclo = compilado('x');
+  ciclo.datos.yo = ciclo.datos;
+  const raros = [['un ciclo', ciclo, 'no_serializable'], ['un BigInt', compilado('x', { datos: { n: 10n } }), 'no_serializable'],
+    ['un toJSON que no devuelve nada', { ...compilado('x'), toJSON: () => undefined }, 'no_serializable'], ['sin tipo', { ...compilado('x'), tipo: undefined }, 'sin_tipo'],
+    ['un evento del simulador de una corrida', { ...compilado('x'.repeat(LIMITE)), origen: 'simulador', tipo: 'simulacion_iniciada', corrida: 4, ms_sim: 0 }, 'tamano']];
+  for (const [nombre, l, motivo] of raros) {
+    const antes = leer().length;
+    const r = disco.escribir(l);
+    const d = leer().slice(antes);
+    revisar(r === false && d.length === 1 && d[0].tipo === 'evento_descartado' && d[0].datos.motivo === motivo &&
+      (motivo === 'sin_tipo' ? !('tipo' in d[0].datos) : true) && (nombre.includes('corrida') ? d[0].datos.corrida === 4 && d[0].datos.origen === 'simulador' : true),
+    `${nombre}: evento_descartado (${motivo}) en su lugar`);
+  }
+  const antesSinSesion = leer().length;
+  const sinSesion = disco.escribir(compilado('x'.repeat(LIMITE + 100), { sesion: undefined }));
+  revisar(sinSesion === false && leer().length === antesSinSesion && disco.estado().descartados.sinAnotar === 1 && disco.estado().descartados.cantidad === 10 && avisos.length === 10,
+    'sin sesión no se puede anotar: se cuenta como «sin anotar» y se avisa igual');
+  const descartes = leer().filter((l) => l.tipo === 'evento_descartado');
+  if (revisarEvento) {
+    const problemas = descartes.flatMap((l, i) => revisarEvento(l).map((p) => `${i + 1}: ${p}`));
+    revisar(!problemas.length && descartes.length === 9, `los ${descartes.length} evento_descartado cumplen contrato/evento.schema.json` + (problemas.length ? ': ' + problemas.join(' | ') : ''));
+  } else revisar(false, 'no encuentro el revisor de TecnoCircuito en ' + REVISOR);
+  revisar(descartes.every((l) => JSON.stringify(l).length < 1000), 'cada evento_descartado es corto');
+
+  // Con el disco lleno, el evento_descartado espera como cualquier línea y sale en su lugar al recuperarse
+  const anexar = fs.appendFileSync;
+  fs.appendFileSync = function (a, ...resto) {
+    if (String(a).startsWith(carpeta)) throw Object.assign(new Error('ENOSPC sintético'), { code: 'ENOSPC' });
+    return anexar.call(this, a, ...resto);
+  };
+  const antesLleno = leer().length;
+  try {
+    disco.escribir(compilado('antes'));
+    disco.escribir(deLargo(LIMITE + 1));
+    disco.escribir(compilado('después'));
+  } finally { fs.appendFileSync = anexar; }
+  revisar(leer().length === antesLleno && disco.estado().falla && disco.estado().falla.pendientes === 3, 'con el disco lleno, el evento_descartado espera en la cola con los demás');
+  disco.reintentar();
+  const recuperadas = leer().slice(antesLleno);
+  revisar(recuperadas.map((l) => (l.tipo === 'codigo_compilado' ? l.datos.codigo : l.tipo)).join() === 'antes,evento_descartado,después,registro_interrumpido' &&
+    recuperadas[3].datos.recuperados === 3, `al recuperarse sale en su lugar, y registro_interrumpido lo cuenta (${recuperadas.map((l) => l.tipo).join(', ')})`);
+
+  // La página: un evento que no cruza a la app (no se puede copiar) deja su evento_descartado, y la app lo cuenta
+  const avisosPagina = avisos.length;
+  const pagina = crearRegistroEventos({
+    escribir: (l) => { if (l.datos && typeof l.datos.f === 'function') throw new Error('An object could not be cloned.'); disco.escribir(l); },
+    versionTB: '0.4.0', versionTC: '0.2.0', ahora: () => reloj5, nuevaSesion: () => 's8',
+  });
+  pagina.empezar('D7', { placa: 'uno', nivel: 1 });
+  const antesPagina = leer().length;
+  pagina.registrar({ v: 1, t: reloj5, origen: 'simulador', tipo: 'falla', corrida: 5, ms_sim: 10, datos: { tipo: 'led_quemado', componente: 'led1', f: () => 1 } });
+  pagina.editor('ejemplo_cargado', { id: 'eco' });
+  const dePagina = leer().slice(antesPagina);
+  revisar(dePagina.map((l) => l.tipo).join() === 'evento_descartado,ejemplo_cargado' && dePagina[0].sesion === 's8' && igual(dePagina[0].datos, { motivo: 'no_serializable', tipo: 'falla', origen: 'simulador', corrida: 5 }) &&
+    avisos.length === avisosPagina + 1 && disco.estado().descartados.ultimo.tipo === 'falla' && (!revisarEvento || !revisarEvento(dePagina[0]).length),
+  'la página: un evento que no se puede copiar deja evento_descartado con su sesión, y la app lo cuenta y lo avisa');
+  fs.rmSync(base, { recursive: true, force: true });
+}
+
+console.log('— Cada exportación en su propia carpeta (AUD-08)');
+{
+  const os = require('os');
+  const crypto = require('crypto');
+  const { crearRegistroDisco } = require('../escritorio/registro-disco.js');
+  const base = path.join(os.tmpdir(), 'tecnobloques-prueba-registro-exportar');
+  if (path.dirname(path.resolve(base)) !== path.resolve(os.tmpdir())) throw new Error('Ruta temporal inesperada');
+  fs.rmSync(base, { recursive: true, force: true });
+  const carpeta = path.join(base, 'appdata');
+  const reloj6 = new Date(2026, 9, 21, 12, 5).getTime(); // el mismo minuto en todas las exportaciones
+  const disco = crearRegistroDisco({ carpeta, ahora: () => reloj6, version: '0.4.0' });
+  disco.instructor({ accion: 'crear-pin', pin: '2468' });
+  disco.instructor({ accion: 'activar', pin: '2468', activo: true });
+  const ev = (equipo, n) => ({ v: 1, t: reloj6, origen: 'editor', tipo: 'bloques_cambiados', datos: { bloques: n, tipos: {} }, equipo, sesion: 's-' + equipo, version_tb: '0.4.0', version_tc: '0.2.0' });
+  disco.escribir(ev('E1', 1));
+  disco.escribir(ev('E2', 1));
+  fs.mkdirSync(path.join(carpeta, 'registros', 'una-carpeta.jsonl')); // una carpeta con nombre de registro: no se copia
+  const usb = path.join(base, 'usb');
+  fs.mkdirSync(usb);
+  const sha = (archivo) => crypto.createHash('sha256').update(fs.readFileSync(archivo)).digest('hex');
+  const manifiesto = (c) => JSON.parse(fs.readFileSync(path.join(c, 'exportacion.json'), 'utf8'));
+  /** Lo que dice exportacion.json coincide con los archivos de la carpeta, byte a byte */
+  const cuadra = (c) => { const m = manifiesto(c); return m.archivos.every((a) => sha(path.join(c, a.archivo)) === a.sha256 && fs.statSync(path.join(c, a.archivo)).size === a.bytes); };
+
+  revisar(igual(disco.archivos(), ['E1-2026-10-21.jsonl', 'E2-2026-10-21.jsonl']), 'archivos(): solo los .jsonl que son archivos (una carpeta con ese nombre no cuenta)');
+  revisar(disco.exportar({ pin: '0000', destino: usb }).motivo === 'pin' && !fs.readdirSync(usb).length, 'control, con el PIN equivocado no se crea nada');
+  const e1 = disco.exportar({ pin: '2468', destino: usb });
+  const copiaE1 = path.join(e1.carpeta, 'E1-2026-10-21.jsonl');
+  const antes = { bytes: fs.statSync(copiaE1).size, sha: sha(copiaE1) };
+  disco.escribir(ev('E1', 2)); // entre las dos exportaciones, E1 cambia
+  const e2 = disco.exportar({ pin: '2468', destino: usb });
+  revisar(e1.ok && e2.ok && path.basename(e1.carpeta) === 'TecnoBloques-registros-2026-10-21_1205' && path.basename(e2.carpeta) === 'TecnoBloques-registros-2026-10-21_1205-2',
+    `dos exportaciones del mismo minuto: dos carpetas (${path.basename(e1.carpeta)} y ${path.basename(e2.carpeta)})`);
+  revisar(fs.statSync(copiaE1).size === antes.bytes && sha(copiaE1) === antes.sha && fs.statSync(path.join(e2.carpeta, 'E1-2026-10-21.jsonl')).size > antes.bytes,
+    'la primera exportación no cambia (mismos bytes y sha256) y la segunda trae lo nuevo');
+  const m1 = manifiesto(e1.carpeta);
+  revisar(m1.completa === true && m1.total === 2 && m1.archivos.length === 2 && m1.version_tb === '0.4.0' && m1.t === reloj6 && cuadra(e1.carpeta) && cuadra(e2.carpeta) &&
+    !fs.existsSync(path.join(e1.carpeta, 'una-carpeta.jsonl')), 'exportacion.json: completa, con el nombre, los bytes y el sha256 de cada archivo, y cuadra con lo copiado');
+  // Lo que ya había en el destino no se toca: una carpeta y un archivo con los nombres siguientes
+  fs.mkdirSync(path.join(usb, 'TecnoBloques-registros-2026-10-21_1205-3'));
+  fs.writeFileSync(path.join(usb, 'TecnoBloques-registros-2026-10-21_1205-3', 'nota.txt'), 'de otra persona');
+  fs.writeFileSync(path.join(usb, 'TecnoBloques-registros-2026-10-21_1205-4'), 'un archivo');
+  const e3 = disco.exportar({ pin: '2468', destino: usb });
+  revisar(e3.ok && path.basename(e3.carpeta) === 'TecnoBloques-registros-2026-10-21_1205-5' && fs.readdirSync(path.join(usb, 'TecnoBloques-registros-2026-10-21_1205-3')).join() === 'nota.txt' &&
+    fs.readFileSync(path.join(usb, 'TecnoBloques-registros-2026-10-21_1205-4'), 'utf8') === 'un archivo', `con nombres ya ocupados (una carpeta y un archivo), usa el siguiente libre: ${path.basename(e3.carpeta)}`);
+
+  // Una copia que falla a mitad: la carpeta queda, exportacion.json dice que está incompleta y la app lo sabe
+  const copiar = fs.copyFileSync;
+  let copias = 0;
+  fs.copyFileSync = function (de, a, ...resto) {
+    if (String(a).startsWith(usb) && ++copias === 2) throw Object.assign(new Error('ENOSPC sintético'), { code: 'ENOSPC' });
+    return copiar.call(this, de, a, ...resto);
+  };
+  let e4;
+  try { e4 = disco.exportar({ pin: '2468', destino: usb }); } finally { fs.copyFileSync = copiar; }
+  const m4 = e4.carpeta && manifiesto(e4.carpeta);
+  revisar(e4.ok === false && e4.motivo === 'copia-incompleta' && e4.copiados === 1 && e4.total === 2 && /E2-2026-10-21\.jsonl: ENOSPC/.test(e4.mensaje) &&
+    m4.completa === false && m4.archivos.length === 1 && igual(m4.error, { archivo: 'E2-2026-10-21.jsonl', codigo: 'ENOSPC', donde: 'destino' }) && igual(m4.faltan, ['E2-2026-10-21.jsonl']) && e4.codigo === 'ENOSPC' && e4.donde === 'destino' && cuadra(e4.carpeta) && !fs.existsSync(path.join(e4.carpeta, 'E2-2026-10-21.jsonl')),
+  `una copia que falla a mitad: «copia-incompleta» (${e4.copiados} de ${e4.total}) y exportacion.json con completa: false y el error`);
+  // Si no se puede escribir exportacion.json, tampoco cuenta como completa
+  const escribirArchivo = fs.writeFileSync;
+  fs.writeFileSync = function (a, ...resto) { if (String(a).endsWith('exportacion.json')) throw Object.assign(new Error('EIO sintético'), { code: 'EIO' }); return escribirArchivo.call(this, a, ...resto); };
+  let e5;
+  try { e5 = disco.exportar({ pin: '2468', destino: usb }); } finally { fs.writeFileSync = escribirArchivo; }
+  revisar(e5.ok === false && e5.motivo === 'copia-incompleta' && e5.copiados === 2 && /exportacion\.json: EIO/.test(e5.mensaje) && !fs.existsSync(path.join(e5.carpeta, 'exportacion.json')),
+    'sin exportacion.json, la exportación no se da por completa');
+  const e6 = disco.exportar({ pin: '2468', destino: path.join(base, 'usb-que-no-existe') });
+  revisar(e6.ok === false && e6.motivo === 'disco' && !fs.existsSync(path.join(base, 'usb-que-no-existe')), 'un destino que ya no existe (se sacó la USB): «disco», sin crear nada');
+  revisar(manifiesto(e1.carpeta).archivos.every((a) => sha(path.join(e1.carpeta, a.archivo)) === a.sha256) && sha(copiaE1) === antes.sha, 'después de todo, la primera exportación sigue igual');
+  // La historia de dos exportaciones de lo mismo: cada línea se cuenta una vez (INT-06)
+  const { leerArchivos, contarHistoria } = require('../herramientas/historia-registro.js');
+  const hs = contarHistoria(leerArchivos([e1.carpeta, e2.carpeta]).lineas);
+  revisar(hs.length === 2 && hs.find((h) => h.equipo === 'E1').notas.some((n) => /ya había llegado en otro archivo/.test(n)), 'la historia de las dos exportaciones cuenta cada línea una vez');
+  fs.rmSync(base, { recursive: true, force: true });
+}
+
+console.log('— Lote de la auditoría profunda: configuración, anotación, sesiones y exportación (AUD-07, AUD-11, AUD-14)');
+{
+  const os = require('os');
+  const { crearRegistroDisco } = require('../escritorio/registro-disco.js');
+  const base = path.join(os.tmpdir(), 'tecnobloques-prueba-registro-lote');
+  if (path.dirname(path.resolve(base)) !== path.resolve(os.tmpdir())) throw new Error('Ruta temporal inesperada');
+  fs.rmSync(base, { recursive: true, force: true });
+  let n = 0;
+  const reloj7 = new Date(2026, 9, 21, 16, 0).getTime();
+  const nuevo = (extra = {}) => {
+    const carpeta = path.join(base, `caso-${++n}`);
+    const avisos = [];
+    const d = crearRegistroDisco({ carpeta, ahora: () => (extra.ahora ? extra.ahora() : reloj7), alDescartar: (x) => avisos.push(x), reintentoMs: 60000, version: '0.4.0' });
+    d.instructor({ accion: 'crear-pin', pin: '2468' });
+    d.instructor({ accion: 'activar', pin: '2468', activo: true });
+    return { d, carpeta, avisos, registros: path.join(carpeta, 'registros') };
+  };
+  const ev = (extra = {}) => ({ v: 1, t: reloj7, origen: 'editor', tipo: 'ejemplo_cargado', datos: { id: 'x' }, equipo: 'L1', sesion: 's1', version_tb: '0.4.0', version_tc: '0.2.0', ...extra });
+  const grande = (extra = {}) => ev({ tipo: 'codigo_compilado', datos: { ok: true, error: null, bytes: 1, codigo: 'x'.repeat(2 * 1024 * 1024) }, ...extra });
+  const lineasDe = (f) => (fs.existsSync(f.registros) ? fs.readdirSync(f.registros) : []).filter((a) => a.endsWith('.jsonl'))
+    .flatMap((a) => fs.readFileSync(path.join(f.registros, a), 'utf8').split('\n').filter(Boolean).map((l) => ({ archivo: a, ...JSON.parse(l) })));
+  const lleno = (f, cuerpo) => {
+    const anexar = fs.appendFileSync;
+    fs.appendFileSync = function (a, ...resto) { if (String(a).startsWith(f.carpeta)) throw Object.assign(new Error('ENOSPC sintético'), { code: 'ENOSPC' }); return anexar.call(this, a, ...resto); };
+    try { return cuerpo(); } finally { fs.appendFileSync = anexar; }
+  };
+
+  // AUD-11: una configuración que es JSON pero no sirve es ilegible, en los tres caminos, sin lanzar ni escribir
+  const sal = '0'.repeat(32), resumen = 'a'.repeat(64);
+  const malas = [['null', null], ['un arreglo', []], ['un número', 5], ['un texto', 'x'], ['true', true], ['un objeto vacío', {}], ['encendido sin PIN', { activo: true }],
+    ['activo que no es booleano', { activo: 'si', pin: { sal, hash: resumen } }], ['un PIN vacío', { activo: true, pin: {} }], ['una sal que no es hexadecimal', { activo: true, pin: { sal: 'zz', hash: resumen } }],
+    ['un resumen corto', { activo: false, pin: { sal, hash: 'ab' } }], ['un PIN que es un arreglo', { activo: false, pin: [] }]];
+  for (const [nombre, valor] of malas) {
+    const f = nuevo();
+    const archivoConfig = path.join(f.carpeta, 'registro-config.json');
+    const texto = JSON.stringify(valor);
+    fs.writeFileSync(archivoConfig, texto);
+    let lanzo = null;
+    let entrar = null;
+    try { f.d.escribir(ev()); entrar = f.d.instructor({ accion: 'entrar', pin: '2468' }); f.d.reintentar(); } catch (e) { lanzo = e.message; }
+    const e = f.d.estado();
+    revisar(!lanzo && e.configIlegible && !e.activo && e.falla && e.falla.motivo === 'CONFIG' && entrar && entrar.ok === false && entrar.motivo === 'config-ilegible' &&
+      !lineasDe(f).length && fs.readFileSync(archivoConfig, 'utf8') === texto,
+    `AUD-11, configuración con ${nombre}: ilegible (CONFIG), sin lanzar, sin escribir ni entrar, y el archivo queda igual${lanzo ? ` (lanzó: ${lanzo})` : ''}`);
+  }
+  {
+    const f = nuevo();
+    fs.writeFileSync(path.join(f.carpeta, 'registro-config.json'), JSON.stringify({ activo: true, pin: {} }));
+    f.d.escribir(ev());
+    const nuevoPin = f.d.instructor({ accion: 'crear-pin', pin: '1357', reemplazarIlegible: true });
+    const aparte = fs.readdirSync(f.carpeta).filter((a) => /^registro-config-ilegible-/.test(a));
+    revisar(nuevoPin.ok && !nuevoPin.configIlegible && aparte.length === 1 && fs.readFileSync(path.join(f.carpeta, aparte[0]), 'utf8') === '{"activo":true,"pin":{}}' && f.d.instructor({ accion: 'entrar', pin: '1357' }).ok,
+      'AUD-11: una configuración mal formada se reemplaza con un PIN nuevo y la dañada queda aparte (como AUD-02-V2)');
+  }
+  {
+    const f = nuevo();
+    fs.writeFileSync(path.join(f.carpeta, 'registro-config.json'), JSON.stringify({ activo: false, pin: null }));
+    const e = f.d.estado();
+    revisar(!e.configIlegible && !e.activo && !e.tienePin && f.d.escribir(ev()) === false, 'control AUD-11: apagado y sin PIN es una configuración válida (como recién instalado)');
+  }
+
+  // F05: «anotado» solo cuando el evento_descartado quedó escrito; pendiente mientras espera; sin anotar si se pierde
+  {
+    const f = nuevo();
+    lleno(f, () => f.d.escribir(grande()));
+    const espera = f.d.estado().descartados;
+    f.d.reintentar();
+    const escrito = f.d.estado().descartados;
+    revisar(espera.cantidad === 1 && espera.pendientes === 1 && espera.anotados === 0 && escrito.anotados === 1 && escrito.pendientes === 0 && f.avisos[f.avisos.length - 1].anotados === 1 &&
+      lineasDe(f).some((l) => l.tipo === 'evento_descartado'), 'F05: con el disco lleno el marcador queda pendiente; al escribirse, anotado (y se avisa)');
+  }
+  for (const [nombre, llenar] of [['por número de líneas', (f) => { for (let i = 0; i < 5000; i++) f.d.escribir(ev({ datos: { id: 'x-' + i } })); }],
+    // 10 líneas de exactamente 2 097 152 caracteres llenan los 20 MiB de la cola: ni el marcador corto cabe
+    ['por tamaño', (f) => { const vacia = JSON.stringify(ev({ datos: { id: 'x', relleno: '' } })).length; for (let i = 0; i < 10; i++) f.d.escribir(ev({ datos: { id: 'x', relleno: 'y'.repeat(2 * 1024 * 1024 - vacia) } })); }]]) {
+    const f = nuevo();
+    lleno(f, () => { llenar(f); f.d.escribir(grande()); });
+    const d = f.d.estado().descartados;
+    f.d.reintentar();
+    revisar(d.cantidad === 1 && d.sinAnotar === 1 && d.pendientes === 0 && !lineasDe(f).some((l) => l.tipo === 'evento_descartado') && lineasDe(f).some((l) => l.tipo === 'registro_interrumpido' && l.datos.perdidos >= 1),
+      `F05: con la cola llena ${nombre}, el marcador no cupo: «sin anotar», y registro_interrumpido cuenta la pérdida`);
+  }
+  {
+    const f = nuevo();
+    lleno(f, () => f.d.escribir(grande()));
+    f.d.instructor({ accion: 'activar', pin: '2468', activo: false });
+    const d = f.d.estado().descartados;
+    revisar(d.cantidad === 1 && d.sinAnotar === 1 && d.pendientes === 0 && f.avisos[f.avisos.length - 1].sinAnotar === 1, 'F05: si se apaga el registro con el marcador esperando, queda «sin anotar» (y se avisa)');
+  }
+  {
+    const f = nuevo();
+    f.d.escribir(grande());
+    f.d.escribir(grande({ sesion: 's2', equipo: 'L2' }));
+    f.d.escribir(grande({ sesion: 's2', equipo: 'L2' }));
+    const d = f.d.estado().descartados;
+    revisar(d.cantidad === 3 && d.anotados === 3 && d.sesiones.s1.cantidad === 1 && d.sesiones.s2.cantidad === 2 && d.sesiones.s2.anotados === 2,
+      'la cuenta va también por sesión (la esquina avisa solo la del equipo actual)');
+  }
+
+  // A-02: el evento_descartado lleva la hora del evento perdido: queda en su lugar y en el archivo de su día
+  {
+    let ahoraAqui = new Date(2026, 9, 22, 0, 0, 5).getTime(); // la app lo procesa pasada la medianoche
+    const f = nuevo({ ahora: () => ahoraAqui });
+    const antes = new Date(2026, 9, 21, 23, 59, 59).getTime();
+    f.d.escribir(grande({ t: antes }));
+    f.d.escribir(ev({ t: antes + 2 }));
+    const ls = lineasDe(f);
+    const marcador = ls.find((l) => l.tipo === 'evento_descartado');
+    revisar(marcador && marcador.t === antes && marcador.archivo === 'L1-2026-10-21.jsonl' && ls.every((l) => l.archivo === 'L1-2026-10-21.jsonl'),
+      `A-02: el marcador lleva la hora del perdido y va al archivo de su día (${marcador && marcador.archivo})`);
+    ahoraAqui += 1;
+    f.d.escribir(grande({ t: 'ayer' }));
+    revisar(lineasDe(f).filter((l) => l.tipo === 'evento_descartado').pop().t === ahoraAqui, 'control A-02: sin una hora válida, el marcador lleva la del momento');
+  }
+
+  // AUD-14: una carpeta de registros que no se puede leer no es «no hay registros»
+  {
+    const f = nuevo();
+    f.d.escribir(ev());
+    const usb = path.join(f.carpeta, 'usb');
+    fs.mkdirSync(usb);
+    const leerCarpeta = fs.readdirSync;
+    fs.readdirSync = function (a, ...resto) { if (path.resolve(String(a)) === path.resolve(f.registros)) throw Object.assign(new Error('EACCES sintético'), { code: 'EACCES' }); return leerCarpeta.call(this, a, ...resto); };
+    let r;
+    try { r = f.d.exportar({ pin: '2468', destino: usb }); } finally { fs.readdirSync = leerCarpeta; }
+    revisar(r.ok === false && r.motivo === 'disco' && r.donde === 'origen' && r.codigo === 'EACCES' && !fs.readdirSync(usb).length, 'AUD-14: sin permiso para leer los registros: «disco», del lado del origen, con su código, sin crear nada');
+    const vacio = nuevo();
+    revisar(vacio.d.exportar({ pin: '2468', destino: usb }).motivo === 'sin-archivos', 'control AUD-14: una carpeta de registros que todavía no existe sigue siendo «sin archivos»');
+  }
+  // A-04: una copia que escribe la mitad y falla no deja un .jsonl a medias; O-02: una copia con otro tamaño tampoco
+  for (const [nombre, copiaMala] of [['escribe la mitad y falla', (de, a) => { fs.writeFileSync(a, fs.readFileSync(de).subarray(0, 10)); throw Object.assign(new Error('EIO sintético'), { code: 'EIO' }); }],
+    ['termina con otro tamaño sin fallar', (de, a) => { fs.writeFileSync(a, fs.readFileSync(de).subarray(0, 10)); }]]) {
+    const f = nuevo();
+    f.d.escribir(ev());
+    f.d.escribir(ev({ equipo: 'L2', sesion: 's2' }));
+    const usb = path.join(f.carpeta, 'usb');
+    fs.mkdirSync(usb);
+    const copiar = fs.copyFileSync;
+    let copias = 0;
+    fs.copyFileSync = function (de, a, ...resto) { if (String(a).startsWith(usb) && ++copias === 2) return copiaMala(de, a); return copiar.call(this, de, a, ...resto); };
+    let r;
+    try { r = f.d.exportar({ pin: '2468', destino: usb }); } finally { fs.copyFileSync = copiar; }
+    const quedan = fs.readdirSync(r.carpeta).sort();
+    const m = JSON.parse(fs.readFileSync(path.join(r.carpeta, 'exportacion.json'), 'utf8'));
+    revisar(r.ok === false && r.motivo === 'copia-incompleta' && r.copiados === 1 && quedan.join() === 'L1-2026-10-21.jsonl,exportacion.json' && m.completa === false && m.faltan.join() === 'L2-2026-10-21.jsonl',
+      `una copia que ${nombre}: el pedazo se borra, «copia-incompleta» (${r.codigo}) y exportacion.json dice qué falta`);
+  }
+  {
+    const f = nuevo();
+    f.d.escribir(ev());
+    const usb = path.join(f.carpeta, 'usb');
+    fs.mkdirSync(usb);
+    for (let i = 1; i <= 1000; i++) fs.mkdirSync(path.join(usb, `TecnoBloques-registros-2026-10-21_1600${i > 1 ? `-${i}` : ''}`));
+    const r = f.d.exportar({ pin: '2468', destino: usb });
+    revisar(r.ok === false && r.motivo === 'disco' && r.donde === 'destino' && r.codigo === 'TOPE' && fs.readdirSync(usb).length === 1000, 'con 1000 exportaciones del mismo minuto: «disco», del lado del destino, código TOPE, sin crear nada');
+  }
   fs.rmSync(base, { recursive: true, force: true });
 }
 

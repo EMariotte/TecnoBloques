@@ -1355,3 +1355,21 @@ Una falla está «corregida al final» si alguna corrida posterior a la última 
 ## 2026-10-21 · Historia del registro: el tramo de cada evento (INT-RES-03c de Codex)
 
 `herramientas/historia-registro.js` usa el campo nuevo `tramo` de los eventos del simulador (contrato 1, 6.1, aditivo; lo pone TecnoCircuito) para comparar cada cierre con su reloj: una foto de antes del RESET que llega después ya no hace incoherente una corrida válida. Un registro sin `tramo` se lee como antes. TecnoBloques no cambia: copia el sobre tal cual (nota en «Proyecto hermano»). `test:historia` 142 OK, `test:registro-app` 88/88, `test:simulador` 53.
+
+## 2026-10-21 · Registro: los eventos descartados y las exportaciones del mismo minuto (AUD-07 y AUD-08 de Codex)
+
+- `escritorio/registro-disco.js`: un evento que no se puede guardar (demasiado largo, que no se puede convertir a texto o sin tipo) deja `evento_descartado` en su lugar (contrato 1, 6.1, aditivo; nota en «Proyecto hermano»), lo cuenta y lo avisa (`alDescartar` → `tb:registro-descartado`). `src/registro.js`: un evento que no cruza a la app también deja el suyo. `src/app.js`: la esquina («El registro perdió un evento · Avisen al instructor»), su explicación y la línea del panel del instructor.
+- `exportar()`: cada exportación en su propia carpeta (mkdir sin `recursive`, sufijo -2, -3…), copias sin pisar y `exportacion.json` con bytes, sha256 y `completa`; si una copia falla a mitad, la app lo dice. `archivos()` lista solo archivos.
+- `herramientas/historia-registro.js`: `evento_descartado` es un hueco; la corrida a la que le falta un evento no se compara.
+- `test:registro` 174, `test:registro-app` 99 (sección 9 en otra carpeta de datos), `test:historia` 146.
+
+## 2026-10-21 · Registro: el lote de las auditorías de AUD-07/08 (AUD-07, AUD-09 a AUD-14)
+
+- `escritorio/registro-disco.js`: configuración validada en un solo lugar (AUD-11); anotado, pendiente y sin anotar para los `evento_descartado` (F05); la hora del evento perdido (A-02); la cuenta por sesión; exportar con `donde` y `codigo` (AUD-14), sin dejar pedazos, comparando bytes y con `faltan`.
+- `escritorio/main.js`: los manejadores del registro no dejan escapar excepciones. `src/registro.js`: `sesion()` y un rescate que nunca lanza. `src/app.js`: la esquina por equipo (decisión de Efraín), el panel del instructor que se actualiza abierto, los textos de anotación y los errores de exportación en palabras. `src/body.html`: `aria-live` en la esquina.
+- `herramientas/historia-registro.js`: admisión de exportaciones (AUD-09), copias del mismo archivo (AUD-10), tramos que tienen que existir (AUD-12), UTF-8 por línea (AUD-13), el cierre perdido (A-01) y nada comparado a través de un hueco (A-03).
+- `test:registro` 202, `test:historia` 175; la sección 9 de `test:registro-app` cubre la esquina por equipo, el panel abierto, el registro apagado y el sufijo obligado con carpetas señuelo.
+
+## 2026-10-21 · Historia del registro: el manifiesto de una exportación se valida como estructura (AUD-09-R1 de Codex)
+
+`herramientas/historia-registro.js`, `camposMalos()`: `app`, `version_tb`, `t`, `completa`, `total`, `archivos` y `pendientes` obligatorios y con sus tipos (enteros seguros no negativos, sin convertir; un `pendientes` que falta no es cero); con `completa: false`, `faltan` y `error`. Si no es válido, la exportación no se admite. `test:historia` 192.

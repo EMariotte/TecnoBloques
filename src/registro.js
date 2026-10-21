@@ -296,6 +296,8 @@ function crearRegistroEventos({ escribir, versionTB, versionTC, ahora = () => Da
   return {
     activo: () => equipo !== null,
     equipo: () => equipo,
+    /** La sesión del equipo actual (la esquina avisa solo sus eventos perdidos, AUD-07). */
+    sesion: () => sesion,
     /** Empieza la sesión de un equipo (y termina la del anterior, si había). */
     empezar(codigo, datos) {
       if (equipo !== null) this.terminar();
@@ -316,10 +318,24 @@ function crearRegistroEventos({ escribir, versionTB, versionTC, ahora = () => Da
     editor(tipo, datos) {
       this.registrar({ t: Math.round(ahora()), origen: 'editor', tipo, datos: datos || {} });
     },
-    /** Un evento ya armado (del lienzo, del simulador o del editor). */
+    /**
+     * Un evento ya armado (del lienzo, del simulador o del editor). Si no llega a la app (no se puede copiar: una
+     * función, un nodo de la página…), no se pierde en silencio: va su evento_descartado (AUD-07, contrato 6.1).
+     */
     registrar(ev) {
       if (equipo === null || !ev || typeof ev !== 'object') return;
-      try { escribir(completar(ev)); } catch (e) { /* el registro nunca interrumpe el trabajo */ }
+      try { escribir(completar(ev)); } catch (e) {
+        // Nada de aquí puede lanzar: un evento raro (un getter que falla) tampoco interrumpe el trabajo
+        try {
+          const datos = { motivo: 'no_serializable' };
+          if (typeof ev.tipo === 'string' && ev.tipo) datos.tipo = ev.tipo.slice(0, 64);
+          if (typeof ev.origen === 'string' && ev.origen) datos.origen = ev.origen.slice(0, 64);
+          if (Number.isInteger(ev.corrida) && ev.corrida >= 1) datos.corrida = ev.corrida;
+          // La hora del evento perdido, si la traía: así queda en su lugar
+          const t = Number.isFinite(ev.t) && ev.t >= 0 && ev.t <= 8.64e15 ? Math.round(ev.t) : Math.round(ahora());
+          escribir(completar({ t, origen: 'editor', tipo: 'evento_descartado', datos }));
+        } catch (e2) { /* el registro nunca interrumpe el trabajo */ }
+      }
     },
   };
 }

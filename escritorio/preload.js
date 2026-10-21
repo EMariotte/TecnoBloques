@@ -21,6 +21,8 @@ contextBridge.exposeInMainWorld('tbEscritorio', {
     escribir: (linea) => ipcRenderer.send('tb:registrar', linea),
     /** fn({falla, fin}): falla = {motivo, desde, pendientes, perdidos} o null; fin = 'escrito' | 'apagado' al terminar */
     alFalla: (fn) => { ipcRenderer.on('tb:registro-falla', (_e, d) => fn(d)); },
+    /** fn({cantidad, sinAnotar, ultimo: {tipo, motivo, t}}): un evento no se pudo guardar y quedó anotado (AUD-07) */
+    alDescarte: (fn) => { ipcRenderer.on('tb:registro-descartado', (_e, d) => fn(d)); },
   },
   alProgreso: (fn) => {
     const h = (_e, m) => fn(m);

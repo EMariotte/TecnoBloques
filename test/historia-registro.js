@@ -153,7 +153,9 @@ revisar(/corrida 5 no tiene cierre/.test(avisos), 'avisa la corrida sin cierre')
 revisar(/no tiene sesion_terminada/.test(avisos), 'avisa la sesión sin sesion_terminada');
 revisar(/1 evento «algo_nuevo» \(editor\) que esta historia no interpreta/.test(avisos),
   'un tipo nuevo no rompe la historia: se avisa que no se interpreta (en el estudio la versión está congelada)');
-revisar(/corrida 4 simula con uno, pero la placa elegida era nano: falta un placa_cambiada/.test(avisos), 'sin placa_cambiada: avisa que la corrida usa otra placa que la elegida');
+// Después del hueco de AUD-02 ya no se sabe qué placa estaba elegida (pudo perderse un placa_cambiada): no se acusa uno
+// que falta (A-03 de la auditoría de AUD-07/08). El aviso sin hueco lo prueba «placaPerdida», más abajo.
+revisar(!/corrida 4 simula con uno, pero la placa elegida era nano/.test(avisos), 'después de un hueco no se acusa un placa_cambiada que falta');
 
 // ---- El resumen y la integridad con registros incompletos o incoherentes (R1 y R2 de la verificación de Codex,
 // 19 oct). Cada sesión se arma con el sobre real; las líneas sueltas cumplen el esquema, la secuencia no siempre.
@@ -723,6 +725,192 @@ for (const [nombre, valor, campo, motivo] of [['t = 8,64e15 + 1', 86400000000000
 }
 const limite = fueraDeDate(8640000000000000, 't');
 revisar(!limite.texto.startsWith('ERROR') && !limite.h.avisos.some((a) => a.includes('no es una fecha')), 'control, t = 8,64e15 (el límite de Date) se lee');
+
+// ---- AUD-07: un evento que no se pudo guardar deja evento_descartado en su lugar (contrato 6.1): ahí hay un hueco
+const descartado = (datos) => { pasar(1); registro.editor('evento_descartado', datos); };
+const GRANDE = { motivo: 'tamano', tipo: 'codigo_compilado', origen: 'editor', largo: 2097153, limite: 2097152 };
+const entreCorridas = sesionCon(() => { iniciar(140, 'realista', [LED], [{}, {}]); quemado(140); cerrar(140, ['led_quemado']); descartado(GRANDE); iniciar(141, 'realista', [LED, R1], [{}, {}, {}]); cerrar(141, []); });
+revisar(entreCorridas.corridas[1].corrigio === null && pasoDe(entreCorridas, 141).endsWith('No se compara con la corrida 140: hay un hueco en el registro entre las dos.') &&
+  entreCorridas.pasos.some((p) => p.texto === 'No se guardó un evento (codigo_compilado): era demasiado grande. Ahí hay un hueco.') &&
+  con(entreCorridas, 'Hay un hueco: no se guardó un evento (codigo_compilado) porque era demasiado grande') && !entreCorridas.resumen.includes(CORREGIDA),
+`AUD-07, un evento descartado entre dos corridas: se cuenta, es un hueco y no se compara a través de él («${pasoDe(entreCorridas, 141)}»)`);
+const dentroDeCorrida = sesionCon(() => { iniciar(142, 'realista', [LED], [{}, {}]); quemado(142); descartado({ motivo: 'tamano', tipo: 'falla', origen: 'simulador', corrida: 142 }); cerrar(142, ['led_quemado']); iniciar(143, 'realista', [LED, R1], [{}, {}, {}]); cerrar(143, []); });
+revisar(dentroDeCorrida.corridas[0].contradicciones.includes('perdió un evento del registro (falla)') && dentroDeCorrida.corridas[1].corrigio === null && !dentroDeCorrida.resumen.includes(CORREGIDA),
+  `AUD-07, un evento descartado de una corrida: esa corrida no se compara («${pasoDe(dentroDeCorrida, 143)}»)`);
+const inicioPerdido = sesionCon(() => { descartado({ motivo: 'tamano', tipo: 'simulacion_iniciada', origen: 'simulador', corrida: 144 }); quemado(144); cerrar(144, ['led_quemado']); });
+revisar(con(inicioPerdido, 'La corrida 144 perdió su inicio (no se guardó)') && !con(inicioPerdido, 'equipo equivocado') && inicioPerdido.resumen.includes('LED quemado (led1) [sin atribuir: corrida 144]'),
+  `AUD-07, se perdió el inicio de una corrida: sus fallas quedan sin atribuir y el aviso dice por qué («${inicioPerdido.resumen}»)`);
+const descarteAntes = sesionCon(() => { descartado({ motivo: 'no_serializable', tipo: 'bloques_cambiados', origen: 'editor' }); iniciar(145, 'realista', [LED], [{}, {}]); quemado(145); cerrar(145, ['led_quemado']); iniciar(146, 'realista', [LED, R1], [{}, {}, {}]); cerrar(146, []); });
+revisar(descarteAntes.corridas[1].corrigio.length === 1 && descarteAntes.resumen.endsWith(CORREGIDA) && descarteAntes.avisos.length === 1 &&
+  descarteAntes.pasos.some((p) => p.texto === 'No se guardó un evento (bloques_cambiados): no se pudo convertir a texto. Ahí hay un hueco.'),
+`control, un evento descartado antes de las corridas: se avisa, pero no impide comparar después (${descarteAntes.avisos.join(' | ')})`);
+
+// ---- Lote de la auditoría profunda (21 oct): AUD-12, A-01, A-03, AUD-10, AUD-09 y AUD-13
+// AUD-12: un tramo del reloj que todavía no existe (no hubo tantos RESET) no es evidencia: la corrida no se compara
+const casosAUD12 = [
+  ['una falla de un tramo que no existe', () => { simT('falla', 110, 1500, 1, ledT); cierreT(1000, 0); }],
+  ['un cierre de un tramo que no existe', () => { simT('falla', 110, 1500, 0, ledT); cierreT(1000, 9); }],
+  ['una pausa de un tramo que no existe', () => { simT('falla', 110, 500, 0, ledT); simT('simulacion_pausada', 110, 1500, 9); simT('simulacion_reanudada', 110, 1500, 9); cierreT(1000, 0); }],
+  ['un RESET que dice otro tramo', () => { simT('falla', 110, 5, 0, ledT); simT('reinicio_placa', 110, 10, 1, { motivo: 'boton', nuevos: 1, total: 1 }); cierreT(10, 1); }],
+  ['un cierre de un tramo anterior al último RESET', () => { simT('falla', 110, 5, 0, ledT); resetT(10); cierreT(1000, 0); }],
+  ['una corrida que mezcla eventos con tramo y sin él', () => { quemado(110); cierreT(1000, 0); }],
+];
+for (const [nombre, pasos] of casosAUD12) {
+  const h = sesionCon(() => { iniciar(110, 'realista', [LED], [{}, {}]); pasos(); iniciar(111, 'realista', [LED, R1], [{}, {}, {}]); cerrar(111, []); });
+  revisar(!h.corridas[0].coherente && h.corridas[1].corrigio === null && !h.resumen.includes(CORREGIDA),
+    `AUD-12, ${nombre}: la corrida no se compara ni se da por corregida (${h.corridas[0].contradicciones.join(' | ')})`);
+}
+
+// A-01: si se perdió el cierre de una corrida (evento_descartado), se sabe que existió: las siguientes no se acusan de cruce
+const cierrePerdido = sesionCon(() => {
+  iniciar(150, 'realista', [LED], [{}, {}]); quemado(150); descartado({ motivo: 'tamano', tipo: 'simulacion_detenida', origen: 'simulador', corrida: 150 });
+  iniciar(151, 'realista', [LED], [{}, {}]); quemado(151); cerrar(151, ['led_quemado']);
+  iniciar(152, 'realista', [LED, R1], [{}, {}, {}]); cerrar(152, []);
+});
+revisar(cierrePerdido.corridas[1].coherente && cierrePerdido.corridas[2].coherente && cierrePerdido.corridas[2].corrigio.length === 1 && con(cierrePerdido, 'La corrida 150 perdió su cierre (no se guardó)') &&
+  !con(cierrePerdido, 'empezó antes de que la corrida 150') && cierrePerdido.corridas[1].corrigio === null,
+`A-01, un cierre perdido: las corridas siguientes son coherentes y la 152 corrigió; la 151 no se compara con la 150 («${pasoDe(cierrePerdido, 151)}»)`);
+const nuncaCerro = conAbierta(false);
+revisar(nuncaCerro.corridas[1].contradicciones.includes('empezó antes de que la corrida 130 se cerrara, y esa nunca se cerró'), 'control A-01: una corrida que de verdad nunca se cerró sigue sin acreditar el orden');
+
+// A-03: en un hueco pudo perderse una compilación, unos bloques o un cambio de placa: no se compara a través de él
+const compila = (codigo) => { pasar(1); registro.editor('codigo_compilado', { ok: true, error: null, bytes: 100, codigo }); };
+const programaA = 'void loop() { delay(500); }\n';
+const aTravesDelHueco = sesionCon(() => { compila(programaA); descartado({ motivo: 'tamano', tipo: 'codigo_compilado', origen: 'editor' }); compila(programaA); });
+const compilaciones = aTravesDelHueco.pasos.filter((p) => p.texto.startsWith('Compiló')).map((p) => p.texto);
+revisar(compilaciones[1] === 'Compiló: bien, 100 bytes (después de un hueco: no se compara con la compilación anterior).',
+  `A-03, A, una compilación perdida y A: no dice «el mismo programa» («${compilaciones[1]}»)`);
+const sinHueco = sesionCon(() => { compila(programaA); compila(programaA); });
+revisar(sinHueco.pasos.filter((p) => p.texto.startsWith('Compiló'))[1].texto === 'Compiló: bien, 100 bytes (el mismo programa).', 'control A-03: sin hueco, A y A es «el mismo programa»');
+const bloquesHueco = sesionCon(() => { pasar(1); registro.editor('bloques_cambiados', OCHO); descartado({ motivo: 'tamano', tipo: 'bloques_cambiados', origen: 'editor' }); pasar(5); registro.editor('bloques_cambiados', OCHO); });
+revisar(bloquesHueco.pasos.filter((p) => p.texto.startsWith('Bloques')).map((p) => p.texto).join(' | ') === 'Bloques: 8 (5 tipos). | Bloques: 8 (5 tipos).',
+  'A-03, los bloques no se juntan ni se comparan a través de un hueco');
+const placaHueco = sesionCon(() => { descartado({ motivo: 'tamano', tipo: 'placa_cambiada', origen: 'editor' }); pasar(1); registro.editor('placa_cambiada', { de: 'nano', a: 'uno' }); });
+revisar(!con(placaHueco, 'placa_cambiada dice que la placa era nano'), 'A-03, después de perder un placa_cambiada no se acusa al siguiente');
+
+// AUD-10: varias copias del mismo archivo son fotos de un archivo que crece: se lee la más completa, con sus repeticiones
+const carpetaCopias = fs.mkdtempSync(path.join(os.tmpdir(), 'tb-historia-copias-'));
+try {
+  const altaR = ['componente_agregado', { id: 'r1', tipo: 'resistencia' }];
+  const lineasCopia = (() => { sesionCon(() => { pasar(1); circuito(...altaR); circuito('componente_quitado', { id: 'r1', tipo: 'resistencia' }); circuito(...altaR); }); return lineas.slice(); })();
+  const escribir = (sub, ls) => { const d = path.join(carpetaCopias, sub); fs.mkdirSync(d, { recursive: true }); fs.writeFileSync(path.join(d, 'R-2026-10-21.jsonl'), ls.join('\n') + '\n'); return d; };
+  const primera = escribir('primera', lineasCopia.slice(0, 2)); // hasta la primera alta
+  const ultima = escribir('ultima', lineasCopia);
+  const pasosDe = (rutas) => contarHistoria(leerArchivos(rutas).lineas).map((h) => h.pasos.map((p) => p.texto));
+  revisar(JSON.stringify(pasosDe([primera, ultima])) === JSON.stringify(pasosDe([ultima])) && JSON.stringify(pasosDe([ultima])).includes('agregó r1 (resistencia)'),
+    'AUD-10: la primera copia y la última juntas cuentan lo mismo que la última sola (la alta repetida no se pierde)');
+  revisar(JSON.stringify(pasosDe([ultima, primera])) === JSON.stringify(pasosDe([ultima])), 'AUD-10: también pasándolas en otro orden');
+  const distinta = escribir('distinta', [lineasCopia[0], lineasCopia[1].replace('"r1"', '"r9"')]);
+  const [conflicto] = contarHistoria(leerArchivos([distinta, ultima]).lineas);
+  revisar(con(conflicto, 'Hay copias de R-2026-10-21.jsonl que no coinciden entre sí') && conflicto.dudas.length === 1, 'AUD-10: dos copias que no coinciden se avisan y no aseguran el final');
+} finally { fs.rmSync(carpetaCopias, { recursive: true, force: true }); }
+
+// AUD-09: una exportación se admite antes de leerla: entera, con sus huellas, sin archivos de más ni de menos
+{
+  const { crearRegistroDisco } = require('../escritorio/registro-disco.js');
+  const raiz = fs.mkdtempSync(path.join(os.tmpdir(), 'tb-historia-admision-'));
+  try {
+    let caso = 0;
+    const lineasCorregida = (() => { sesionCon(() => { iniciar(160, 'realista', [LED], [{}, {}]); quemado(160); cerrar(160, ['led_quemado']); iniciar(161, 'realista', [LED, R1], [{}, {}, {}]); cerrar(161, []); }); return lineas.slice(); })();
+    // Una sesión que se corrige, exportada de verdad con el escritor de la app; `dañar` la cambia después de exportar
+    const exportar = (dañar = () => {}) => {
+      const carpeta = path.join(raiz, `caso-${++caso}`);
+      const disco = crearRegistroDisco({ carpeta, ahora: () => INICIO, version: '0.4.0' });
+      disco.instructor({ accion: 'crear-pin', pin: '2468' });
+      disco.instructor({ accion: 'activar', pin: '2468', activo: true });
+      for (const l of lineasCorregida) disco.escribir(JSON.parse(l));
+      const usb = path.join(carpeta, 'usb');
+      fs.mkdirSync(usb);
+      const r = disco.exportar({ pin: '2468', destino: usb });
+      dañar(r.carpeta);
+      return r.carpeta;
+    };
+    const correrCli = (...args) => spawnSync(process.execPath, [path.join(__dirname, '..', 'herramientas', 'historia-registro.js'), ...args], { encoding: 'utf8' });
+    const leerExportacion = (carpeta) => { const l = leerArchivos([carpeta]); return { ...l, historias: contarHistoria(l.lineas), cli: correrCli(carpeta) }; };
+    const buena = leerExportacion(exportar());
+    revisar(!buena.problemas.length && buena.cli.status === 0 && buena.historias[0].resumen.endsWith(CORREGIDA), `control AUD-09: una exportación entera se admite y se lee igual que antes (salida ${buena.cli.status})`);
+    const unicoArchivo = (c) => fs.readdirSync(c).find((f) => f.endsWith('.jsonl'));
+    const cambiarManifiesto = (c, cambio) => { const m = JSON.parse(fs.readFileSync(path.join(c, 'exportacion.json'), 'utf8')); cambio(m); fs.writeFileSync(path.join(c, 'exportacion.json'), JSON.stringify(m)); };
+    const malas = [
+      ['incompleta (completa: false)', (c) => cambiarManifiesto(c, (m) => { m.completa = false; m.faltan = []; m.error = { archivo: 'X-2026-10-19.jsonl', codigo: 'ENOSPC', donde: 'destino' }; }), /quedó incompleta/],
+      ['con un archivo cambiado después de exportar', (c) => { const a = path.join(c, unicoArchivo(c)); fs.writeFileSync(a, fs.readFileSync(a, 'utf8').replace('"ms_sim":1000', '"ms_sim":1001')); }, /no coincide con su huella/],
+      ['sin uno de sus archivos', (c) => fs.renameSync(path.join(c, unicoArchivo(c)), path.join(raiz, `apartado-${caso}.jsonl`)), /falta .* que está en exportacion\.json/],
+      ['con un .jsonl de más', (c) => fs.writeFileSync(path.join(c, 'OTRO-2026-10-19.jsonl'), ''), /no está en exportacion\.json/],
+      ['con exportacion.json roto', (c) => fs.writeFileSync(path.join(c, 'exportacion.json'), '{ roto'), /no se puede leer/],
+      ['sin exportacion.json', (c) => fs.rmSync(path.join(c, 'exportacion.json')), /sin exportacion\.json/],
+      ['de un formato desconocido', (c) => cambiarManifiesto(c, (m) => { m.formato = 2; }), /formato que esta historia no conoce/],
+      ['con un nombre de archivo que sale de la carpeta', (c) => cambiarManifiesto(c, (m) => { m.archivos[0].archivo = '../fuera.jsonl'; }), /no es válido/],
+      ['con eventos pendientes al exportar', (c) => cambiarManifiesto(c, (m) => { m.pendientes = 2; }), /esperaban a que el disco funcionara/],
+    ];
+    for (const [nombre, dañar, problema] of malas) {
+      const r = leerExportacion(exportar(dañar));
+      const h = r.historias[0];
+      revisar(r.problemas.some((p) => problema.test(p)) && r.cli.status === 1 && (!h || (!h.resumen.includes(CORREGIDA) && h.resumen.includes('no se puede asegurar'))),
+        `AUD-09, una exportación ${nombre}: se dice, la línea de comandos sale con 1 y no se afirma la corrección (${h ? h.resumen.slice(0, 110) : 'sin historia'})`);
+    }
+    // AUD-09-R1: el manifiesto se valida como estructura; nada se convierte ni se supone (un pendientes que falta no es 0)
+    const estructura = [
+      ...[['ausente', undefined], ['texto «1»', '1'], ['null', null], ['negativo', -1], ['fracción', 0.5], ['objeto', {}]].map(([n, v]) => [`pendientes ${n}`, (m) => { if (v === undefined) delete m.pendientes; else m.pendientes = v; }, 'pendientes']),
+      ['completa como texto', (m) => { m.completa = 'true'; }, 'completa'], ['total ausente', (m) => { delete m.total; }, 'total'], ['t negativo', (m) => { m.t = -5; }, 't'],
+      ['app de otro programa', (m) => { m.app = 'Otro'; }, 'app'], ['version_tb vacía', (m) => { m.version_tb = ''; }, 'version_tb'],
+      ['bytes como texto', (m) => { m.archivos[0].bytes = String(m.archivos[0].bytes); }, 'archivos'], ['faltan con completa: true', (m) => { m.faltan = []; }, 'faltan o error'],
+      ['completa: false sin faltan ni error', (m) => { m.completa = false; }, 'faltan, error'],
+    ];
+    for (const [nombre, cambio, campo] of estructura) {
+      const r = leerExportacion(exportar((c) => cambiarManifiesto(c, cambio)));
+      const h = r.historias[0];
+      revisar(r.problemas.some((p) => p.includes(`no es válido (${campo}`)) && r.cli.status === 1 && !h.resumen.includes(CORREGIDA) && h.corridas[1].corrigio === null,
+        `AUD-09-R1, ${nombre}: el manifiesto no es válido, CLI 1, sin comparar ni afirmar el final`);
+    }
+    for (const [nombre, pendientes, limpio] of [['pendientes 0', 0, true], ['pendientes 2', 2, false]]) {
+      const r = leerExportacion(exportar((c) => cambiarManifiesto(c, (m) => { m.pendientes = pendientes; })));
+      revisar(limpio ? !r.problemas.length && r.cli.status === 0 && r.historias[0].resumen.endsWith(CORREGIDA)
+        : r.problemas.some((p) => /2 eventos esperaban/.test(p)) && r.cli.status === 1 && !r.historias[0].resumen.includes(CORREGIDA),
+      `control AUD-09-R1, ${nombre}: ${limpio ? 'se admite y concluye' : 'se avisa y no se asegura el final'}`);
+    }
+    {
+      // Con un evento de verdad esperando en la cola (disco lleno) y el pendientes cambiado a "1" en el manifiesto
+      const carpetaCola = exportar();
+      const disco = crearRegistroDisco({ carpeta: path.join(raiz, `caso-cola`), ahora: () => INICIO, version: '0.4.0' });
+      disco.instructor({ accion: 'crear-pin', pin: '2468' });
+      disco.instructor({ accion: 'activar', pin: '2468', activo: true });
+      for (const l of lineasCorregida) disco.escribir(JSON.parse(l));
+      const anexar = fs.appendFileSync;
+      fs.appendFileSync = function (a, ...resto) { if (String(a).startsWith(path.join(raiz, 'caso-cola'))) throw Object.assign(new Error('ENOSPC sintético'), { code: 'ENOSPC' }); return anexar.call(this, a, ...resto); };
+      let exp;
+      try { disco.escribir({ ...JSON.parse(lineasCorregida[0]), tipo: 'ejemplo_cargado', datos: { id: 'en-cola' } }); fs.mkdirSync(path.join(raiz, 'caso-cola', 'usb')); exp = disco.exportar({ pin: '2468', destino: path.join(raiz, 'caso-cola', 'usb') }); } finally { fs.appendFileSync = anexar; }
+      const conUno = leerExportacion(exp.carpeta);
+      cambiarManifiesto(exp.carpeta, (m) => { m.pendientes = '1'; });
+      const conTexto = leerExportacion(exp.carpeta);
+      revisar(exp.ok && conUno.cli.status === 1 && conTexto.cli.status === 1 && !conTexto.historias[0].resumen.includes(CORREGIDA) && conTexto.problemas.some((p) => p.includes('no es válido (pendientes')) && !!carpetaCola,
+        `AUD-09-R1, con un evento de verdad en la cola: pendientes 1 avisa, y cambiado a "1" tampoco sale limpio (${conTexto.cli.status})`);
+    }
+    const noAdmitida = leerExportacion(exportar((c) => cambiarManifiesto(c, (m) => { m.completa = false; m.faltan = []; m.error = { archivo: 'X-2026-10-19.jsonl', codigo: 'ENOSPC' }; })));
+    revisar(noAdmitida.historias[0].corridas[1].corrigio === null, 'AUD-09: en una exportación no admitida tampoco se comparan las corridas');
+    // Leer un archivo suelto es una lectura cruda, deliberada: no se verifica la exportación
+    const crudo = exportar();
+    const suelto = leerArchivos([path.join(crudo, unicoArchivo(crudo))]);
+    revisar(!suelto.problemas.length && contarHistoria(suelto.lineas)[0].resumen.endsWith(CORREGIDA), 'control AUD-09: un archivo suelto se lee crudo, sin verificar la exportación');
+    // La carpeta de registros de la app no es una exportación y se lee como siempre
+    revisar(!leerArchivos([path.join(raiz, 'caso-1', 'registros')]).problemas.length, 'control AUD-09: la carpeta de registros de la app no es una exportación y se lee como siempre');
+  } finally { fs.rmSync(raiz, { recursive: true, force: true }); }
+}
+
+// AUD-13: cada línea se decodifica sola: un byte roto aparta solo su línea, aunque otra tenga un U+FFFD legítimo
+{
+  const carpeta = fs.mkdtempSync(path.join(os.tmpdir(), 'tb-historia-utf8-'));
+  try {
+    const ls = (() => { sesionCon(() => { compila('const char *s = "�";\n'); pasar(1); registro.editor('ejemplo_cargado', { id: 'ROTO' }); }); return lineas.slice(); })();
+    const bytes = Buffer.from('﻿' + ls.join('\r\n') + '\r\n');
+    bytes[bytes.indexOf(Buffer.from('ROTO'))] = 0xff;
+    const archivo = path.join(carpeta, 'U-2026-10-21.jsonl');
+    fs.writeFileSync(archivo, bytes);
+    const r = leerArchivos([archivo]);
+    const apartadas = r.lineas.filter((l) => l.apartada);
+    revisar(apartadas.length === 1 && apartadas[0].linea === 3 && r.lineas.some((l) => l.ev && l.ev.tipo === 'codigo_compilado' && l.ev.datos.codigo.includes('�')) && r.notas.some((n) => /BOM/.test(n)),
+      `AUD-13: con BOM y CRLF, solo se aparta la línea del byte roto (la ${apartadas[0] && apartadas[0].linea}); el U+FFFD legítimo se conserva`);
+  } finally { fs.rmSync(carpeta, { recursive: true, force: true }); }
+}
 
 // ---- La línea de comandos (INT-06, INT-07 y la decisión 3): siempre muestra la historia y sale con 1 si hay problemas
 const cli = path.join(__dirname, '..', 'herramientas', 'historia-registro.js');

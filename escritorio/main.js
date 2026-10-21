@@ -10,10 +10,13 @@ const { crearRegistroDisco } = require('./registro-disco');
 const recursos = app.isPackaged ? process.resourcesPath : path.join(__dirname, 'recursos');
 const arduino = new Arduino({ recursos, trabajo: path.join(app.getPath('userData'), 'arduino') });
 // Registro de eventos por equipo: %APPDATA%\TecnoBloques\registros\ (contrato con TecnoCircuito, sección 6.1). Si el
-// disco falla, la página lo sabe por tb:registro-falla y lo muestra (AUD-02).
+// disco falla, la página lo sabe por tb:registro-falla y lo muestra (AUD-02); si un evento no se puede guardar, por
+// tb:registro-descartado (AUD-07).
 const registroEventos = crearRegistroDisco({
   carpeta: app.getPath('userData'),
-  alCambiar: (falla, fin) => { if (ventana && !ventana.isDestroyed()) ventana.webContents.send('tb:registro-falla', { falla, fin }); }
+  version: app.getVersion(),
+  alCambiar: (falla, fin) => { if (ventana && !ventana.isDestroyed()) ventana.webContents.send('tb:registro-falla', { falla, fin }); },
+  alDescartar: (descartados) => { if (ventana && !ventana.isDestroyed()) ventana.webContents.send('tb:registro-descartado', descartados); }
 });
 let ventana = null;
 let puertoPreferido = null; // lo elige el aprendiz en el editor; lo usa el monitor serial (Web Serial)
@@ -94,9 +97,11 @@ ipcMain.handle('tb:compilar-hex', async (e, datos) => {
 });
 
 /* ---------- Registro de eventos (apagado por defecto; lo enciende el instructor con su PIN) ---------- */
-ipcMain.handle('tb:registro-estado', () => registroEventos.estado());
+// Ningún dato del registro (una configuración dañada, por ejemplo) debe tumbar un manejador del IPC (AUD-11)
+ipcMain.handle('tb:registro-estado', () => { try { return registroEventos.estado(); } catch (e) { return { activo: false, tienePin: false, falla: { motivo: 'CONFIG', desde: Date.now(), pendientes: 0, perdidos: 0 }, configIlegible: true, descartados: null }; } });
 ipcMain.handle('tb:registro-instructor', (_e, peticion) => {
-  const r = registroEventos.instructor(peticion || {});
+  let r;
+  try { r = registroEventos.instructor(peticion || {}); } catch (e) { return { ok: false, motivo: 'disco', mensaje: e.message }; }
   if (r.ok) instructorAutorizado = true; // el PIN correcto también habilita F12 hasta cerrar la app
   return r;
 });
@@ -106,8 +111,9 @@ ipcMain.handle('tb:registro-exportar', async (_e, { pin } = {}) => {
   try { return registroEventos.exportar({ pin, destino: r.filePaths[0] }); } catch (e) { return { ok: false, motivo: 'disco', mensaje: e.message }; }
 });
 // Una línea por evento, en orden: send (no invoke) para que el último evento salga aunque la ventana se esté cerrando.
-// escribir() no lanza: si el disco falla, la línea espera y la página recibe tb:registro-falla.
-ipcMain.on('tb:registrar', (_e, linea) => registroEventos.escribir(linea));
+// escribir() no lanza: si el disco falla, la línea espera y la página recibe tb:registro-falla; si la línea no se puede
+// guardar, queda su evento_descartado y la página recibe tb:registro-descartado (AUD-07).
+ipcMain.on('tb:registrar', (_e, linea) => { try { registroEventos.escribir(linea); } catch (e) { console.error('registro:', e); } });
 
 /* ---------- Actualización automática desde GitHub Releases ---------- */
 // Registro de la actualización: %APPDATA%\TecnoBloques\registro-actualizacion.txt (se reinicia si pasa de 1 MB)
@@ -161,4 +167,4 @@ app.whenReady().then(() => {
 });
 app.on('window-all-closed', () => app.quit());
 // Si el disco falló, un último intento de escribir lo que espera antes de cerrar.
-app.on('will-quit', () => registroEventos.reintentar());
+app.on('will-quit', () => { try { registroEventos.reintentar(); } catch (e) { console.error('registro:', e); } });

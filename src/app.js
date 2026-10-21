@@ -1494,6 +1494,17 @@ let registroFalla = null;
 // La configuración del registro existe pero no se puede leer: no se sabe si estaba encendido, así que no se registra
 // nada y la esquina lo avisa hasta que el instructor cree un PIN nuevo (AUD-02-V2).
 let registroConfigIlegible = false;
+// Eventos que no se pudieron guardar desde que se abrió la app (demasiado grandes, por ejemplo), con su evento_descartado
+// (AUD-07): {cantidad, anotados, pendientes, sinAnotar, ultimo: {tipo, motivo, t}, sesiones: {sesión: {cantidad, …}}}. El
+// panel del instructor muestra la cuenta de toda la app; la esquina, solo los del equipo que está trabajando (decisión de
+// Efraín, 21 oct): al cambiar de equipo o apagar el registro, ese aviso ya no es suyo.
+let registroDescartados = null;
+/** Los eventos perdidos de la sesión del equipo actual, o null. */
+function descartesDelEquipo() {
+  const s = registroEventos.sesion();
+  const de = registroDescartados && registroDescartados.sesiones && s && Object.prototype.hasOwnProperty.call(registroDescartados.sesiones, s) ? registroDescartados.sesiones[s] : null;
+  return de && de.cantidad > 0 ? de : null;
+}
 let tResumenBloques = null;
 // AUD-04: lo que hace un equipo queda en su sesión. turnoEquipo sube cada vez que cambia el equipo (o termina su
 // sesión): una compilación que empezó con otro turno ya no es de nadie y se descarta (decisión de Efraín, 18 oct).
@@ -1502,13 +1513,17 @@ let cambiandoEquipo = false; // mientras se espera el cierre de la corrida del e
 
 function pintarAvisoRegistro() {
   const a = $('avisoRegistro');
-  const falla = !!registroFalla || registroConfigIlegible;
+  const perdidos = registroEventos.activo() ? descartesDelEquipo() : null;
+  const n = perdidos ? perdidos.cantidad : 0;
+  const falla = !!registroFalla || registroConfigIlegible || n > 0;
   a.hidden = !registroEncendido && !registroConfigIlegible;
   a.classList.toggle('falla', falla);
   a.title = falla ? 'Qué pasó con el registro' : 'Cambiar el código del equipo';
   a.textContent = registroConfigIlegible ? 'El registro no está funcionando · Avisen al instructor'
     : registroFalla ? 'El registro no se está guardando · Avisen al instructor'
-      : registroEventos.activo() ? `Esta sesión se registra · Equipo ${registroEventos.equipo()}` : 'Esta sesión se registra · Falta el código del equipo';
+      : !registroEventos.activo() ? 'Esta sesión se registra · Falta el código del equipo'
+        : n ? `Equipo ${registroEventos.equipo()} · El registro perdió ${n === 1 ? 'un evento' : `${n} eventos`} · Avisen al instructor`
+          : `Esta sesión se registra · Equipo ${registroEventos.equipo()}`;
 }
 async function iniciarRegistro() {
   if (!registroDisponible) return;
@@ -1517,12 +1532,23 @@ async function iniciarRegistro() {
     registroEncendido = estado.activo;
     registroFalla = estado.falla || null;
     registroConfigIlegible = !!estado.configIlegible;
+    registroDescartados = estado.descartados || null;
   } catch (e) { registroEncendido = false; }
   if (escritorio.registro.alFalla) escritorio.registro.alFalla(({ falla, fin }) => {
     const habiaFalla = !!registroFalla;
     registroFalla = falla || null;
     pintarAvisoRegistro();
+    // Si el panel del instructor está abierto, su línea de la falla se actualiza también
+    const linea = $('fallaRegistro');
+    if (linea) { linea.hidden = !registroFalla; linea.textContent = registroFalla ? textoFallaRegistro(registroFalla) : ''; }
     if (habiaFalla && !registroFalla && fin === 'escrito') mostrarToast('El registro volvió a guardarse.');
+  });
+  if (escritorio.registro.alDescarte) escritorio.registro.alDescarte((d) => {
+    registroDescartados = d || null;
+    pintarAvisoRegistro();
+    // El panel del instructor abierto se actualiza con cada pérdida y cuando un marcador queda anotado (AUD-07, F06)
+    const linea = $('descartadosRegistro');
+    if (linea) { linea.hidden = !registroDescartados; linea.textContent = registroDescartados ? textoDescartados(registroDescartados) : ''; }
   });
   pintarAvisoRegistro();
   if (registroEncendido) pedirEquipo();
@@ -1546,10 +1572,55 @@ function explicarFallaRegistro() {
     ]
   });
 }
+/** El aviso de la esquina cuando un evento de este equipo no se pudo guardar (AUD-07): qué pasó, sin detener el trabajo. */
+function explicarDescartados() {
+  const de = descartesDelEquipo();
+  const anotado = de && de.anotados === de.cantidad;
+  modal({
+    titulo: de && de.cantidad > 1 ? `El registro perdió ${de.cantidad} eventos` : 'El registro perdió un evento',
+    cuerpo: 'Algo de lo que hicieron no se pudo guardar en el registro (por ejemplo, era demasiado grande).' +
+      (anotado ? ' Quedó anotado que falta.' : ' Puede que ni siquiera haya quedado anotado que falta.') + ' Pueden seguir trabajando; avisen al instructor.',
+    botones: [
+      { texto: 'Cambiar el código del equipo', accion: () => { setTimeout(() => pedirEquipo(registroEventos.equipo() || ''), 50); } },
+      { texto: 'Entendido', primario: true }
+    ]
+  });
+}
+const MOTIVOS_DESCARTE = { tamano: 'era demasiado grande', no_serializable: 'no se pudo convertir a texto', sin_tipo: 'no decía qué evento era' };
+const propioDe = (o, k) => typeof k === 'string' && Object.prototype.hasOwnProperty.call(o, k);
+/** Para el instructor: «1 evento no se guardó desde que se abrió la app (el último: codigo_compilado, era demasiado grande, a las 14:32). Quedó anotado en el registro.» */
+function textoDescartados(d) {
+  const u = d.ultimo || {};
+  const fecha = new Date(u.t);
+  const hora = Number.isFinite(fecha.getTime()) ? `, a las ${fecha.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: false })}` : '';
+  const motivo = propioDe(MOTIVOS_DESCARTE, u.motivo) ? MOTIVOS_DESCARTE[u.motivo] : 'otro motivo';
+  const anotados = d.anotados || 0, pendientes = d.pendientes || 0, sinAnotar = d.sinAnotar || 0;
+  // «Anotado» solo cuando su evento_descartado quedó escrito en el disco (F05)
+  const anotacion = anotados === d.cantidad ? (d.cantidad === 1 ? 'Quedó anotado en el registro.' : 'Quedaron anotados en el registro.')
+    : [anotados ? `${anotados} ${anotados === 1 ? 'quedó anotado' : 'quedaron anotados'} en el registro` : null,
+      pendientes ? `${pendientes} ${pendientes === 1 ? 'espera' : 'esperan'} a que el disco funcione para anotarse` : null,
+      sinAnotar ? `${sinAnotar} no ${sinAnotar === 1 ? 'se pudo' : 'se pudieron'} anotar` : null].filter(Boolean).join('; ').replace(/^./, (c) => c.toUpperCase()) + '.';
+  return `${d.cantidad} ${d.cantidad === 1 ? 'evento no se guardó' : 'eventos no se guardaron'} desde que se abrió la app ` +
+    `(el último: ${u.tipo || 'sin tipo'}, ${motivo}${hora}). ${anotacion}`;
+}
 const MOTIVOS_DISCO = {
   ENOSPC: 'el disco está lleno', EPERM: 'sin permiso para escribir', EACCES: 'sin permiso para escribir',
   EROFS: 'el disco es de solo lectura', EBUSY: 'el archivo está ocupado', CONFIG: 'no se pudo leer la configuración del registro'
 };
+/** Por qué no se pudo exportar, en palabras: de qué lado fue y qué pasó (AUD-14). */
+function textoErrorExportar(r) {
+  const codigo = String(r.codigo || '');
+  if (codigo === 'TOPE') return 'ya hay demasiadas exportaciones de ese minuto en esa carpeta; elige otra';
+  if (codigo === 'TAMANO') return 'un archivo cambió de tamaño durante la copia';
+  if (r.donde === 'origen') {
+    const que = { ENOENT: 'un archivo del registro ya no estaba', EACCES: 'no hay permiso para leer los registros de este computador',
+      EPERM: 'no hay permiso para leer los registros de este computador', EIO: 'el disco de este computador falló al leer los registros' };
+    return propioDe(que, codigo) ? que[codigo] : `no se pudieron leer los registros de este computador (${codigo || 'error del disco'})`;
+  }
+  const que = { ENOSPC: 'la memoria USB está llena', EACCES: 'no hay permiso para escribir en esa carpeta', EPERM: 'no hay permiso para escribir en esa carpeta',
+    EROFS: 'la memoria es de solo lectura', ENOENT: 'la carpeta ya no está (¿se sacó la memoria USB?)', EIO: 'la memoria USB falló al escribir' };
+  return propioDe(que, codigo) ? que[codigo] : `no se pudo escribir en la carpeta elegida (${codigo || 'error del disco'})`;
+}
 /** Para el instructor: «No se guarda desde las 14:40 · sin permiso para escribir · 7 eventos esperando». */
 function textoFallaRegistro(f) {
   const hora = new Date(f.desde).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: false });
@@ -1716,6 +1787,9 @@ function panelInstructor(pin, estado) {
   // Si el disco falla: qué pasa, desde cuándo y cuánto espera, con «Reintentar ahora» (AUD-02)
   const lineaFalla = el('p', { class: 'error', id: 'fallaRegistro' }, estado.falla ? textoFallaRegistro(estado.falla) : null);
   lineaFalla.hidden = !estado.falla;
+  // Los eventos que no se pudieron guardar (AUD-07)
+  const lineaDescartados = el('p', { class: 'error', id: 'descartadosRegistro' }, estado.descartados ? textoDescartados(estado.descartados) : null);
+  lineaDescartados.hidden = !estado.descartados;
   modal({
     titulo: 'Registro de eventos (instructor)',
     cuerpo: [
@@ -1723,6 +1797,7 @@ function panelInstructor(pin, estado) {
         ? el('b', null, 'El registro está encendido en este computador.')
         : el('b', null, 'El registro está apagado en este computador.')),
       lineaFalla,
+      lineaDescartados,
       el('p', null, 'Enciéndelo solo con el consentimiento de los acudientes y el asentimiento de los aprendices. Con el registro encendido, cada equipo escribe su código al abrir y la app lo avisa en pantalla.'),
       el('p', { class: 'muted' }, `Archivos guardados: ${estado.archivos || 0} (en %APPDATA%\\TecnoBloques\\registros).`), nota
     ],
@@ -1748,11 +1823,15 @@ function panelInstructor(pin, estado) {
       { texto: 'Exportar registros', accion: async () => {
         const r = await escritorio.registro.exportar(pin);
         if (r.ok) {
-          nota.textContent = `Se copiaron ${r.archivos} archivos a ${r.carpeta}.` +
+          nota.textContent = `Se ${r.archivos === 1 ? 'copió 1 archivo' : `copiaron ${r.archivos} archivos`} a ${r.carpeta}.` +
             (r.pendientes ? ` Hay ${r.pendientes} eventos esperando que no están en la copia.` : '');
           return false;
         }
-        if (r.motivo !== 'cancelado') nota.textContent = r.motivo === 'sin-archivos' ? 'Todavía no hay registros en este computador.' : (MOTIVOS_PIN[r.motivo] || 'No se pudo copiar: ' + (r.mensaje || r.motivo));
+        // AUD-08 y AUD-14: qué falló y de qué lado (los registros de este PC o la USB), en palabras; la carpeta de una
+        // copia a medias queda marcada como incompleta en su exportacion.json
+        if (r.motivo === 'copia-incompleta') nota.textContent = `La copia quedó incompleta en ${r.carpeta}: se copiaron ${r.copiados} de ${r.total} archivos (${textoErrorExportar(r)}). Vuelve a exportar.`;
+        else if (r.motivo === 'disco') nota.textContent = `No se pudo exportar: ${textoErrorExportar(r)}.`;
+        else if (r.motivo !== 'cancelado') nota.textContent = r.motivo === 'sin-archivos' ? 'Todavía no hay registros en este computador.' : (MOTIVOS_PIN[r.motivo] || 'No se pudo copiar.');
         return false;
       } },
       { texto: 'Cambiar el PIN', accion: () => { setTimeout(() => cambiarPin(pin), 50); } },
@@ -2207,6 +2286,7 @@ function iniciar() {
     if (registroConfigIlegible) { explicarConfigIlegible(); return; }
     if (!registroEncendido) return;
     if (registroFalla) explicarFallaRegistro();
+    else if (registroEventos.activo() && descartesDelEquipo()) explicarDescartados();
     else pedirEquipo(registroEventos.equipo() || '');
   });
   window.addEventListener('pagehide', () => {
