@@ -6,7 +6,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { execFileSync } = require('child_process');
+const { spawnSync } = require('child_process');
 const { crearRegistroEventos, quitarComentarios } = require('../src/registro.js');
 const { leerArchivos, contarHistoria, narrar } = require('../herramientas/historia-registro.js');
 
@@ -28,13 +28,15 @@ const pasar = (s) => { reloj += s * 1000; };
 const circuito = (tipo, datos) => registro.registrar({ v: 1, t: reloj, origen: 'circuito', tipo, datos });
 const sim = (tipo, corrida, ms_sim, datos = {}) => registro.registrar({ v: 1, t: reloj, origen: 'simulador', tipo, corrida, ms_sim, datos });
 const PROGRAMA = 'void setup() { pinMode(13, OUTPUT); }\nvoid loop() { digitalWrite(13, HIGH); delay(500); /* espera */ digitalWrite(13, LOW); }\n';
-const iniciar = (corrida, modo, componentes, cables) => sim('simulacion_iniciada', corrida, 0, {
-  placa: 'uno', modo, activas: { danoComponentes: modo === 'realista', limitePin: modo === 'realista' },
-  circuito: { formato: 1, placa: 'uno', protoboard: null, componentes, cables },
-});
+// Los cables solo se cuentan: cada {} se vuelve un cable válido, para que las líneas cumplan el esquema del contrato
+const iniciar = (corrida, modo, componentes, cables, placa = 'uno', activas = { danoComponentes: modo === 'realista', limitePin: modo === 'realista' }) =>
+  sim('simulacion_iniciada', corrida, 0, {
+    placa, modo, activas,
+    circuito: { formato: 1, placa, protoboard: null, componentes, cables: cables.map(() => ({ de: 'placa.D13', a: 'placa.D12' })) },
+  });
 const LED = { id: 'led1', tipo: 'led', x: 0, y: 0, rot: 0, props: { color: 'rojo' } };
-const R1 = { id: 'r1', tipo: 'resistencia', x: 0, y: 0, rot: 0, props: { valor: 220 } };
-const BTN = { id: 'btn1', tipo: 'boton', x: 0, y: 0, rot: 0, props: {} };
+const R1 = { id: 'r1', tipo: 'resistencia', x: 0, y: 0, rot: 0, props: { ohmios: 220 } };
+const BTN = { id: 'btn1', tipo: 'pulsador', x: 0, y: 0, rot: 0, props: {} };
 
 // ---- Equipo A1: la historia conocida
 registro.empezar('A1', { placa: 'uno', nivel: 1 });
@@ -108,23 +110,23 @@ revisar(a1.avisos.length === 0, `A1 sin avisos (${a1.avisos.join(' | ') || 'ning
 const esperado = [
   '10:00  Empezó la sesión (uno, nivel 1).',
   '10:00  Abrió el ejemplo «parpadeo».',
-  '10:01  Circuito: agregó led1 (led); conectó placa.D13 → led1.anodo, led1.catodo → placa.GND1; movió led1 (2 veces).',
+  '10:01  Circuito: agregó led1 (led); conectó placa.D13 → led1.anodo, led1.catodo → placa.GND1; movió led1.',
   '10:02  Bloques: 5 (3 tipos).',
   '10:02  Compiló: bien, 924 bytes.',
-  '10:02  ▶ Corrida 1 (realista; 1 pieza, 2 cables).',
+  '10:02  ▶ Corrida 1 (uno, realista; 1 pieza, 2 cables).',
   '10:02     falla: LED quemado (led1), a los 0,0 s simulados.',
   '10:02     falla: corriente del pin (placa), a los 0,0 s simulados.',
   '10:02  ■ Corrida 1 terminó: 41,0 s simulados. Fallas: LED quemado (led1), corriente del pin (placa).',
   '10:04  Circuito: agregó r1 (resistencia); cambió r1: valor 220; conectó placa.D13 → r1.1, r1.2 → led1.anodo; desconectó placa.D13 → led1.anodo.',
-  '10:04  Compiló: bien, 924 bytes.',
-  '10:04  ▶ Corrida 2 (realista; 2 piezas, 4 cables).',
+  '10:04  Compiló: bien, 924 bytes (el mismo programa).',
+  '10:04  ▶ Corrida 2 (uno, realista; 2 piezas, 4 cables).',
   '10:05     pausó.',
   '10:05     siguió.',
   '10:05  ■ Corrida 2 terminó: 40,0 s simulados. Sin fallas. Corrigió: LED quemado (led1), corriente del pin (placa).',
-  '10:06  Circuito: agregó btn1 (boton); quitó r1 (resistencia).',
-  '10:06  Compiló: con error (no_declarado).',
-  '10:07  Compiló: bien, 1100 bytes.',
-  '10:07  ▶ Corrida 3 (realista; 2 piezas, 3 cables).',
+  '10:06  Circuito: quitó r1 (resistencia); agregó btn1 (boton).',
+  '10:06  Compiló: con error (no_declarado). Programa: `void setup() { pinMode(13, OUTPUT); }` `void loop() { digitalWrite(13, HIGH); delay(500);…` → `void setup() { velocidad = 3; }`.',
+  '10:07  Compiló: bien, 1100 bytes. Programa: `void setup() { velocidad = 3; }` → `void setup() {}` `void loop() {}`.',
+  '10:07  ▶ Corrida 3 (uno, realista; 2 piezas, 3 cables).',
   '10:07     falla: corriente del pin (placa), a los 2,9 s simulados.',
   '10:07  Pulsó btn1 2 veces.',
   '10:07     la placa se reinició (energía del USB, 3 veces).',
@@ -149,7 +151,9 @@ revisar(/corrida 4: las fallas del cierre \(ninguna\) no son las que llegaron \(
 revisar(/corrida 9 no empezó en esta sesión/.test(avisos), 'AUD-04: avisa la falla y el cierre de una corrida que no empezó en esta sesión');
 revisar(/corrida 5 no tiene cierre/.test(avisos), 'avisa la corrida sin cierre');
 revisar(/no tiene sesion_terminada/.test(avisos), 'avisa la sesión sin sesion_terminada');
-revisar(/«algo_nuevo» que esta historia no conoce/.test(avisos), 'un tipo nuevo no rompe la historia: se avisa y se ignora');
+revisar(/1 evento «algo_nuevo» \(editor\) que esta historia no interpreta/.test(avisos),
+  'un tipo nuevo no rompe la historia: se avisa que no se interpreta (en el estudio la versión está congelada)');
+revisar(/corrida 4 simula con uno, pero la placa elegida era nano: falta un placa_cambiada/.test(avisos), 'sin placa_cambiada: avisa que la corrida usa otra placa que la elegida');
 
 // ---- El resumen y la integridad con registros incompletos o incoherentes (R1 y R2 de la verificación de Codex,
 // 19 oct). Cada sesión se arma con el sobre real; las líneas sueltas cumplen el esquema, la secuencia no siempre.
@@ -205,9 +209,11 @@ const trasIncompleta = sesionCon(() => {
   iniciar(18, 'realista', [LED], [{}, {}]); quemado(18);
   iniciar(19, 'realista', [LED, R1], [{}, {}, {}]); cerrar(19, []);
 });
-revisar(trasIncompleta.corridas[1].corrigio === null && narrar([trasIncompleta]).includes('No se compara con la corrida 18: quedó sin cierre.') &&
-  trasIncompleta.resumen === '2 corrida(s). Fallas vistas: LED quemado (led1). Corregidas al final: LED quemado (led1). Sin corregir: ninguna.' && con(trasIncompleta, 'La corrida 18 no tiene cierre'),
-`una corrida después de otra sin cierre no se compara con ella; la última está completa y coherente, así que el final sí se sabe («${trasIncompleta.resumen}»)`);
+// Desde CLA-009: la 19 empezó con la 18 abierta, y la 18 nunca se cerró; no se sabe si se cruzaron, así que tampoco
+// se asegura el final (límite que Codex dejó en observación)
+revisar(trasIncompleta.corridas[1].corrigio === null && narrar([trasIncompleta]).includes('No se compara con la corrida 18: esta corrida empezó antes de que la corrida 18 se cerrara, y esa nunca se cerró.') &&
+  trasIncompleta.resumen === '2 corrida(s). Fallas vistas: LED quemado (led1). Corregidas al final: no se puede asegurar, porque la corrida 19 empezó antes de que la corrida 18 se cerrara, y esa nunca se cerró. Sin corregir: no se puede asegurar.' && con(trasIncompleta, 'La corrida 18 no tiene cierre'),
+`una corrida después de otra sin cierre no se compara con ella, y el resumen tampoco da por corregida su falla (INT-RES-01) («${trasIncompleta.resumen}»)`);
 
 // ---- R1a y R1b (segunda verificación de Codex, 19 oct): una falla tardía cambia lo que se puede comparar, y las
 // fallas de una corrida sin inicio en la sesión no se pierden, pero quedan sin atribuir
@@ -282,20 +288,492 @@ revisar(repetido.corridas[0].coherente && repetido.corridas[1].corrigio.map((f) 
   con(repetido, 'La corrida 43 se cierra dos veces') && pasoDe(repetido, 44).endsWith('Corrigió: LED quemado (led1).'),
 `control, cierre repetido idéntico: se avisa, pero la corrida sigue coherente y la comparación siguiente vale («${pasoDe(repetido, 44)}»)`);
 
-// ---- La línea de comandos: una carpeta con dos archivos y una línea dañada, en texto y en --json
+// ---- La prueba humana de Efraín (20 oct): cambió la placa sin que el registro lo dijera, un cambio de valor del
+// programa no se veía y los bloques y el circuito traían pasos de más. Se cuenta la misma sesión, ya con placa_cambiada.
+const PARPADEO = (ms) => `\n\n#define LedRojo 13\n\nvoid setup() {\n  pinMode(LedRojo, OUTPUT);\n}\n\nvoid loop() {\n  digitalWrite(LedRojo, HIGH);\n  delay(${ms});\n  digitalWrite(LedRojo, LOW);\n  delay(${ms});\n}\n`;
+const OCHO = { bloques: 8, tipos: { programa: 1, pin_nombre: 1, escribir_digital: 2, esperar: 2, math_number: 2 } };
+const humana = sesionCon(() => {
+  pasar(1); registro.editor('bloques_cambiados', { bloques: 1, tipos: { programa: 1 } });
+  pasar(5); registro.editor('bloques_cambiados', { bloques: 1, tipos: { programa: 1 } });
+  pasar(5); registro.editor('bloques_cambiados', OCHO);
+  pasar(10); registro.editor('placa_cambiada', { de: 'uno', a: 'nano' });
+  pasar(10);
+  circuito('componente_agregado', { id: 'r1', tipo: 'resistencia' });
+  circuito('componente_cambiado', { id: 'r1', x: 10, y: 0, en: null });
+  circuito('componente_cambiado', { id: 'r1', rot: 90, en: null });
+  circuito('componente_cambiado', { id: 'r1', x: 12, y: 3, en: { 2: 'placa.GND1' } });
+  circuito('componente_agregado', { id: 'r2', tipo: 'resistencia' }); // la agrega y la quita: no cuenta
+  circuito('componente_cambiado', { id: 'r2', props: { ohmios: 10 } });
+  circuito('componente_quitado', { id: 'r2', tipo: 'resistencia' });
+  circuito('cable_agregado', { de: 'placa.D12', a: 'r1.1' }); // lo pone y lo quita: no cuenta
+  circuito('cable_quitado', { de: 'placa.D12', a: 'r1.1' });
+  circuito('cable_agregado', { de: 'placa.D13', a: 'r1.1' });
+  pasar(10); registro.editor('codigo_compilado', { ok: true, error: null, bytes: 924, codigo: PARPADEO(500) });
+  pasar(1); iniciar(50, 'realista', [R1], [{}], 'nano'); cerrar(50, []);
+  pasar(10); registro.editor('bloques_cambiados', OCHO);
+  pasar(5); registro.editor('codigo_compilado', { ok: true, error: null, bytes: 922, codigo: PARPADEO(200) });
+  pasar(1); iniciar(51, 'realista', [R1], [{}], 'nano'); cerrar(51, []);
+  pasar(5); registro.editor('codigo_compilado', { ok: true, error: null, bytes: 922, codigo: PARPADEO(200) });
+  pasar(5); registro.editor('bloques_cambiados', { bloques: 1, tipos: { programa: 1 } });
+  pasar(5); circuito('componente_agregado', { id: 'r3', tipo: 'resistencia' }); circuito('componente_quitado', { id: 'r3', tipo: 'resistencia' });
+});
+const textosHumana = humana.pasos.map((p) => p.texto);
+const esperadoHumana = [
+  'Empezó la sesión (uno, nivel 1).',
+  'Bloques: 8 (5 tipos).',
+  'Cambió la placa: uno → nano.',
+  'Circuito: agregó r1 (resistencia); cambió r1: giro 90°, enchufado en 2→placa.GND1; conectó placa.D13 → r1.1; movió r1.',
+  'Compiló: bien, 924 bytes.',
+  '▶ Corrida 50 (nano, realista; 1 pieza, 1 cable).',
+  '■ Corrida 50 terminó: 1,0 s simulados. Sin fallas.',
+  'Bloques: cambió algo dentro de los mismos 8 (misma cantidad y mismos tipos).',
+  'Compiló: bien, 922 bytes. Programa: `delay(500);` → `delay(200);` (2 veces).',
+  '▶ Corrida 51 (nano, realista; 1 pieza, 1 cable).',
+  '■ Corrida 51 terminó: 1,0 s simulados. Sin fallas.',
+  'Compiló: bien, 922 bytes (el mismo programa).',
+  'Bloques: 8 (5 tipos) → 1 (1 tipo).',
+  'Circuito: hizo cambios y los deshizo.',
+];
+const sesionHumana = textosHumana.filter((t) => !t.startsWith('Terminó la sesión'));
+revisar(JSON.stringify(sesionHumana) === JSON.stringify(esperadoHumana) && !humana.avisos.length && humana.placas.join() === 'uno,nano' &&
+  narrar([humana]).split('\n')[0].includes(' · uno → nano, nivel 1 · '),
+`la prueba de Efraín, con placa_cambiada: la placa, el programa, los bloques y el circuito sin pasos de más, y sin avisos` +
+  (JSON.stringify(sesionHumana) === JSON.stringify(esperadoHumana) ? '' : ':\n  ' + sesionHumana.join('\n  ')) + (humana.avisos.length ? '\n  ⚠ ' + humana.avisos.join('\n  ⚠ ') : ''));
+
+const placaPerdida = sesionCon(() => {
+  iniciar(52, 'realista', [LED], [{}, {}], 'nano'); cerrar(52, []); // sin placa_cambiada: como el registro del 20 oct
+  iniciar(53, 'realista', [LED], [{}, {}], 'nano'); cerrar(53, []); // ya se avisó: la corrida adopta la placa
+  pasar(1); registro.editor('placa_cambiada', { de: 'uno', a: 'nano' }); // dice venir de una placa que no era la elegida
+});
+revisar(con(placaPerdida, 'La corrida 52 simula con nano, pero la placa elegida era uno: falta un placa_cambiada.') &&
+  con(placaPerdida, 'placa_cambiada dice que la placa era uno, pero la elegida era nano.') && placaPerdida.avisos.length === 2 && placaPerdida.placas.join() === 'uno,nano',
+`sin placa_cambiada, la corrida avisa una vez la placa distinta; un placa_cambiada que no cuadra también se avisa (${placaPerdida.avisos.length} avisos)`);
+
+// ---- R3 y R4 (verificación de Codex, 20 oct). R3: el lienzo da el primer id libre, así que una resistencia nueva
+// después de quitar r1 también es r1; no debe heredar nada de la quitada ni esconder que se quitó. R4: dentro de un
+// literal los espacios y las líneas vacías son datos; fuera de ellos, no.
+const tramoCircuito = (...evs) => { const h = sesionCon(() => { pasar(1); for (const [tipo, datos] of evs) circuito(tipo, datos); }); return (h.pasos.find((p) => p.texto.startsWith('Circuito:')) || {}).texto; };
+const altaR1 = ['componente_agregado', { id: 'r1', tipo: 'resistencia' }];
+const bajaR1 = ['componente_quitado', { id: 'r1', tipo: 'resistencia' }];
+const valorR1 = (ohmios) => ['componente_cambiado', { id: 'r1', props: { ohmios } }];
+const casosR3 = [
+  ['control, agrega y quita una pieza nueva', [altaR1, bajaR1], 'Circuito: hizo cambios y los deshizo.'],
+  ['control, quita la pieza que estaba', [bajaR1], 'Circuito: quitó r1 (resistencia).'],
+  ['control, varios valores de la misma pieza: queda el último', [valorR1(1000), valorR1(330)], 'Circuito: cambió r1: ohmios 330.'],
+  ['R3, quita la que estaba, agrega otra r1 y la quita: no se esconde la baja', [bajaR1, altaR1, bajaR1], 'Circuito: quitó r1 (resistencia).'],
+  ['R3, 1000 Ω, la quita y agrega otra: la nueva no hereda el valor', [valorR1(1000), bajaR1, altaR1], 'Circuito: quitó r1 (resistencia); agregó otra r1 (resistencia).'],
+  ['R3, la nueva r1 cuenta solo sus cambios', [['componente_cambiado', { id: 'r1', rot: 90, en: { 1: 'placa.D13' } }], bajaR1, altaR1, valorR1(330)],
+    'Circuito: quitó r1 (resistencia); agregó otra r1 (resistencia); cambió r1: ohmios 330.'],
+];
+for (const [nombre, evs, esperado] of casosR3) {
+  const texto = tramoCircuito(...evs);
+  revisar(texto === esperado, `${nombre} («${texto}»)`);
+}
+
+const programa = (...codigos) => {
+  const h = sesionCon(() => { for (const codigo of codigos) { pasar(1); registro.editor('codigo_compilado', { ok: true, error: null, bytes: 100, codigo: quitarComentarios(codigo) }); } });
+  return h.pasos.filter((p) => p.texto.startsWith('Compiló'))[codigos.length - 1].texto;
+};
+const crudo = (contenido) => `const char *texto = R"marca(\n${contenido}\n)marca";\nvoid setup() {}\nvoid loop() {}\n`;
+const largo = (ms) => `void loop() { digitalWrite(LED_BUILTIN, HIGH); Serial.println("una línea larga del programa"); delay(${ms}); }\n`;
+// «El mismo programa» solo si el C++ registrado es idéntico (decisión de Efraín, 20 oct): así R4, R4a, R4b e INT-08 no
+// dependen de entender C++. Si solo cambian espacios o saltos, se dice eso; nunca que el programa es el mismo.
+const SOLO_ESPACIOS = 'Compiló: bien, 100 bytes. Programa: cambió solo en espacios o saltos de línea.';
+const empalme = (relleno, salto, siguiente) => `const char *t = "A\\${relleno}${salto}${siguiente}B";${salto}void loop() {}${salto}`;
+const casosR4 = [
+  ['control, el mismo programa', ['void loop() {}\n', 'void loop() {}\n'], 'Compiló: bien, 100 bytes (el mismo programa).'],
+  ['control, el mismo programa con una cadena empalmada larga', [empalme(' '.repeat(120), '\r\n', ' '), empalme(' '.repeat(120), '\r\n', ' ')], 'Compiló: bien, 100 bytes (el mismo programa).'],
+  ['otra sangría y líneas vacías: no es «el mismo programa», cambió solo en espacios', ['void loop() {\n delay(500);\n}\n', '\nvoid loop() {\n\n    delay(500);   \n}\n'], SOLO_ESPACIOS],
+  ['control, delay(500) → delay(200)', ['void loop() { delay(500); }\n', 'void loop() { delay(200); }\n'], 'Compiló: bien, 100 bytes. Programa: `void loop() { delay(500); }` → `void loop() { delay(200); }`.'],
+  ['R4, espacios dentro de un raw', [crudo(' A '), crudo('A')], SOLO_ESPACIOS],
+  ['R4, una línea vacía dentro de un raw', [crudo('A\n\nB'), crudo('A\nB')], SOLO_ESPACIOS],
+  ['R4, un salto dentro de un raw frente al texto «\\n»', [crudo('A\nB'), crudo('A\\nB')], null],
+  ['R4, espacios dentro de una cadena', ['const char *s = "x  y";\n', 'const char *s = "x y";\n'], SOLO_ESPACIOS],
+  ['R4a, cadena empalmada con LF', [empalme('', '\n', ' '), empalme('', '\n', '')], SOLO_ESPACIOS],
+  ['R4a, cadena empalmada con CRLF y espacio', [empalme('', '\r\n', ' '), empalme('', '\r\n', '')], SOLO_ESPACIOS],
+  ['R4a, cadena empalmada con CRLF y tabulador', [empalme('', '\r\n', '\t'), empalme('', '\r\n', '')], SOLO_ESPACIOS],
+  // R4b: ningún límite de lectura: LF con 98 y 99 espacios, CRLF con 97, 98 y 120, y 98 tabuladores
+  ...[['\n', ' ', 98], ['\n', ' ', 99], ['\r\n', ' ', 97], ['\r\n', ' ', 98], ['\r\n', ' ', 120], ['\r\n', '\t', 98]].map(([salto, c, n]) =>
+    [`R4b, empalme con ${n} ${c === ' ' ? 'espacios' : 'tabuladores'} y ${salto === '\n' ? 'LF' : 'CRLF'}`, [empalme(c.repeat(n), salto, ' '), empalme(c.repeat(n), salto, '')], SOLO_ESPACIOS]),
+  // INT-08: el prefijo de un raw empalmado y los CR de las directivas tampoco dan «el mismo programa»
+  ['INT-08, raw con el prefijo R empalmado', ['const char *t = R\\\n"x( A )x";\n', 'const char *t = R\\\n"x(A)x";\n'], null],
+  ['INT-08, raw con el prefijo u8R empalmado', ['const char *t = u8R\\\n"x( A )x";\n', 'const char *t = u8R\\\n"x(A)x";\n'], null],
+  ['INT-08, CR de una directiva frente a un espacio', ['#define A 1\r#define B 2\nvoid loop() {}\n', '#define A 1 #define B 2\nvoid loop() {}\n'], SOLO_ESPACIOS],
+  ['INT-08, un programa con error (cadena sin cerrar)', ['void loop() { Serial.print("hola); }\n', 'void loop() { Serial.print("hola ); }\n'], null],
+  ['una línea larga se muestra alrededor de lo que cambió', [largo(500), largo(200)], 'Compiló: bien, 100 bytes. Programa: `…grama"); delay(500); }` → `…grama"); delay(200); }`.'],
+];
+for (const [nombre, codigos, esperado] of casosR4) {
+  const texto = programa(...codigos);
+  revisar(esperado === null ? !texto.includes('(el mismo programa)') && texto.includes('Programa:') : texto === esperado, `${nombre} («${texto.length > 160 ? texto.slice(0, 160) + '…' : texto}»)`);
+}
+// INT-09: varias líneas largas seguidas que cambian: cada par se muestra alrededor de su cambio; nunca «X → X»
+const larga = (n, x) => `Serial.println("una línea muy larga del programa que no cabe entera en la historia ${n}"); int v${n} = ${x};\n`;
+const adyacentes = programa(larga(1, 10) + larga(2, 20), larga(1, 11) + larga(2, 21));
+const pares = [...adyacentes.matchAll(/`([^`]*)` → `([^`]*)`/g)];
+revisar(pares.length === 2 && pares.every(([, x, y]) => x !== y), `INT-09, dos líneas largas seguidas cambian: cada par muestra su diferencia («${adyacentes}»)`);
+const cuatro = programa([1, 2, 3, 4].map((n) => larga(n, 1)).join(''), [1, 2, 3, 4].map((n) => larga(n, 2)).join(''));
+revisar(/cambió un tramo de 4 líneas \(el detalle no cabe\)/.test(cuatro) && !/(`[^`]*`) → \1/.test(cuatro), `INT-09, cuatro líneas: si el detalle no cabe, lo dice («${cuatro}»)`);
+
+// ---- INT-01 (auditoría integral, 20 oct): «corrigió» solo entre corridas comparables. Si cambió el modo, lo que se
+// revisa, la placa o la pieza ya no está, la falla «ya no se observó», con su motivo.
+const SIN_DANO = { danoComponentes: false, limitePin: true };
+const casosINT01 = [
+  ['realista → ideal, el mismo circuito', () => iniciar(61, 'ideal', [LED], [{}, {}]), 'cambió el modo: realista → ideal'],
+  ['se apagó danoComponentes', () => iniciar(61, 'realista', [LED], [{}, {}], 'uno', SIN_DANO), 'cambió lo que se revisa: danoComponentes apagada'],
+  ['se quitó la pieza', () => iniciar(61, 'realista', [R1], [{}]), 'quitó led1'],
+  ['otra placa', () => iniciar(61, 'realista', [LED], [{}, {}], 'nano'), 'cambió la placa: uno → nano'],
+];
+for (const [nombre, segunda, motivo] of casosINT01) {
+  const h = sesionCon(() => {
+    iniciar(60, 'realista', [LED], [{}, {}]); quemado(60); cerrar(60, ['led_quemado']);
+    if (nombre === 'otra placa') { pasar(1); registro.editor('placa_cambiada', { de: 'uno', a: 'nano' }); }
+    segunda(); cerrar(61, []);
+  });
+  const c = h.corridas[1];
+  revisar(c.corrigio.length === 0 && c.yaNoSeObservo.length === 1 && c.yaNoSeObservo[0].motivo === motivo &&
+    pasoDe(h, 61).endsWith(`Sin fallas. Ya no se observó: LED quemado (led1) (${motivo}).`) &&
+    h.resumen.includes(`Corregidas al final: ninguna. Ya no se observaron al final: LED quemado (led1) (${motivo}).`),
+  `INT-01, ${nombre}: no «corrigió», «ya no se observó» (${motivo}) («${h.resumen}»)`);
+}
+
+// Prueba final de Efraín (20 oct): corrigió en una corrida comparable y después cambió la placa. La corrección vale
+// al final; la última corrida, en otra placa, no la borra.
+const corrigioYCambio = sesionCon(() => {
+  iniciar(64, 'realista', [LED], [{}, {}]); quemado(64); cerrar(64, ['led_quemado']);
+  iniciar(65, 'realista', [LED, R1], [{}, {}, {}]); cerrar(65, []);
+  pasar(1); registro.editor('placa_cambiada', { de: 'uno', a: 'nano' });
+  iniciar(66, 'realista', [LED, R1], [{}, {}, {}], 'nano'); cerrar(66, []);
+});
+revisar(corrigioYCambio.corridas[1].corrigio.map((f) => f.tipo).join() === 'led_quemado' &&
+  corrigioYCambio.resumen === '3 corrida(s). Fallas vistas: LED quemado (led1). Corregidas al final: LED quemado (led1). Sin corregir: ninguna.',
+`corrigió en una corrida comparable y después cambió la placa: sigue corregida al final («${corrigioYCambio.resumen}»)`);
+
+// ---- INT-02: un hueco impide comparar a través de él y afirmar el final; un hueco antes de todo, no
+const conHueco = (antes) => sesionCon(() => {
+  if (antes) { pasar(1); registro.editor('registro_interrumpido', { desde: reloj - 1000, hasta: reloj, recuperados: 1, perdidos: 1, motivo: 'ENOSPC' }); pasar(5); }
+  iniciar(62, 'realista', [LED], [{}, {}]); quemado(62); cerrar(62, ['led_quemado']);
+  if (!antes) { pasar(1); registro.editor('registro_interrumpido', { desde: reloj - 1000, hasta: reloj + 2000, recuperados: 2, perdidos: 1, motivo: 'ENOSPC' }); }
+  iniciar(63, 'realista', [LED, R1], [{}, {}, {}]); cerrar(63, []);
+});
+const huecoEntre = conHueco(false);
+revisar(huecoEntre.corridas[1].corrigio === null && pasoDe(huecoEntre, 63).endsWith('No se compara con la corrida 62: hay un hueco en el registro entre las dos.') &&
+  huecoEntre.resumen.includes('No se puede asegurar: LED quemado (led1) (hay un hueco en el registro después de verla).') && !huecoEntre.resumen.includes('Corregidas al final: LED quemado'),
+`INT-02, un hueco entre dos corridas: no se comparan ni se afirma la corrección («${huecoEntre.resumen}»)`);
+const huecoAntes = conHueco(true);
+revisar(huecoAntes.corridas[1].corrigio.map((f) => f.tipo).join() === 'led_quemado' && huecoAntes.resumen.includes('Corregidas al final: LED quemado (led1).'),
+  `control, un hueco antes de las corridas no impide compararlas («${huecoAntes.resumen}»)`);
+
+// ---- INT-03: un mismo código de sesión con líneas de otro equipo: se cuentan aparte y no se asegura el final
+const propias = (() => { sesionCon(() => { iniciar(70, 'realista', [LED], [{}, {}]); quemado(70); cerrar(70, ['led_quemado']); }); return lineas.slice(); })();
+const sesionPropia = JSON.parse(propias[0]).sesion;
+const deOtro = [
+  { v: 1, t: reloj, origen: 'simulador', tipo: 'simulacion_iniciada', corrida: 71, ms_sim: 0, datos: JSON.parse(propias.find((l) => l.includes('simulacion_iniciada'))).datos },
+  { v: 1, t: reloj + 1, origen: 'simulador', tipo: 'simulacion_detenida', corrida: 71, ms_sim: 900, datos: { ms_sim: 900, fallas: [] } },
+].map((ev) => ({ ...ev, equipo: 'OTRO', sesion: sesionPropia, version_tb: '0.3.0', version_tc: '0.1.0' }));
+const mezcla = contarHistoria([...leer(propias), ...deOtro.map((ev, i) => ({ archivo: 'otro.jsonl', linea: i + 1, ev }))]);
+const laPropia = mezcla.find((h) => h.equipo !== 'OTRO');
+revisar(mezcla.length === 2 && laPropia.corridas.length === 1 && laPropia.resumen.includes('no se puede asegurar, porque la sesión') &&
+  con(laPropia, 'también tiene líneas del equipo OTRO'), `INT-03, otro equipo con la misma sesión: se cuenta aparte y no le da una corrección («${laPropia.resumen}»)`);
+
+// ---- INT-04: una línea inválida se aparta con su motivo y deja un hueco; nada se inventa y lo demás sigue
+const validas = (() => { sesionCon(() => { iniciar(80, 'realista', [LED], [{}, {}]); quemado(80); cerrar(80, ['led_quemado']); iniciar(81, 'realista', [LED, R1], [{}, {}, {}]); cerrar(81, []); }); return lineas.slice(); })();
+const base80 = JSON.parse(validas[0]);
+const malas = [
+  ['«datos» null', { ...base80, tipo: 'bloques_cambiados', datos: null }, '«datos» no es un objeto'],
+  ['sin la hora', (() => { const e = { ...base80, tipo: 'ejemplo_cargado', datos: { id: 'x' } }; delete e.t; return e; })(), 'le falta la hora («t»)'],
+  ['la hora como texto', { ...base80, t: 'ayer', tipo: 'ejemplo_cargado', datos: { id: 'x' } }, 'le falta la hora («t»)'],
+  ['versión 2', { ...base80, v: 2, tipo: 'ejemplo_cargado', datos: { id: 'x' } }, 'es de la versión 2 del registro y esta historia lee la 1'],
+];
+for (const [nombre, mala, motivo] of malas) {
+  const ls = leer(validas);
+  ls.splice(5, 0, { archivo: 'prueba.jsonl', linea: 99, ev: mala });
+  let h;
+  try { [h] = contarHistoria(ls); } catch (e) { h = null; }
+  revisar(h && con(h, `Se apartó una línea (prueba.jsonl, línea 99): ${motivo}.`) && h.corridas.length === 2 && h.corridas[1].corrigio === null &&
+    !h.pasos.some((p) => !Number.isFinite(p.t)), `INT-04, ${nombre}: se aparta con su motivo, sin romper ni inventar, y deja un hueco${h ? ` («${pasoDe(h, 81)}»)` : ''}`);
+}
+const sesionRota = contarHistoria([...leer(validas), { archivo: 'otra.jsonl', linea: 1, ev: { ...base80, sesion: { no: 'es texto' } } }]);
+revisar(sesionRota.length === 2 && sesionRota.some((h) => h.corridas.length === 2 && !h.avisos.length),
+  'INT-04, una sesión inválida no tumba la válida del mismo lote');
+
+// ---- INT-05: el ciclo de vida
+const sinInicioSesion = contarHistoria(leer(validas.slice(1)))[0];
+revisar(con(sinInicioSesion, 'La sesión no tiene sesion_iniciada') && sinInicioSesion.resumen.includes('no se puede asegurar, porque la sesión no tiene sesion_iniciada'),
+  `INT-05, sin sesion_iniciada: se avisa y no se asegura el final («${sinInicioSesion.resumen}»)`);
+const dobleInicio = contarHistoria(leer([validas[0], ...validas]))[0];
+revisar(con(dobleInicio, 'La sesión empieza dos veces') && dobleInicio.resumen.includes('no se puede asegurar'), 'INT-05, sesion_iniciada repetido: se avisa y no se asegura el final');
+const inicioRepetido = sesionCon(() => {
+  iniciar(82, 'realista', [LED], [{}, {}]); quemado(82);
+  iniciar(82, 'realista', [LED, R1], [{}, {}, {}]); cerrar(82, ['led_quemado']);
+  iniciar(83, 'realista', [LED, R1], [{}, {}, {}]); cerrar(83, []);
+});
+revisar(inicioRepetido.corridas.length === 2 && con(inicioRepetido, 'La corrida 82 empieza dos veces') && inicioRepetido.corridas[1].corrigio === null &&
+  pasoDe(inicioRepetido, 83).endsWith('No se compara con la corrida 82: empieza dos veces.'), `INT-05, una corrida que empieza dos veces sigue siendo una y no se compara («${pasoDe(inicioRepetido, 83)}»)`);
+const pausas = sesionCon(() => { iniciar(84, 'realista', [LED], [{}, {}]); pasar(1); sim('simulacion_reanudada', 84, 10); pasar(1); sim('simulacion_pausada', 84, 20); sim('simulacion_pausada', 84, 20); cerrar(84, []); });
+revisar(con(pausas, 'La corrida 84 sigue sin haberse pausado') && con(pausas, 'La corrida 84 se pausa sin estar corriendo'), 'INT-05, reanudar sin pausa y pausar dos veces se avisan');
+
+// ---- INT-10: un tipo nuevo del circuito no es «hizo cambios y los deshizo»; «__proto__» se cuenta como cualquier otro
+const nuevos = sesionCon(() => { pasar(1); circuito('componente_soldado', { id: 'r1' }); registro.registrar({ v: 1, t: reloj, origen: 'editor', tipo: '__proto__', datos: {} }); });
+revisar(!nuevos.pasos.some((p) => p.texto.includes('deshizo')) && con(nuevos, '«componente_soldado» (circuito)') && con(nuevos, '«__proto__» (editor)') && nuevos.resumen === '0 corrida(s). Fallas vistas: ninguna.',
+  `INT-10, tipos nuevos: no se inventa un efecto, se avisan y no cambian lo demás (${nuevos.avisos.join(' | ')})`);
+
+// ---- INT-11: lo que se contradice dentro de una corrida, el tiempo del cierre y el reloj
+const contradice = sesionCon(() => {
+  iniciar(85, 'realista', [LED], [{}, {}]); quemado(85); cerrar(85, ['led_quemado']);
+  sim('simulacion_iniciada', 86, 0, { placa: 'nano', modo: 'realista', activas: { danoComponentes: true, limitePin: true }, circuito: { formato: 1, placa: 'uno', protoboard: null, componentes: [LED, R1], cables: [] } });
+  cerrar(86, []);
+});
+revisar(con(contradice, 'La corrida 86 dice nano, pero su circuito dice uno') && contradice.corridas[1].corrigio === null, 'INT-11, la placa de la corrida y la de su circuito no coinciden: se avisa y no se compara');
+const tarde = sesionCon(() => { iniciar(87, 'realista', [LED], [{}, {}]); pasar(1); sim('falla', 87, 5000, { tipo: 'led_quemado', componente: 'led1' }); cerrar(87, ['led_quemado']); });
+revisar(con(tarde, 'La corrida 87 tiene una falla después del tiempo simulado de su cierre') && !tarde.corridas[0].coherente, 'INT-11, una falla después del tiempo simulado del cierre: se avisa');
+const reloj0 = reloj;
+const atras = sesionCon(() => { iniciar(88, 'realista', [LED], [{}, {}]); reloj -= 60000; cerrar(88, []); });
+reloj = Math.max(reloj, reloj0);
+revisar(con(atras, 'El reloj del computador retrocedió'), 'INT-11, el reloj retrocede: se avisa y se sigue el orden en que se escribió');
+
+// ---- Un cierre que repite la misma falla es la misma falla (auditoría integral, «duplicados»)
+const repiteFalla = sesionCon(() => { iniciar(89, 'realista', [LED], [{}, {}]); quemado(89); pasar(1); sim('simulacion_detenida', 89, 1000, { ms_sim: 1000, fallas: [{ tipo: 'led_quemado', componente: 'led1' }, { tipo: 'led_quemado', componente: 'led1' }] }); });
+revisar(repiteFalla.corridas[0].coherente && !repiteFalla.avisos.length, 'un cierre con la misma falla dos veces sigue siendo coherente');
+
+// ---- INT-RES-01 a 05 (verificación de Codex, 20 oct). Un solo criterio para los pasos y el resumen: el tramo desde la
+// corrida que vio la falla hasta el final tiene que estar acreditado de punta a punta.
+const CORREGIDA = 'Corregidas al final: LED quemado (led1). Sin corregir: ninguna.';
+const conOrigen = (origen) => sesionCon(() => { origen(); iniciar(91, 'realista', [LED, R1], [{}, {}, {}]); cerrar(91, []); });
+const origenes = [
+  ['cierres contradictorios', () => { iniciar(90, 'realista', [LED], [{}, {}]); quemado(90); cerrar(90, ['led_quemado']); cerrar(90, []); }, 'la corrida 90 tiene cierres que no coinciden entre sí'],
+  ['empieza dos veces', () => { iniciar(90, 'realista', [LED], [{}, {}]); quemado(90); iniciar(90, 'realista', [LED], [{}, {}]); cerrar(90, ['led_quemado']); }, 'la corrida 90 empieza dos veces'],
+  ['falla después del tiempo del cierre', () => { iniciar(90, 'realista', [LED], [{}, {}]); pasar(1); sim('falla', 90, 5000, { tipo: 'led_quemado', componente: 'led1' }); cerrar(90, ['led_quemado']); }, 'la corrida 90 tiene una falla después del tiempo simulado de su cierre'],
+  ['cierre sin la falla suelta', () => { iniciar(90, 'realista', [LED], [{}, {}]); cerrar(90, ['led_quemado']); }, 'la corrida 90 tiene un cierre que no coincide con las fallas que llegaron'],
+  // la 91 empezó con la 90 abierta, y la 90 nunca se cerró: tampoco se asegura el final
+  ['sin cierre', () => { iniciar(90, 'realista', [LED], [{}, {}]); quemado(90); }, null, 'Corregidas al final: no se puede asegurar, porque la corrida 91 empezó antes de que la corrida 90 se cerrara, y esa nunca se cerró.'],
+];
+for (const [nombre, origen, motivo, esperado = `No se puede asegurar: LED quemado (led1) (${motivo}).`] of origenes) {
+  const h = conOrigen(origen);
+  revisar(!h.resumen.includes(CORREGIDA) && h.resumen.includes(esperado),
+    `INT-RES-01, la corrida que vio la falla ${nombre}: el resumen no la da por corregida («${h.resumen}»)`);
+}
+const comparableControl = conOrigen(() => { iniciar(90, 'realista', [LED], [{}, {}]); quemado(90); cerrar(90, ['led_quemado']); });
+revisar(comparableControl.resumen.endsWith(CORREGIDA), `control, origen completo y coherente: corregida («${comparableControl.resumen}»)`);
+const reaparece = sesionCon(() => { iniciar(90, 'realista', [LED], [{}, {}]); quemado(90); cerrar(90, ['led_quemado']); iniciar(91, 'realista', [LED, R1], [{}, {}, {}]); cerrar(91, []); iniciar(92, 'realista', [LED], [{}, {}]); quemado(92); cerrar(92, ['led_quemado']); });
+revisar(reaparece.resumen.endsWith('Corregidas al final: ninguna. Sin corregir: LED quemado (led1).'), `control, la falla vuelve al final: sin corregir («${reaparece.resumen}»)`);
+
+// INT-RES-02: un hueco después del último cierre (una línea apartada o eventos perdidos) también deja el final sin asegurar
+const corregidaYDespues = (despues) => {
+  const ls = (() => { sesionCon(() => { iniciar(93, 'realista', [LED], [{}, {}]); quemado(93); cerrar(93, ['led_quemado']); iniciar(94, 'realista', [LED, R1], [{}, {}, {}]); cerrar(94, []); despues(); }); return leer(lineas); })();
+  return ls;
+};
+const malaV2 = (ev) => ({ archivo: 'prueba.jsonl', linea: 98, ev: { ...ev, v: 2, tipo: 'ejemplo_cargado', datos: { id: 'x' } } });
+const tras = [
+  ['una línea apartada después del último cierre', () => { const ls = corregidaYDespues(() => {}); ls.splice(ls.length - 1, 0, malaV2(ls[0].ev)); return ls; }],
+  ['una línea apartada después del fin de la sesión', () => { const ls = corregidaYDespues(() => {}); ls.push(malaV2(ls[0].ev)); return ls; }],
+  ['eventos perdidos después del último cierre', () => corregidaYDespues(() => { pasar(1); registro.editor('registro_interrumpido', { desde: reloj, hasta: reloj + 1000, recuperados: 0, perdidos: 2, motivo: 'ENOSPC' }); })],
+];
+for (const [nombre, armar] of tras) {
+  const [h] = contarHistoria(armar());
+  revisar(h.corridas[1].corrigio.map((f) => f.tipo).join() === 'led_quemado' && h.resumen.includes('No se puede asegurar: LED quemado (led1) (hay un hueco en el registro después de verla).'),
+    `INT-RES-02, ${nombre}: la corrección de la corrida 94 se conserva, pero el final no se asegura («${h.resumen}»)`);
+}
+
+// INT-RES-03: corridas que se cruzan, una corrida después del fin, tiempos del cierre y pausas imposibles: no se comparan
+const cruzadas = sesionCon(() => { iniciar(95, 'realista', [LED], [{}, {}]); quemado(95); iniciar(96, 'realista', [LED, R1], [{}, {}, {}]); cerrar(96, []); cerrar(95, ['led_quemado']); });
+revisar(con(cruzadas, 'Las corridas 95 y 96 se cruzan') && cruzadas.corridas[1].corrigio === null && !cruzadas.resumen.includes(CORREGIDA),
+  `INT-RES-03, corridas que se cruzan: se avisa, no se compara y no se da por corregida («${cruzadas.resumen}»)`);
+const causales = [
+  ['una corrida después del fin de la sesión', () => { iniciar(97, 'realista', [LED], [{}, {}]); quemado(97); cerrar(97, ['led_quemado']); registro.registrar({ v: 1, t: reloj, origen: 'editor', tipo: 'sesion_terminada', datos: { ms: 1 } }); iniciar(98, 'realista', [LED, R1], [{}, {}, {}]); cerrar(98, []); }, 'empezó después de terminar la sesión'],
+  ['un cierre con dos tiempos', () => { iniciar(97, 'realista', [LED], [{}, {}]); quemado(97); cerrar(97, ['led_quemado']); iniciar(98, 'realista', [LED, R1], [{}, {}, {}]); pasar(1); sim('simulacion_detenida', 98, 2000, { ms_sim: 1000, fallas: [] }); }, 'su cierre dice dos tiempos simulados distintos'],
+  ['reanudar sin pausa', () => { iniciar(97, 'realista', [LED], [{}, {}]); quemado(97); cerrar(97, ['led_quemado']); iniciar(98, 'realista', [LED, R1], [{}, {}, {}]); pasar(1); sim('simulacion_reanudada', 98, 10); cerrar(98, []); }, 'sigue sin haberse pausado'],
+];
+for (const [nombre, pasos, motivo] of causales) {
+  const h = sesionCon(pasos);
+  revisar(h.corridas[1].corrigio === null && h.corridas[1].contradicciones.includes(motivo) && !h.resumen.includes(CORREGIDA),
+    `INT-RES-03, ${nombre}: es una contradicción de la corrida y no se compara («${pasoDe(h, 98)}»)`);
+}
+const seguidas = sesionCon(() => { iniciar(97, 'realista', [LED], [{}, {}]); quemado(97); pasar(1); sim('simulacion_pausada', 97, 10); pasar(1); sim('simulacion_reanudada', 97, 10); cerrar(97, ['led_quemado']); iniciar(98, 'realista', [LED, R1], [{}, {}, {}]); cerrar(98, []); });
+revisar(!seguidas.avisos.length && seguidas.resumen.endsWith(CORREGIDA), 'control, corridas seguidas con una pausa normal: sin avisos y corregida');
+
+// INT-RES-03a (verificación de Codex de CLA-009): cada repetición de una falla y cada cierre conservan su tiempo, y
+// el último no borra una contradicción anterior. El reloj de la corrida vuelve a cero con el RESET del botón (no con
+// un reinicio por energía): una falla de antes del RESET puede tener más tiempo que el cierre.
+const fallaEn = (n, ms) => { pasar(1); sim('falla', n, ms, { tipo: 'led_quemado', componente: 'led1' }); };
+const cierreEn = (n, ms, fallas = ['led_quemado']) => { pasar(1); sim('simulacion_detenida', n, ms, { ms_sim: ms, fallas: fallas.map((tipo) => ({ tipo, componente: 'led1' })) }); };
+const reset = (n, ms, motivo = 'boton') => { pasar(1); sim('reinicio_placa', n, ms, { motivo, nuevos: 1, total: 1 }); };
+const yLuegoLimpia = (pasos) => sesionCon(() => { iniciar(110, 'realista', [LED], [{}, {}]); pasos(); iniciar(111, 'realista', [LED, R1], [{}, {}, {}]); cerrar(111, []); });
+const DESPUES_DEL_CIERRE = 'tiene una falla después del tiempo simulado de su cierre';
+const casos03a = [
+  ['la falla se repite con más tiempo que el cierre, antes de él', () => { fallaEn(110, 500); fallaEn(110, 1500); cierreEn(110, 1000); }, DESPUES_DEL_CIERRE, [500, 1500]],
+  ['las mismas repeticiones en el otro orden', () => { fallaEn(110, 1500); fallaEn(110, 500); cierreEn(110, 1000); }, DESPUES_DEL_CIERRE, [1500, 500]],
+  ['la repetición con más tiempo llega después del cierre', () => { fallaEn(110, 500); cierreEn(110, 1000); fallaEn(110, 1500); }, DESPUES_DEL_CIERRE, [500, 1500]],
+  ['la misma falla, con el mismo tiempo, después del cierre', () => { fallaEn(110, 500); cierreEn(110, 1000); fallaEn(110, 500); }, 'tiene eventos después de su cierre', [500, 500]],
+  ['un segundo cierre con más tiempo no esconde el primero', () => { fallaEn(110, 1500); cierreEn(110, 1000); cierreEn(110, 2000); }, DESPUES_DEL_CIERRE, [1500]],
+  ['los dos cierres en el otro orden', () => { fallaEn(110, 1500); cierreEn(110, 2000); cierreEn(110, 1000); }, 'sus cierres dicen tiempos simulados distintos', [1500]],
+  ['después de un RESET, una falla con más tiempo que el cierre', () => { reset(110, 300); fallaEn(110, 1500); cierreEn(110, 1000); }, DESPUES_DEL_CIERRE, [1500]],
+  ['un reinicio por energía no pone el reloj en cero', () => { fallaEn(110, 1500); reset(110, 1600, 'energia_usb'); cierreEn(110, 1000); }, DESPUES_DEL_CIERRE, [1500]],
+  ['una pausa con más tiempo que el cierre', () => { fallaEn(110, 500); pasar(1); sim('simulacion_pausada', 110, 1500); pasar(1); sim('simulacion_reanudada', 110, 1500); cierreEn(110, 1000); },
+    'tiene una pausa o un reinicio después del tiempo simulado de su cierre', [500]],
+];
+for (const [nombre, pasos, motivo, tiempos] of casos03a) {
+  const h = yLuegoLimpia(pasos);
+  const c = h.corridas[0];
+  revisar(c.contradicciones.includes(motivo) && !c.coherente && JSON.stringify((c.ocurrencias || []).map((o) => o.ms_sim)) === JSON.stringify(tiempos) &&
+    h.corridas[1].corrigio === null && !h.resumen.includes(CORREGIDA) && h.resumen.includes('No se puede asegurar: LED quemado (led1) (la corrida 110 ') && h.avisos.length > 0,
+  `INT-RES-03a, ${nombre}: «${motivo}», se guardan todos los tiempos y no se da por corregida («${pasoDe(h, 111)}»)`);
+}
+const dosCierresDistintos = yLuegoLimpia(() => { fallaEn(110, 1500); cierreEn(110, 1000); cierreEn(110, 2000); });
+revisar(JSON.stringify((dosCierresDistintos.corridas[0].tiemposCierre || []).map((k) => k.ms_sim)) === '[1000,2000]' &&
+  dosCierresDistintos.corridas[0].contradicciones.includes('sus cierres dicen tiempos simulados distintos') && !('tramo' in dosCierresDistintos.corridas[0]),
+'INT-RES-03a, los datos conservan el tiempo de cada cierre');
+const controles03a = [
+  ['la misma falla dos veces con el mismo tiempo', () => { fallaEn(110, 500); fallaEn(110, 500); cierreEn(110, 1000); }],
+  ['RESET con el botón: la falla de antes tiene más tiempo que el cierre', () => { fallaEn(110, 1500); reset(110, 1600); cierreEn(110, 1000); }],
+  ['RESET con el botón y la falla después, dentro del tiempo del cierre', () => { fallaEn(110, 1500); reset(110, 1600); fallaEn(110, 400); cierreEn(110, 1000); }],
+  // Como lo emite la app: RESET en pausa sale como reanudar y reiniciar, los dos con el tiempo de antes del RESET
+  ['RESET en pausa', () => { fallaEn(110, 1500); pasar(1); sim('simulacion_pausada', 110, 1600); pasar(1); sim('simulacion_reanudada', 110, 1600); reset(110, 1600); fallaEn(110, 400); cierreEn(110, 1000); }],
+];
+for (const [nombre, pasos] of controles03a) {
+  const h = yLuegoLimpia(pasos);
+  revisar(h.corridas[0].coherente && !h.avisos.length && h.resumen.endsWith(CORREGIDA) && h.corridas[1].corrigio.length === 1,
+    `control, ${nombre}: coherente, sin avisos y corregida («${pasoDe(h, 111)}»)`);
+}
+
+// INT-RES-03c (verificación de Codex de CLA-20261021-001): una foto de antes del RESET puede llegar después. Desde el
+// 21 oct cada evento del simulador trae su `tramo` (contrato 6.1) y el lector lo usa en vez del orden de escritura.
+const simT = (tipo, corrida, ms_sim, tramo, datos = {}) => { pasar(1); registro.registrar({ v: 1, t: reloj, origen: 'simulador', tipo, corrida, ms_sim, tramo, datos }); };
+const ledT = { tipo: 'led_quemado', componente: 'led1' };
+const resetT = (ms) => simT('reinicio_placa', 110, ms, 0, { motivo: 'boton', nuevos: 1, total: 1 });
+const cierreT = (ms, tramo = 1) => simT('simulacion_detenida', 110, ms, tramo, { ms_sim: ms, fallas: [ledT] });
+const casos03c = [
+  ['la foto de antes del RESET llega después; cierre a 10 ms del reloj nuevo', () => { iniciar(110, 'realista', [LED], [{}, {}]); resetT(0); simT('falla', 110, 20, 0, ledT); cierreT(10); }, true],
+  ['control, la misma foto llega antes del RESET', () => { iniciar(110, 'realista', [LED], [{}, {}]); simT('falla', 110, 20, 0, ledT); resetT(20); cierreT(10); }, true],
+  ['control, la foto llega después y el cierre nuevo es mayor', () => { iniciar(110, 'realista', [LED], [{}, {}]); resetT(0); simT('falla', 110, 20, 0, ledT); cierreT(40); }, true],
+  ['un reinicio por energía de una foto de antes del RESET', () => { iniciar(110, 'realista', [LED], [{}, {}]); simT('falla', 110, 5, 0, ledT); resetT(10); simT('reinicio_placa', 110, 30, 0, { motivo: 'energia_usb', nuevos: 1, total: 1 }); cierreT(10); }, true],
+  ['RESET en pausa: reanudar y reiniciar con el tiempo de antes', () => { iniciar(110, 'realista', [LED], [{}, {}]); simT('falla', 110, 5, 0, ledT); simT('simulacion_pausada', 110, 30, 0); simT('simulacion_reanudada', 110, 30, 0); resetT(30); cierreT(10); }, true],
+  ['una falla del reloj nuevo con más tiempo que su cierre sigue siendo imposible', () => { iniciar(110, 'realista', [LED], [{}, {}]); resetT(0); simT('falla', 110, 20, 1, ledT); cierreT(10); }, false],
+  ['una pausa del reloj nuevo con más tiempo que su cierre también', () => { iniciar(110, 'realista', [LED], [{}, {}]); simT('falla', 110, 5, 0, ledT); resetT(10); simT('simulacion_pausada', 110, 20, 1); simT('simulacion_reanudada', 110, 20, 1); cierreT(10); }, false],
+];
+for (const [nombre, pasos, valida] of casos03c) {
+  const h = sesionCon(() => { pasos(); iniciar(111, 'realista', [LED, R1], [{}, {}, {}]); cerrar(111, []); });
+  const c = h.corridas[0];
+  revisar(valida ? c.coherente && !h.avisos.length && h.resumen.endsWith(CORREGIDA) && h.corridas[1].corrigio.length === 1
+    : !c.coherente && c.contradicciones.some((x) => x.includes('después del tiempo simulado de su cierre')) && !h.resumen.includes(CORREGIDA),
+  `INT-RES-03c, ${nombre}: ${valida ? 'coherente, sin avisos y corregida' : 'contradicción, no se compara'} («${pasoDe(h, 111)}»)`);
+}
+
+// INT-RES-03b: la app cierra la corrida antes de terminar la sesión. Lo que llega de una corrida después del fin se
+// conserva como hecho, pero no acredita cómo quedó.
+const fin = () => { pasar(1); registro.registrar({ v: 1, t: reloj, origen: 'editor', tipo: 'sesion_terminada', datos: { ms: 1 } }); };
+const casos03b = [
+  ['el cierre de la última corrida llega después del fin', () => { fin(); cerrar(121, []); }, 'se cerró después de terminar la sesión', 0],
+  ['una falla y el cierre llegan después del fin', () => { fin(); quemado(121); cerrar(121, ['led_quemado']); }, 'tiene eventos después de terminar la sesión', 1],
+  ['una pausa de una corrida ya cerrada llega después del fin', () => { cerrar(121, []); fin(); pasar(1); sim('simulacion_pausada', 121, 500); }, 'tiene eventos después de terminar la sesión', 0],
+];
+for (const [nombre, despuesDelInicio, motivo, fallas] of casos03b) {
+  const h = sesionCon(() => { iniciar(120, 'realista', [LED], [{}, {}]); quemado(120); cerrar(120, ['led_quemado']); iniciar(121, 'realista', [LED, R1], [{}, {}, {}]); despuesDelInicio(); });
+  const c = h.corridas[1];
+  revisar(c.contradicciones.includes(motivo) && c.corrigio === null && c.fallas.length === fallas && !h.resumen.includes(CORREGIDA) &&
+    h.resumen.includes('Corregidas al final: no se puede asegurar, porque la corrida 121 ') && con(h, 'Hay eventos después de sesion_terminada'),
+  `INT-RES-03b, ${nombre}: se conserva, pero no se compara ni se asegura el final («${h.resumen}»)`);
+}
+
+// Límite de CLA-009 (observación de Codex): una corrida que empieza mientras otra sigue abierta, y esa otra nunca se
+// cierra, no se compara: no se sabe si se cruzaron
+const conAbierta = (conFalla) => sesionCon(() => {
+  iniciar(130, 'realista', [LED], [{}, {}]); if (conFalla) quemado(130);
+  iniciar(131, 'realista', [LED], [{}, {}]); quemado(131); cerrar(131, ['led_quemado']);
+  iniciar(132, 'realista', [LED, R1], [{}, {}, {}]); cerrar(132, []);
+});
+for (const conFalla of [false, true]) {
+  const h = conAbierta(conFalla);
+  revisar(h.corridas[1].contradicciones.includes('empezó antes de que la corrida 130 se cerrara, y esa nunca se cerró') && h.corridas[2].corrigio === null &&
+    !h.resumen.includes(CORREGIDA) && h.resumen.includes('no se puede asegurar, porque la corrida 132 empezó antes de que la corrida 130 se cerrara'),
+  `límite de CLA-009, una corrida anterior abierta que nunca se cierra${conFalla ? ', con la misma falla' : ''}: no se da por corregida («${h.resumen}»)`);
+}
+
+// INT-RES-04: la sesión de una línea apartada se toma ya decodificada (un escape JSON no crea otra sesión)
+const decodificada = (() => { sesionCon(() => { iniciar(99, 'realista', [LED], [{}, {}]); quemado(99); cerrar(99, ['led_quemado']); iniciar(100, 'realista', [LED, R1], [{}, {}, {}]); cerrar(100, []); }); return lineas.slice(); })();
+const conEscape = decodificada[0].replace('"v":1', '"v":2').replace('"tipo":"sesion_iniciada"', '"tipo":"ejemplo_cargado"').replace(/"sesion":"([^"]*)"/, (m, s) => `"sesion":"${s.slice(0, -1)}\\u00${s.charCodeAt(s.length - 1).toString(16)}"`);
+const carpetaEscape = fs.mkdtempSync(path.join(os.tmpdir(), 'tb-historia-escape-'));
+try {
+  const archivo = path.join(carpetaEscape, 'R-2026-10-19.jsonl');
+  fs.writeFileSync(archivo, [...decodificada.slice(0, 5), conEscape, ...decodificada.slice(5)].join('\n') + '\n');
+  const { lineas: ls } = leerArchivos([archivo]);
+  const hs = contarHistoria(ls);
+  revisar(conEscape.includes('\\u00') && hs.length === 1 && hs[0].corridas[1].corrigio === null && con(hs[0], 'Se apartó una línea'),
+    `INT-RES-04, la sesión escrita con un escape JSON: el hueco queda en su sesión, no en otra (${hs.length} historia(s))`);
+  fs.writeFileSync(archivo, [...decodificada.slice(0, 5), '{"v":1,"equipo":"' + JSON.parse(decodificada[0]).equipo + '","sesion":"otra-sesion","t":', ...decodificada.slice(5)].join('\n') + '\n');
+  const otra = contarHistoria(leerArchivos([archivo]).lineas);
+  revisar(otra.length === 2 && otra.some((h) => h.sesion === 'otra-sesion') && otra.some((h) => h.corridas.length === 2 && h.corridas[1].corrigio.length === 1),
+    'control, una línea dañada de otra sesión deja su hueco en esa sesión, no en esta');
+} finally {
+  fs.rmSync(carpetaEscape, { recursive: true, force: true });
+}
+
+// INT-RES-05: una hora que no es una fecha se aparta; el límite de Date sí se lee, y nada se cae
+const fueraDeDate = (valor, campo) => {
+  const ls = leer(validas);
+  if (campo === 't') ls.splice(5, 0, { archivo: 'prueba.jsonl', linea: 97, ev: { ...base80, t: valor, tipo: 'ejemplo_cargado', datos: { id: 'x' } } });
+  else ls.splice(5, 0, { archivo: 'prueba.jsonl', linea: 97, ev: { ...base80, tipo: 'registro_interrumpido', datos: { desde: valor, hasta: valor, recuperados: 0, perdidos: 1, motivo: 'X' } } });
+  const hs = contarHistoria(ls);
+  let texto = '';
+  try { texto = narrar(hs); } catch (e) { texto = 'ERROR ' + e.message; }
+  return { h: hs[0], texto };
+};
+for (const [nombre, valor, campo, motivo] of [['t = 8,64e15 + 1', 8640000000000001, 't', 'su hora («t») no es una fecha'], ['t = 1e20', 1e20, 't', 'su hora («t») no es una fecha'], ['registro_interrumpido con horas 1e20', 1e20, 'desde', 'las horas de «registro_interrumpido» no son fechas']]) {
+  const { h, texto } = fueraDeDate(valor, campo);
+  revisar(!texto.startsWith('ERROR') && h.corridas.length === 2 && con(h, motivo), `INT-RES-05, ${nombre}: se aparta («${motivo}») y la historia se narra`);
+}
+const limite = fueraDeDate(8640000000000000, 't');
+revisar(!limite.texto.startsWith('ERROR') && !limite.h.avisos.some((a) => a.includes('no es una fecha')), 'control, t = 8,64e15 (el límite de Date) se lee');
+
+// ---- La línea de comandos (INT-06, INT-07 y la decisión 3): siempre muestra la historia y sale con 1 si hay problemas
+const cli = path.join(__dirname, '..', 'herramientas', 'historia-registro.js');
+const correr = (...args) => spawnSync(process.execPath, [cli, ...args], { encoding: 'utf8' });
 const carpeta = fs.mkdtempSync(path.join(os.tmpdir(), 'tb-historia-'));
 try {
-  fs.writeFileSync(path.join(carpeta, 'A1-2026-10-19.jsonl'), historiaA1.join('\n') + '\n');
-  fs.writeFileSync(path.join(carpeta, 'B2-2026-10-19.jsonl'), historiaB2.join('\n') + '\n{ dañada\n');
+  const escribir = (nombre, ls) => { fs.mkdirSync(path.dirname(path.join(carpeta, nombre)), { recursive: true }); fs.writeFileSync(path.join(carpeta, nombre), ls.join('\n') + '\n'); return path.join(carpeta, nombre); };
+  const a1 = escribir('A1-2026-10-19.jsonl', historiaA1);
+  escribir('B2-2026-10-19.jsonl', [...historiaB2, '{ dañada']);
   fs.writeFileSync(path.join(carpeta, 'notas.txt'), 'no es un registro');
-  const cli = path.join(__dirname, '..', 'herramientas', 'historia-registro.js');
-  const salida = execFileSync(process.execPath, [cli, carpeta], { encoding: 'utf8' });
-  revisar(salida.indexOf('Equipo A1') >= 0 && salida.indexOf('Equipo A1') < salida.indexOf('Equipo B2'), 'la carpeta: lee los dos .jsonl, en orden de hora, y no el .txt');
-  revisar(/B2-2026-10-19\.jsonl, línea 11: no se puede leer/.test(salida), 'la línea dañada se dice con su archivo y número, sin detener la historia');
-  const datos = JSON.parse(execFileSync(process.execPath, [cli, path.join(carpeta, 'A1-2026-10-19.jsonl'), '--json'], { encoding: 'utf8' }));
-  revisar(datos.historias.length === 1 && datos.historias[0].corridas.length === 3 && datos.problemas.length === 0, '--json: la historia como datos, para el análisis');
+  const r = correr(carpeta);
+  revisar(r.stdout.indexOf('Equipo A1') >= 0 && r.stdout.indexOf('Equipo A1') < r.stdout.indexOf('Equipo B2'), 'la carpeta: lee los dos .jsonl, en orden de hora, y no el .txt');
+  revisar(/B2-2026-10-19\.jsonl, línea 11: no se puede leer/.test(r.stdout) && r.status === 1, `la línea dañada se dice con su archivo y número, la historia sale igual y el código es 1 (${r.status})`);
+  const limpio = correr(a1, '--json');
+  const datos = JSON.parse(limpio.stdout);
+  revisar(limpio.status === 0 && datos.limpio && datos.historias.length === 1 && datos.historias[0].corridas.length === 3 && !datos.problemas.length,
+    `--json de un registro limpio: la historia como datos y el código 0 (${limpio.status})`);
   const { lineas: todas } = leerArchivos([carpeta]);
-  revisar(todas.length === historiaA1.length + historiaB2.length, `leerArchivos: ${todas.length} líneas buenas`);
+  revisar(todas.filter((l) => l.ev).length === historiaA1.length + historiaB2.length && todas.filter((l) => l.apartada).length === 1,
+    `leerArchivos: ${todas.filter((l) => l.ev).length} líneas buenas y la dañada apartada`);
+  revisar(correr().status === 2, 'sin nada que leer: el uso y el código 2');
+
+  // INT-06: la misma ruta dos veces, una copia que se pisa y los archivos de una sesión en otro orden
+  const dos = correr(a1, a1, '--json');
+  revisar(JSON.parse(dos.stdout).historias[0].corridas.length === 3 && /ya estaba entre lo que se lee/.test(JSON.stringify(JSON.parse(dos.stdout).notas)),
+    'INT-06, la misma ruta dos veces se lee una vez');
+  const copia = escribir('exportado/A1-2026-10-19.jsonl', historiaA1);
+  const pisadas = JSON.parse(correr(a1, copia, '--json').stdout).historias;
+  revisar(pisadas.length === 1 && pisadas[0].corridas.length === 3 && pisadas[0].notas.some((n) => /ya había llegado en otro archivo/.test(n)) && !pisadas[0].avisos.length,
+    'INT-06, una copia exportada de las mismas líneas se cuenta una vez');
+  const mitad = Math.ceil(historiaA1.length / 2);
+  const dia1 = escribir('partes/A1-2026-10-19.jsonl', historiaA1.slice(0, mitad));
+  const dia2 = escribir('partes/A1-2026-10-20.jsonl', historiaA1.slice(mitad));
+  const alReves = JSON.parse(correr(dia2, dia1, '--json').stdout);
+  revisar(alReves.limpio && alReves.historias[0].corridas.length === 3, 'INT-06, los archivos de una sesión pasados al revés se ordenan por la fecha de su nombre');
+
+  // INT-07: BOM, bytes que no son UTF-8 y una ruta que no existe
+  const conBom = path.join(carpeta, 'bom', 'A1-2026-10-19.jsonl');
+  fs.mkdirSync(path.dirname(conBom));
+  fs.writeFileSync(conBom, '﻿' + historiaA1.join('\n') + '\n');
+  const bom = JSON.parse(correr(conBom, '--json').stdout);
+  revisar(bom.historias[0].pasos[0].texto.startsWith('Empezó la sesión') && bom.notas.some((n) => /BOM/.test(n)), 'INT-07, un BOM al inicio no hace perder sesion_iniciada');
+  const malUtf8 = path.join(carpeta, 'utf8', 'A1-2026-10-19.jsonl');
+  fs.mkdirSync(path.dirname(malUtf8));
+  const linea2 = Buffer.from(historiaA1[1].replace('parpadeo', 'parpadeoÿ'));
+  linea2[linea2.indexOf(0xc3)] = 0xff; // un byte que no es UTF-8
+  fs.writeFileSync(malUtf8, Buffer.concat([Buffer.from(historiaA1[0] + '\n'), linea2, Buffer.from('\n' + historiaA1.slice(2).join('\n') + '\n')]));
+  const utf8 = correr(malUtf8);
+  revisar(utf8.status === 1 && /línea 2: tiene bytes que no son UTF-8 válido/.test(utf8.stdout), 'INT-07, bytes que no son UTF-8: la línea se aparta con su motivo, no se reemplaza callando');
+  const falta = correr(path.join(carpeta, 'no-existe.jsonl'), a1);
+  revisar(falta.status === 1 && /no-existe\.jsonl: no se puede abrir/.test(falta.stdout) && /Equipo A1/.test(falta.stdout), 'INT-07, una ruta que no existe se dice y las demás se leen');
 } finally {
   fs.rmSync(carpeta, { recursive: true, force: true });
 }

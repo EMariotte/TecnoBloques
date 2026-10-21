@@ -108,7 +108,9 @@ const LED = {
   if (abiertas) await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].webContents.closeDevTools());
   revisar(abiertas, 'después del PIN del instructor, F12 sí abre las herramientas (hasta cerrar la app)');
 
-  // 4. El equipo trabaja: abre un ejemplo, cambia bloques, simula y detiene
+  // 4. El equipo trabaja: elige el Nano, abre un ejemplo (que vuelve al Uno), cambia bloques, simula y detiene
+  await win.selectOption('#placa', 'nano');
+  await win.waitForTimeout(200);
   await win.evaluate((circuito) => {
     cargarEjemplo(EJEMPLOS.find((e) => e.id === 'eco'));
     $('nombreProyecto').value = 'LED de Sofía'; // un nombre que escribe el aprendiz: no debe llegar al registro
@@ -140,6 +142,9 @@ const LED = {
     revisar(tipos.includes(t), `el registro tiene ${t}`);
   }
   revisar(tipos[0] === 'sesion_iniciada' && lineas[0].datos.placa === 'uno' && Number.isInteger(lineas[0].datos.nivel), 'empieza con sesion_iniciada (placa y nivel)');
+  const cambiosPlaca = lineas.filter((l) => l.tipo === 'placa_cambiada').map((l) => `${l.datos.de}→${l.datos.a}`);
+  revisar(cambiosPlaca.join() === 'uno→nano,nano→uno' && tipos.lastIndexOf('placa_cambiada') < tipos.indexOf('ejemplo_cargado'),
+    `REG-004: placa_cambiada con el selector y con el ejemplo, antes de ejemplo_cargado (${cambiosPlaca.join(', ') || 'ninguno'})`);
   revisar(tipos[tipos.length - 1] === 'sesion_terminada', `al cerrar la app sale sesion_terminada (último: ${tipos[tipos.length - 1]})`);
   revisar(lineas.every((l) => l.equipo === 'A7' && l.sesion === lineas[0].sesion && l.version_tb && l.version_tc), 'cada línea con el equipo A7, la misma sesión y las dos versiones');
   const comp = lineas.find((l) => l.tipo === 'codigo_compilado');
@@ -287,8 +292,18 @@ const LED = {
   revisar(await win.evaluate(() => simulador.sim && simulador.sim.medidas().estado === 'corriendo') && !tiposDe('E2').includes('sesion_terminada') &&
     deEquipo('E2').every((l) => l.sesion === sesionE2),
   'AUD-04 mismo código: E2 sigue en su sesión y su simulación sigue corriendo');
+  // REG-004, INT-RES-03a: el RESET del botón pone el reloj de la corrida en cero. El reinicio sale con el tiempo de
+  // antes y el cierre con uno menor; la historia (paso 8) no lo toma por una contradicción.
+  await esperar(win, () => simulador.sim.medidas().msSimulados > 1500);
+  await win.evaluate(() => simulador.sim.reiniciar());
+  await esperar(win, () => simulador.sim.medidas().estado === 'corriendo' && simulador.sim.medidas().msSimulados > 100 && simulador.sim.medidas().msSimulados < 1000, 10000);
   await win.evaluate(() => detenerSimulacion());
   await win.waitForTimeout(200);
+  const corridaReset = deEquipo('E2').filter((l) => l.tipo === 'simulacion_iniciada').pop().corrida;
+  const reset = deEquipo('E2').find((l) => l.tipo === 'reinicio_placa' && l.corrida === corridaReset && l.datos.motivo === 'boton');
+  const cierreReset = deEquipo('E2').find((l) => l.tipo === 'simulacion_detenida' && l.corrida === corridaReset);
+  revisar(reset && cierreReset && reset.ms_sim > 1500 && cierreReset.datos.ms_sim < reset.ms_sim,
+    `REG-004: el RESET pone el reloj de la corrida en cero (reinicio a ${reset && reset.ms_sim} ms, cierre a ${cierreReset && cierreReset.datos.ms_sim} ms)`);
 
   // Compilando: E2 pulsa Simular y, antes de que termine la compilación, confirma F3
   const compiladasE2 = tiposDe('E2').filter((t) => t === 'codigo_compilado').length;

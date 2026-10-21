@@ -859,7 +859,7 @@ function cargarProyecto(p, silencioso, sinRespaldo) {
   embebidos = p.embebidos || {};
   extrasProyecto = {};
   Object.keys(p).forEach(k => { if (!CAMPOS_PROYECTO.includes(k)) extrasProyecto[k] = p[k]; });
-  if (p.placa && PLACAS[p.placa]) { placaActual = p.placa; $('placa').value = p.placa; }
+  if (p.placa && PLACAS[p.placa]) ponerPlaca(p.placa);
   if ([1, 2, 3].includes(p.nivel)) ponerNivel(p.nivel, { vista: !silencioso, aviso: !silencioso });
   $('nombreProyecto').value = p.nombre || 'Mi proyecto';
   Blockly.Events.disable();
@@ -1089,7 +1089,7 @@ function cargarEjemplo(ej) {
   if (estado.texto) salirModoTexto(true);
   embebidos = {};
   extrasProyecto = {};
-  placaActual = ej.placa; $('placa').value = ej.placa;
+  ponerPlaca(ej.placa);
   $('nombreProyecto').value = ej.nombre;
   cargarXML(ej.xml || '<xml xmlns="https://developers.google.com/blockly/xml"></xml>');
   if (ej.circuito) extrasProyecto.circuito = JSON.parse(JSON.stringify(ej.circuito)); // el montaje del ejemplo
@@ -1351,7 +1351,7 @@ async function subirPlaca(forzar) {
       botones: [
         { texto: 'Subir igual', accion: () => { setTimeout(() => subirPlaca(true), 50); } },
         { texto: `Cambiar a ${PLACAS[detectada].nombre}`, primario: true, accion: () => {
-          placaActual = detectada; $('placa').value = detectada; refrescarPines(); actualizar(); setTimeout(() => subirPlaca(true), 50);
+          ponerPlaca(detectada); refrescarPines(); actualizar(); setTimeout(() => subirPlaca(true), 50);
         } }
       ]
     });
@@ -1610,6 +1610,12 @@ function cerrarTrabajoDelEquipo(opciones) {
 }
 /** Lo que pasa en el editor: si no hay equipo, registroEventos no escribe nada. */
 function registrarEditor(tipo, datos) { registroEventos.editor(tipo, datos); }
+/** Cambia la placa elegida y, si de verdad cambió, lo deja en el registro antes de lo que provoca (REG-004). */
+function ponerPlaca(nueva) {
+  const de = placaActual;
+  placaActual = nueva; $('placa').value = nueva;
+  if (nueva !== de) registrarEditor('placa_cambiada', { de, a: nueva });
+}
 /** Un resumen de los bloques unos segundos después del último cambio (no el XML). */
 function programarResumenBloques() {
   if (!registroEventos.activo()) return;
@@ -2092,7 +2098,7 @@ function iniciar() {
   }
 
   // ---- Controles ----
-  sel.addEventListener('change', () => { placaActual = sel.value; refrescarPines(); abrirLienzo(); programarActualizacion(); mostrarToast('Placa: ' + placa().nombre); });
+  sel.addEventListener('change', () => { ponerPlaca(sel.value); refrescarPines(); abrirLienzo(); programarActualizacion(); mostrarToast('Placa: ' + placa().nombre); });
   $('nombreProyecto').addEventListener('input', programarActualizacion);
   document.querySelectorAll('#vistas button').forEach(b => b.addEventListener('click', () => cambiarVista(b.dataset.vista)));
   document.querySelectorAll('#niveles button').forEach(b => b.addEventListener('click', () => ponerNivel(b.dataset.nivel, { vista: true, aviso: true })));

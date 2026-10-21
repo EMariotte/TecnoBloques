@@ -1314,3 +1314,44 @@ Codex verificó el software y la integración del lector ([verificación](../Tec
 - `test:registro-app` 86/86.
 
 REG-004 queda en `pendiente_externo` hasta la prueba de unos 10 minutos de Efraín. AUD-06 sigue cerrado. Commit y push con el sí de Efraín.
+
+## 2026-10-20 · `placa_cambiada` y una historia más clara (REG-004, prueba de Efraín)
+
+La prueba humana de Efraín ([informe](../TecnoCircuito/validacion/2026-10-20-reg004-aceptacion.md)) mostró que la historia coincide en corridas, fallas y correcciones, pero que no veía el cambio de placa ni un cambio de valor en el programa, y que traía pasos de más. Con su decisión:
+- **`src/app.js`:** la placa cambia en una sola función, `ponerPlaca`, que emite `placa_cambiada` `{de, a}` cuando de verdad cambia: el selector, la placa detectada al subir, un proyecto o un ejemplo. Va antes de lo que provoca. Contrato 1, sección 6.1 (aditivo).
+- **`herramientas/historia-registro.js`:** sigue la placa elegida (encabezado «nano → uno» y la placa de cada corrida) y avisa si una corrida usa otra sin el evento; compara el C++ con la compilación anterior; agrupa los `bloques_cambiados` seguidos («los mismos 8 (cambió valores o posiciones)»); del circuito dice cómo quedó cada pieza y no cuenta lo que se hizo y se deshizo.
+- **Pruebas:** `test:historia` 36 OK (tres casos nuevos; con el lector anterior fallan cinco), `test:registro-app` 87/87 (cambia de placa con el selector), `test:simulador` 53, `test:registro`, `test:placas`, `test:app` y `npm test` sin fallas.
+
+Falta repetir la prueba corta de Efraín con la app corregida.
+
+## 2026-10-20 · Aceptación humana de REG-004
+
+La segunda prueba de Efraín con `placa_cambiada` y el lector corregido coincide, sin avisos, y Efraín acepta la historia ([informe](../TecnoCircuito/validacion/2026-10-20-reg004-aceptacion.md)). REG-004 pasa a revisión de Codex.
+
+## 2026-10-20 · Historia del registro: R3 y R4 de Codex
+
+`herramientas/historia-registro.js`: un id reutilizado por el lienzo ya no mezcla dos piezas (cada alta empieza una nueva, sin herencia); la igualdad del programa ignora espacios solo fuera de los literales (cadenas, caracteres y raw se comparan exactos); una línea larga se muestra alrededor del cambio. `test:historia` 50 OK con 14 casos nuevos (con el lector anterior fallan 8) y `test:registro-app` 87/87. COMO-FUNCIONA de TecnoCircuito, sección 68.
+
+## 2026-10-20 · Historia del registro: R4a de Codex
+
+`lineasDe` continúa una cadena empalmada con `\` al final de la línea, con LF o CRLF y con espacios entre la `\` y el salto: el espacio o tabulador de la línea siguiente es dato. `test:historia` 56 OK, con seis casos nuevos (con el lector anterior fallan 3); `test:registro-app` 87/87.
+
+## 2026-10-20 · Historia del registro rehecha por capas (REG-004)
+
+`herramientas/historia-registro.js`, tras la auditoría integral de Codex y con las decisiones de Efraín: valida cada línea con el esquema del contrato y aparta la que no sirve (con su motivo y un hueco en su sesión); sesiones por sesión y equipo; archivos en el orden de su fecha y copias contadas una vez; «el mismo programa» solo con el C++ idéntico; «corrigió» solo entre corridas comparables, y si no «ya no se observó (motivo)»; avisos de ciclo de vida, contradicciones y reloj; código de salida 0/1/2. `test:historia` 94 OK y `test:registro-app` 87/87.
+
+## 2026-10-20 · Historia del registro: el resumen tras la prueba final de Efraín
+
+Una falla está «corregida al final» si alguna corrida posterior a la última que la vio es comparable con ella y no hay huecos hasta el final. Antes, cambiar la placa en la última corrida escondía una corrección hecha en las mismas condiciones. `test:historia` 95 OK y `test:registro-app` 87/87.
+
+## 2026-10-20 · Historia del registro: INT-RES-01 a 05 de Codex
+
+`herramientas/historia-registro.js`: el resumen usa el criterio de los pasos (tramo acreditado desde la corrida que vio la falla hasta la última línea de la sesión); corridas cruzadas, corrida tras el fin, cierre con dos tiempos y pausas imposibles son contradicciones que impiden comparar; la pista de sesión sale del JSON decodificado; las horas que no son fechas se apartan. El contrato 6.1 aclara cuándo desaparecer es corrección (solo redacción; nota en «Proyecto hermano»). `test:historia` 116 OK y `test:registro-app` 87/87.
+
+## 2026-10-21 · Historia del registro: INT-RES-03a/03b de Codex
+
+`herramientas/historia-registro.js`: cada falla y cada cierre conservan su tiempo, también las repeticiones; cada cierre se revisa con su tramo del reloj (el RESET del botón lo pone en cero); son contradicciones los eventos después del cierre o del fin de la sesión, los cierres con tiempos distintos y una corrida que empezó con otra abierta que nunca se cerró. `test:registro-app` suma un RESET real. `test:historia` 135 OK y `test:registro-app` 88/88.
+
+## 2026-10-21 · Historia del registro: el tramo de cada evento (INT-RES-03c de Codex)
+
+`herramientas/historia-registro.js` usa el campo nuevo `tramo` de los eventos del simulador (contrato 1, 6.1, aditivo; lo pone TecnoCircuito) para comparar cada cierre con su reloj: una foto de antes del RESET que llega después ya no hace incoherente una corrida válida. Un registro sin `tramo` se lee como antes. TecnoBloques no cambia: copia el sobre tal cual (nota en «Proyecto hermano»). `test:historia` 142 OK, `test:registro-app` 88/88, `test:simulador` 53.
