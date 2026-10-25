@@ -1559,6 +1559,46 @@ function registrarEventoSim(ev) {
   registroEventos.registrar(ev);
 }
 
+/* ---------- Identidad de TecnoCircuito y «Acerca de» (MARCA-001) ---------- */
+// La marca de TecnoCircuito viaja en su paquete (TecnoCircuito.MARCA, contrato sección 2): cada versión trae la suya
+// y se ve sin red. Un paquete anterior a la 0.3.0 no la trae: entonces no hay firma y nada falla.
+function marcaTC() {
+  const m = window.TecnoCircuito && TecnoCircuito.MARCA;
+  return m && typeof m.simbolo === 'string' && typeof m.cabeza === 'string' ? m : null;
+}
+function svgDeMarca(texto) {
+  const t = document.createElement('template');
+  t.innerHTML = texto;
+  const s = t.content.querySelector('svg');
+  if (s) s.setAttribute('aria-hidden', 'true');
+  return s;
+}
+const nombreMarca = (segunda, clase) => el('span', { class: 'nombre' }, el('span', { class: 'tecno' }, 'Tecno'), el('span', { class: clase }, segunda));
+function ponerFirmaTC() {
+  const m = marcaTC();
+  if (!m) return;
+  $('firmaTC').replaceChildren(...[svgDeMarca(m.cabeza), nombreMarca('Circuito', 'circuito')].filter(Boolean));
+  $('firmaTC').title = `Simulador TecnoCircuito ${TecnoCircuito.VERSION}. ${m.frase}`;
+  $('firmaTC').hidden = false;
+}
+function abrirAcerca() {
+  const m = marcaTC();
+  const simboloTB = document.querySelector('#btnAcerca svg');
+  const marca = (simbolo, segunda, clase, version) =>
+    el('div', { class: 'acerca-marca' }, simbolo, nombreMarca(segunda, clase), el('small', null, 'Versión ' + version));
+  modal({
+    titulo: 'Acerca de',
+    cuerpo: [
+      el('div', { class: 'acerca-marcas' },
+        marca(simboloTB && simboloTB.cloneNode(true), 'Bloques', 'bloques', TB_VERSION),
+        m ? marca(svgDeMarca(m.simbolo), 'Circuito', 'circuito', TecnoCircuito.VERSION) : null),
+      el('p', { class: 'acerca-respaldo' }, 'TecnoAcademia Tolima · SENA'),
+      el('p', null, 'Creado por Efraín Guillermo Mariotte Parra, Facilitador de Robótica de la TecnoAcademia Tolima (SENA, SENNOVA), Ibagué, 2026.'),
+      el('p', { class: 'muted' }, 'Software libre con licencia Apache 2.0. Usa Blockly, avr8js, Wokwi Elements, Lit y Arduino CLI, cada uno con su licencia: el detalle está en los archivos NOTICE. Código en github.com/EMariotte.')
+    ]
+  });
+}
+
 /* ---------- Registro de eventos por equipo (contrato con TecnoCircuito, sección 6.1) ---------- */
 // Apagado por defecto. El instructor lo enciende en cada PC con Ctrl+Alt+Mayús+R y su PIN. Con el registro
 // encendido, el equipo escribe su código al abrir (con confirmación), la esquina de abajo lo avisa y cada evento va
@@ -2269,6 +2309,7 @@ function iniciar() {
   if (simulador.disponible) {
     $('tCircuito').hidden = false;
     $('vCircuito').hidden = false;
+    ponerFirmaTC();
     $('btnAmpliarCircuito').addEventListener('click', () => cambiarVista(estado.vista === 'circuito' ? 'dividido' : 'circuito'));
     $('btnSimularBarra').hidden = false;
     $('tCircuito').addEventListener('click', () => seleccionarPestana('circuito'));
@@ -2295,6 +2336,7 @@ function iniciar() {
   }
 
   // ---- Controles ----
+  $('btnAcerca').addEventListener('click', abrirAcerca);
   sel.addEventListener('change', () => { ponerPlaca(sel.value); refrescarPines(); abrirLienzo(); programarActualizacion(); mostrarToast('Placa: ' + placa().nombre); });
   $('nombreProyecto').addEventListener('input', programarActualizacion);
   document.querySelectorAll('#vistas button').forEach(b => b.addEventListener('click', () => cambiarVista(b.dataset.vista)));

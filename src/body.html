@@ -1,9 +1,9 @@
 <div id="app">
   <header class="barra">
-    <div class="marca">
+    <button type="button" class="marca" id="btnAcerca" title="Acerca de TecnoBloques">
       <!--SIMBOLO-->
       <span class="nombre"><span class="tecno">Tecno</span><span class="bloques">Bloques</span></span>
-    </div>
+    </button>
     <input id="nombreProyecto" value="Carro Bluetooth" aria-label="Nombre del proyecto" autocomplete="off">
     <label class="campo-placa" for="placa">Placa
       <select id="placa"></select>
@@ -108,6 +108,7 @@
       </div>
       <div class="vista-panel" id="pCircuito" role="tabpanel" hidden>
         <div class="herr">
+          <span class="firma-tc" id="firmaTC" hidden></span>
           <span class="estado" id="estadoSim">Arma el circuito y pulsa Simular</span>
           <button type="button" class="btn chico primario" id="btnSimular">Simular</button>
           <button type="button" class="btn chico" id="btnDetenerSim" disabled>Detener</button>

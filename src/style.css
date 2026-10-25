@@ -110,6 +110,22 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .marca .tecno { color: var(--ink); }
 .marca .bloques { color: var(--accent); }
 .marca small { font-weight: 400; color: var(--muted); font-size: 12px; }
+/* El logo de la barra abre «Acerca de» (MARCA-001): se ve igual que antes, sin aspecto de botón */
+button.marca { border: 0; background: none; padding: 2px 4px; margin: -2px -4px; border-radius: 6px; font-family: inherit; color: inherit; cursor: pointer; }
+button.marca:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Firma de TecnoCircuito en el panel Circuito: el chip solo (la guía de su marca lo pide por debajo de 32 px) y su nombre */
+.firma-tc { display: inline-flex; align-items: center; gap: 6px; margin-right: 6px; font-weight: 700; font-size: 13px; letter-spacing: -.1px; white-space: nowrap; }
+.firma-tc[hidden] { display: none; }
+.firma-tc svg { width: 18px; height: 18px; flex: none; }
+.firma-tc .tecno, .acerca-marca .tecno { color: var(--ink); }
+.firma-tc .circuito, .acerca-marca .circuito, .acerca-marca .bloques { color: var(--accent); }
+/* «Acerca de»: las dos marcas del mismo tamaño y con el mismo espacio (lo piden las guías de las dos) */
+.acerca-marcas { display: flex; flex-wrap: wrap; justify-content: center; gap: 16px 40px; padding: 6px 0 4px; }
+.acerca-marca { display: grid; grid-template-columns: 48px auto; column-gap: 12px; align-items: center; }
+.acerca-marca svg { grid-row: span 2; width: 48px; height: 48px; }
+.acerca-marca .nombre { font-weight: 700; font-size: 22px; letter-spacing: -.3px; line-height: 1.1; }
+.acerca-marca small { color: var(--muted); font-size: 12.5px; }
+.acerca-respaldo { text-align: center; color: var(--muted); }
 #nombreProyecto {
   border: 1px solid transparent; background: transparent; border-radius: 6px;
   padding: 5px 8px; width: 12em; max-width: 40vw; color: var(--ink);

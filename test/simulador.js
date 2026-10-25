@@ -67,6 +67,48 @@ const LIENZO = "document.querySelector('#lienzoCircuito .tecnocircuito').shadowR
   revisar(info.origen === 'local' && info.contrato === 1 && info.disponible, `TecnoCircuito embebido (copia ${info.origen}, contrato ${info.contrato})`);
   revisar(info.pestana && info.boton, 'aparecen la pestaña «Circuito» y el botón «Simular»');
 
+  // 1b. La identidad de TecnoCircuito (MARCA-001): firma en el panel Circuito y «Acerca de» con las dos marcas
+  const firma = await win.evaluate(() => ({ visible: !$('firmaTC').hidden, texto: $('firmaTC').textContent,
+    chip: !!$('firmaTC').querySelector('svg[aria-hidden="true"]'), titulo: $('firmaTC').title, version: TecnoCircuito.VERSION }));
+  revisar(firma.visible && firma.chip && firma.texto === 'TecnoCircuito' && firma.titulo.includes(firma.version),
+    `el panel Circuito lleva el chip y «TecnoCircuito», con la versión al pasar el mouse («${firma.titulo}»)`);
+  const leerAcerca = () => win.evaluate(() => {
+    const marcas = [...document.querySelectorAll('#modalCuerpo .acerca-marca')];
+    return { abierto: !$('modal').hidden, titulo: $('modalTitulo').textContent, texto: $('modalCuerpo').textContent,
+      marcas: marcas.map((m) => m.textContent),
+      tamanos: marcas.map((m) => { const r = m.querySelector('svg').getBoundingClientRect(); return `${Math.round(r.width)}×${Math.round(r.height)}`; }),
+      versiones: [TB_VERSION, TecnoCircuito.VERSION] };
+  });
+  await win.locator('#btnAcerca').click();
+  const acerca = await leerAcerca();
+  revisar(acerca.abierto && acerca.titulo === 'Acerca de' && acerca.marcas.length === 2 &&
+    acerca.marcas[0] === `TecnoBloquesVersión ${acerca.versiones[0]}` && acerca.marcas[1] === `TecnoCircuitoVersión ${acerca.versiones[1]}`,
+    `el logo de la barra abre «Acerca de» con las dos marcas y sus versiones (${acerca.marcas.join(' · ')})`);
+  revisar(acerca.tamanos[0] === acerca.tamanos[1], `las dos marcas van del mismo tamaño (${acerca.tamanos.join(' y ')})`);
+  revisar(['TecnoAcademia Tolima · SENA', 'Efraín Guillermo Mariotte Parra', 'Apache 2.0', 'NOTICE'].every((t) => acerca.texto.includes(t)),
+    '«Acerca de» trae el respaldo, los créditos y las licencias');
+  await win.screenshot({ path: path.join(SALIDA, 'sim_0_acerca.png') });
+  await win.evaluate(() => { document.documentElement.dataset.theme = 'dark'; });
+  await win.screenshot({ path: path.join(SALIDA, 'sim_0_acerca_oscuro.png') });
+  await win.evaluate(() => { delete document.documentElement.dataset.theme; cerrarModal(false); });
+  // Un paquete anterior a la 0.3.0 no trae MARCA: sin firma ni segunda marca, y nada falla
+  const viejo = await win.evaluate(() => {
+    const tc = window.TecnoCircuito;
+    const { MARCA, ...resto } = tc;
+    window.TecnoCircuito = Object.freeze(resto);
+    try {
+      $('firmaTC').hidden = true;
+      ponerFirmaTC();
+      abrirAcerca();
+      return { firma: !$('firmaTC').hidden, marcas: document.querySelectorAll('#modalCuerpo .acerca-marca').length };
+    } finally {
+      cerrarModal(false);
+      window.TecnoCircuito = tc;
+      ponerFirmaTC();
+    }
+  });
+  revisar(!viejo.firma && viejo.marcas === 1, `con un TecnoCircuito sin MARCA no hay firma y «Acerca de» muestra solo TecnoBloques (${viejo.marcas} marca)`);
+
   // 2. «Eco serial y LED» de los ejemplos, con un LED real en el pin 13
   await win.evaluate((circuito) => {
     cargarEjemplo(EJEMPLOS.find((e) => e.id === 'eco'));

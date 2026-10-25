@@ -1438,3 +1438,13 @@ Diagnósticos de Codex, corridos desde una copia que solo cambia las rutas: lect
 ## 2026-10-25 — TecnoBloques 0.4.0 con TecnoCircuito v0.2.0
 
 Codex verificó y cerró el lote final del registro (COD-20261025-001). Efraín aprobó el commit, el push y las versiones. TecnoCircuito quedó etiquetado `v0.2.0` (suite completa con cargador: 1277 OK). TecnoBloques pasa a 0.4.0 y depende de `github:EMariotte/TecnoCircuito#v0.2.0` (commit `d2a1057`); `npm install` necesitó nombrar la dependencia para cambiar el lock. `npm test` con las secciones de errores vacías, `test:simulador` 53 y `test:app` sin errores; el HTML armado lleva TecnoCircuito 0.2.0. El instalador todavía no se arma: es el paso siguiente de DIST-001, y publicar el Release es decisión de Efraín.
+
+## 2026-10-25 — Contrato 1: TecnoCircuito.MARCA y la firma de la imagen (MARCA-001)
+
+Del lado de TecnoBloques (el contrato y la firma de la imagen, en la bitácora de TecnoCircuito):
+
+- **«Acerca de»:** el logo de la barra pasa a ser un botón (`#btnAcerca`, se ve igual) que abre un diálogo con las dos marcas del mismo tamaño y su versión, «TecnoAcademia Tolima · SENA», los créditos del NOTICE y las licencias. Sin `TecnoCircuito.MARCA`, muestra solo TecnoBloques.
+- **Panel Circuito:** `#firmaTC` con el chip de TecnoCircuito a 18 px y su nombre; la versión y la frase, al pasar el mouse. Claro y oscuro con los colores de la interfaz.
+- **`test:simulador` (1b):** firma, «Acerca de» con dos marcas de 48×48, sus textos y el caso de un paquete sin `MARCA`; capturas `sim_0_acerca.png` y `sim_0_acerca_oscuro.png`.
+
+Pruebas (25 oct, con la copia local de TecnoCircuito): `test:simulador` 58 OK (53 + 5 nuevas) y sin errores de JavaScript, `npm test` con las secciones de errores vacías y `test:app` sin errores. Sin commit. La dependencia pasa a `#v0.3.0` cuando TecnoCircuito se etiquete, después de la verificación de Codex.
