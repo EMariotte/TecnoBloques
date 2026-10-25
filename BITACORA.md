@@ -1448,3 +1448,7 @@ Del lado de TecnoBloques (el contrato y la firma de la imagen, en la bitácora d
 - **`test:simulador` (1b):** firma, «Acerca de» con dos marcas de 48×48, sus textos y el caso de un paquete sin `MARCA`; capturas `sim_0_acerca.png` y `sim_0_acerca_oscuro.png`.
 
 Pruebas (25 oct, con la copia local de TecnoCircuito): `test:simulador` 58 OK (53 + 5 nuevas) y sin errores de JavaScript, `npm test` con las secciones de errores vacías y `test:app` sin errores. Sin commit. La dependencia pasa a `#v0.3.0` cuando TecnoCircuito se etiquete, después de la verificación de Codex.
+
+## 2026-10-25 — TecnoBloques 0.4.1 con TecnoCircuito v0.3.1 y el ajuste del CH340
+
+Efraín cerró hoy las pruebas humanas de la 0.4.0 (sin problemas) y pidió el siguiente candidato. TecnoCircuito quedó etiquetado `v0.3.1` (commit `4872a92`, con el chip de la serigrafía de MARCA-002; suite completa con cargador: 1298 OK). TecnoBloques pasa a 0.4.1 con `github:EMariotte/TecnoCircuito#v0.3.1`; otra vez `npm install` solo cambió el lock al nombrar la dependencia. El paquete instalado es idéntico a `dist/tecnocircuito.js` de la etiqueta. Entra `escritorio/instalador.nsh`: si Windows ya tiene el driver CH340 no pregunta, y con `/S` lo instala en silencio. `npm test` con las secciones de errores vacías, `test:simulador` 58 y `test:app` sin errores, con la 0.4.1. El instalador se arma después de este commit (DIST-001); publicar el Release es decisión de Efraín.
