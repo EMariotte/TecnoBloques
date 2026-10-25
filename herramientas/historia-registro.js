@@ -36,7 +36,8 @@ const MOTIVOS_REINICIO = { boton: 'botón RESET', energia_usb: 'energía del USB
 const MOTIVOS_DESCARTE = { tamano: 'era demasiado grande', no_serializable: 'no se pudo convertir a texto', sin_tipo: 'no decía qué evento era' };
 const propio = (o, k) => Object.prototype.hasOwnProperty.call(o, k); // las claves vienen de afuera: «__proto__» no es una falla
 
-const nombreFalla = (f) => `${propio(FALLAS, f.tipo) ? FALLAS[f.tipo] : f.tipo} (${f.componente})`;
+// «pieza 2», «pieza 3»…: otra pieza con el mismo id tuvo antes la misma falla en la sesión (AUD-15)
+const nombreFalla = (f) => `${propio(FALLAS, f.tipo) ? FALLAS[f.tipo] : f.tipo} (${f.componente}${f.pieza > 1 ? `, pieza ${f.pieza}` : ''})`;
 const claveFalla = (f) => `${f.tipo}|${f.componente}`;
 const segundos = (ms) => `${(ms / 1000).toFixed(1).replace('.', ',')} s`;
 const cuantos = (n, palabra) => `${n} ${palabra}${n === 1 ? '' : 's'}`;
@@ -118,7 +119,9 @@ const ARCHIVO_REGISTRO = /^[^\\/:*?"<>|]+\.jsonl$/;
  * antes de leerla que esté entera: el manifiesto se lee y es de un formato conocido, dice `completa: true`, cada archivo
  * que lista está, con sus bytes y su sha256, y no hay .jsonl de más. `pendientes > 0` (eventos que esperaban y no están
  * en la copia) es una limitación. Devuelve null si la carpeta no es una exportación (registros crudos, como la carpeta
- * de la app), o { motivos, faltan, limitaciones }: con algún motivo, la exportación no está admitida.
+ * de la app), o { motivos, faltan, limitaciones, leidos }: con algún motivo, la exportación no está admitida. `leidos`
+ * guarda los bytes de cada archivo tal como se comprobaron: la historia analiza esos mismos y no vuelve a abrir el
+ * archivo, que pudo cambiar entre la comprobación y el uso (AUD-22).
  */
 function admitirExportacion(carpeta, jsonl) {
   const archivoManifiesto = path.join(carpeta, 'exportacion.json');
@@ -137,15 +140,17 @@ function admitirExportacion(carpeta, jsonl) {
     motivos.push('la exportación quedó incompleta (completa: false)');
     faltan.push(...m.faltan);
   } else if (m.total !== lista.length) motivos.push(`su exportacion.json dice ${m.total} archivos y lista ${lista.length}`);
+  const leidos = new Map(); // nombre → los bytes que se comprobaron: son los que se analizan (AUD-22)
   for (const a of lista) {
     const ruta = path.join(carpeta, a.archivo);
     let contenido;
     try { contenido = fs.readFileSync(ruta); } catch (e) { motivos.push(`falta ${a.archivo}, que está en exportacion.json`); faltan.push(a.archivo); continue; }
+    leidos.set(a.archivo, contenido);
     if (contenido.length !== a.bytes || crypto.createHash('sha256').update(contenido).digest('hex') !== a.sha256) motivos.push(`${a.archivo} no coincide con su huella en exportacion.json (bytes o sha256): cambió después de exportarse`);
   }
   for (const f of jsonl) if (!lista.some((a) => a.archivo === f)) motivos.push(`${f} no está en exportacion.json`);
   if (m.pendientes > 0) limitaciones.push(`al exportar, ${cuantos(m.pendientes, 'evento')} esperaban a que el disco funcionara y no están en la copia`);
-  return { motivos, faltan, limitaciones };
+  return { motivos, faltan, limitaciones, leidos };
 }
 
 /**
@@ -176,11 +181,34 @@ function camposMalos(m) {
 }
 
 /**
+ * El mismo archivo dado por dos caminos (suelto y dentro de su exportación, o la misma carpeta dos veces) se lee una vez,
+ * sin perder lo que dijo cada entrada (AUD-22, F01 de la verificación de Codex del 24 oct): se analizan los bytes que se
+ * comprobaron con el manifiesto, aunque el archivo suelto viniera antes, y vale la restricción más exigente (exportación
+ * no admitida, o con eventos pendientes). Si dos entradas leyeron bytes distintos (el archivo cambió entre una lectura y
+ * otra), no se sabe cuáles valen: queda como exportación no admitida.
+ */
+function unirDescriptores(ya, nuevo, problemas) {
+  if (nuevo.leido) {
+    if (!ya.leido) ya.leido = nuevo.leido;
+    else if (!ya.leido.equals(nuevo.leido)) {
+      const motivo = 'el archivo cambió entre dos lecturas de la misma copia: no se sabe cuál vale';
+      problemas.push(`${nuevo.ruta}: ${motivo}.`);
+      const carpeta = (ya.exportacion || nuevo.exportacion || {}).carpeta || path.basename(path.dirname(nuevo.ruta));
+      ya.exportacion = { carpeta, noAdmitida: true, motivo };
+      return;
+    }
+  }
+  const exigencia = (x) => (!x ? 0 : x.noAdmitida ? 2 : 1);
+  if (exigencia(nuevo.exportacion) > exigencia(ya.exportacion)) ya.exportacion = nuevo.exportacion;
+}
+
+/**
  * Las líneas de los archivos, en el orden en que se escribieron. Una carpeta aporta sus .jsonl; si es una exportación,
- * primero se admite (admitirExportacion): una exportación no admitida, o con eventos pendientes, se dice como problema y
+ * primero se admite (admitirExportacion), y se analizan los mismos bytes que se comprobaron, sin volver a abrir sus
+ * archivos (AUD-22): una exportación no admitida, o con eventos pendientes, se dice como problema y
  * sus líneas llevan `exportacion`, para que sus sesiones no comparen ni aseguren el final; un archivo que falta deja una
  * marca `falta`. Un archivo suelto se lee crudo, sin verificar. Una ruta que no se puede abrir se dice y se sigue con
- * las demás; la misma ruta dos veces se lee una vez. Cada línea que no sirve (JSON dañado, bytes que no son UTF-8,
+ * las demás; el mismo archivo por dos caminos se lee una vez, con lo que dijo cada uno (unirDescriptores). Cada línea que no sirve (JSON dañado, bytes que no son UTF-8,
  * fuera del esquema) vuelve como `apartada`, con su motivo, para que su sesión sepa que ahí hay un hueco. Cada línea se
  * decodifica sola: un byte roto aparta solo su línea (AUD-13).
  */
@@ -188,14 +216,15 @@ function leerArchivos(rutas, { revisor = cargarRevisor() } = {}) {
   const problemas = [];
   const notas = [];
   if (!revisor) problemas.push(`No se validó con el esquema del contrato: no encontré el revisor de TecnoCircuito (${REVISOR_TC}). Solo se revisó lo mínimo.`);
-  const archivos = []; // { ruta, exportacion }
+  const archivos = []; // { ruta, exportacion, leido }: uno por archivo real
   const marcas = []; // los archivos que faltan en una exportación
-  const vistos = new Set();
+  const porReal = new Map(); // la ruta real de cada archivo → su descriptor
   for (const r of rutas) {
     let st;
     try { st = fs.statSync(r); } catch (e) { problemas.push(`${r}: no se puede abrir (${e.code || e.message}).`); continue; }
     let deAqui = [r];
     let exportacion = null;
+    let leidos = null;
     if (st.isDirectory()) {
       let nombres;
       try {
@@ -205,6 +234,7 @@ function leerArchivos(rutas, { revisor = cargarRevisor() } = {}) {
       const admision = admitirExportacion(r, nombres);
       if (admision) {
         const carpeta = path.basename(r);
+        leidos = admision.leidos || null;
         for (const m of admision.motivos) problemas.push(`${r}: ${m}.`);
         for (const l of admision.limitaciones) problemas.push(`${r}: ${l}.`);
         if (admision.motivos.length) exportacion = { carpeta, noAdmitida: true, motivo: admision.motivos[0] };
@@ -214,19 +244,24 @@ function leerArchivos(rutas, { revisor = cargarRevisor() } = {}) {
     }
     for (const a of deAqui) {
       let real;
-      try { real = fs.realpathSync(a); } catch (e) { real = path.resolve(a); }
-      if (vistos.has(real)) { notas.push(`${a}: ya estaba entre lo que se lee; se leyó una vez.`); continue; }
-      vistos.add(real);
-      archivos.push({ ruta: a, exportacion });
+      try { real = (fs.realpathSync.native || fs.realpathSync)(a); } catch (e) { real = path.resolve(a); }
+      const nuevo = { ruta: a, exportacion, leido: leidos ? leidos.get(path.basename(a)) : undefined };
+      const ya = porReal.get(real);
+      if (!ya) { porReal.set(real, nuevo); archivos.push(nuevo); continue; }
+      notas.push(`${a}: ya estaba entre lo que se lee; se leyó una vez.`);
+      unirDescriptores(ya, nuevo, problemas);
     }
   }
   const lineas = [];
   const fatal = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }); // ignoreBOM: el BOM se quita aquí, solo al comienzo
   const suelto = new TextDecoder('utf-8', { ignoreBOM: true });
-  for (const { ruta: archivo, exportacion } of archivos) {
+  for (const { ruta: archivo, exportacion, leido } of archivos) {
     const nombre = path.basename(archivo);
-    let bytes;
-    try { bytes = fs.readFileSync(archivo); } catch (e) { problemas.push(`${archivo}: no se puede leer (${e.code || e.message}).`); continue; }
+    // El archivo de una exportación ya se leyó para comprobar su huella: se analizan esos bytes (AUD-22)
+    let bytes = leido;
+    if (!bytes) {
+      try { bytes = fs.readFileSync(archivo); } catch (e) { problemas.push(`${archivo}: no se puede leer (${e.code || e.message}).`); continue; }
+    }
     let desde = 0;
     if (bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) { desde = 3; notas.push(`${nombre}: empieza con una marca BOM; se quitó para leerlo.`); }
     for (let numero = 1; desde <= bytes.length; numero++) {
@@ -399,9 +434,52 @@ function hechos(c) {
 }
 const claveDe = (fs) => [...new Set(fs.map(claveFalla))].sort().join(); // una falla repetida en un cierre es la misma
 
+// La pieza de una falla (AUD-15). El lienzo da el primer id libre, así que dos piezas pueden llamarse igual: una falla
+// se corrige o sigue solo en la misma pieza. Cada corrida guarda la generación de sus piezas al empezar (cuántas altas y
+// bajas tuvo cada id antes en la sesión), cuántos proyectos o ejemplos se habían abierto (`aperturas`: traen su propio
+// circuito, sin altas ni bajas), las piezas que se agregaron o quitaron mientras corría (`cambiadas`) y, de cada falla,
+// la generación de su pieza cuando llegó (`genFalla`; «mixta» si en la misma corrida la tuvieron dos piezas distintas).
+const piezaDe = (f) => String(f.componente).split('.')[0];
+/** La pieza `p` durante la corrida `c`: { aperturas, gen }, o null si no estaba al empezar o cambió mientras corría. */
+function idPieza(c, p) {
+  if (p === 'placa') return { aperturas: c.aperturas, gen: 0 };
+  if (c.cambiadas.has(p) || !propio(c.generaciones, p)) return null;
+  return { aperturas: c.aperturas, gen: c.generaciones[p] };
+}
+/** La pieza que tuvo la falla `f` en la corrida `c`. */
+function idFalla(c, f) {
+  const x = c.genFalla.get(claveFalla(f));
+  return x !== undefined ? x : idPieza(c, piezaDe(f));
+}
+const mismaPieza = (x, y) => !!x && !!y && x !== 'mixta' && y !== 'mixta' && x.aperturas === y.aperturas && x.gen === y.gen;
+/** La identidad de la falla `f` de la corrida `c`, como texto: la misma falla de la misma pieza da el mismo texto. */
+function identidadDe(c, f) {
+  const x = idFalla(c, f);
+  return `${claveFalla(f)}#${x === 'mixta' ? `mixta@${c.numero}` : x ? `${x.aperturas}|${x.gen}` : `?@${c.numero}`}`;
+}
+/**
+ * Por qué la pieza que tuvo la falla `f` en la corrida `a` no es la misma en la corrida `b`: se abrió otro proyecto o
+ * ejemplo, se quitó, es de otro tipo, se reemplazó por otra con el mismo id o se agregó o quitó mientras una de las dos
+ * corría. Con `enLasDos`, se compara con la pieza que tuvo la misma falla en `b` («¿sigue?»); si no, con la pieza que
+ * estaba en `b` («¿se corrigió?»). null si es la misma pieza.
+ */
+function otraPieza(a, b, f, enLasDos) {
+  if (a.aperturas !== b.aperturas) return 'abrió otro proyecto o ejemplo: no es el mismo circuito';
+  const p = piezaDe(f);
+  if (p === 'placa') return null;
+  if (!enLasDos && !propio(b.piezas, p)) return `quitó ${p}`;
+  if (propio(a.piezas, p) && propio(b.piezas, p) && a.piezas[p] !== b.piezas[p]) return `${p} ahora es otra pieza: ${b.piezas[p]}`;
+  const x = idFalla(a, f), y = enLasDos ? idFalla(b, f) : idPieza(b, p);
+  if (x === 'mixta' || (!x && a.cambiadas.has(p))) return `${p} se agregó o se quitó durante la corrida ${a.numero}`;
+  if (y === 'mixta' || (!y && b.cambiadas.has(p))) return `${p} se agregó o se quitó durante la corrida ${b.numero}`;
+  if (!x || !y) return `no se sabe qué pieza ${p} tuvo la falla`;
+  if (!mismaPieza(x, y)) return `se reemplazó ${p}: quitó la que estaba y agregó otra con el mismo nombre`;
+  return null;
+}
 /**
  * Por qué una falla que estaba en la corrida `a` y no está en la `b` no se puede dar por corregida: cambió el modo,
- * lo que se revisa (las no idealidades), la placa o la pieza de la falla ya no está. null si son comparables.
+ * lo que se revisa (las no idealidades), la placa, o la pieza de la falla ya no es la misma (otraPieza). null si son
+ * comparables.
  */
 function cambioDeCondiciones(a, b, f) {
   if (a.modo !== b.modo) return `cambió el modo: ${a.modo} → ${b.modo}`;
@@ -409,12 +487,7 @@ function cambioDeCondiciones(a, b, f) {
   const distintas = claves.filter((k) => a.activas[k] !== b.activas[k]);
   if (distintas.length) return `cambió lo que se revisa: ${distintas.map((k) => `${k} ${b.activas[k] === true ? 'encendida' : b.activas[k] === false ? 'apagada' : 'sin dato'}`).join(', ')}`;
   if (a.placa !== b.placa) return `cambió la placa: ${a.placa} → ${b.placa}`;
-  const pieza = String(f.componente).split('.')[0];
-  if (pieza !== 'placa') {
-    if (!propio(b.piezas, pieza)) return `quitó ${pieza}`;
-    if (propio(a.piezas, pieza) && a.piezas[pieza] !== b.piezas[pieza]) return `${pieza} ahora es otra pieza: ${b.piezas[pieza]}`;
-  }
-  return null;
+  return otraPieza(a, b, f, false);
 }
 /** «Ya no se observó, porque cambió el modo (realista → ideal): A, B.» agrupado por motivo */
 function yaNoSeObservo(xs) {
@@ -431,8 +504,9 @@ function yaNoSeObservo(xs) {
  * corridas completas y coherentes, sin huecos hasta la última línea) y alguna corrida posterior es comparable con ella.
  */
 function resumen(h, hayHueco, finPos) {
-  const vistas = new Map();
-  for (const c of h.corridas) for (const f of c.fallas) vistas.set(claveFalla(f), f);
+  // Cada falla con su pieza (AUD-15): la de una pieza que se reemplazó por otra con el mismo id es otra falla
+  const vistas = new Map(); // identidad → la falla
+  for (const c of h.corridas) for (const f of c.fallas) vistas.set(identidadDe(c, f), f);
   const sinAtribuir = h.sinAtribuir.flatMap((x) => x.fallas.map((f) => `${nombreFalla(f)} [sin atribuir: corrida ${x.corrida}]`));
   const texto = `${h.corridas.length} corrida(s). Fallas vistas: ${lista([...[...vistas.values()].map(nombreFalla), ...sinAtribuir])}.`;
   const ultima = h.corridas[h.corridas.length - 1];
@@ -450,9 +524,9 @@ function resumen(h, hayHueco, finPos) {
   // que estar acreditado de punta a punta, la corrida que la vio incluida (INT-RES-01) y hasta la última línea de la
   // sesión (INT-RES-02): una corrida incompleta o incoherente, o un hueco, pudieron esconder que volvió.
   const corregidas = [], yaNo = [], inciertas = [];
-  for (const f of vistas.values()) {
-    if (pendientes.some((p) => claveFalla(p) === claveFalla(f))) continue;
-    const k = h.corridas.map((c) => c.fallas.some((x) => claveFalla(x) === claveFalla(f))).lastIndexOf(true);
+  for (const [id, f] of vistas) {
+    if (pendientes.some((p) => identidadDe(ultima, p) === id)) continue;
+    const k = h.corridas.map((c) => c.fallas.some((x) => identidadDe(c, x) === id)).lastIndexOf(true);
     const donde = h.corridas[k];
     const floja = h.corridas.slice(k).find((c) => !c.completa || !c.coherente);
     if (floja) { inciertas.push({ falla: f, motivo: floja.completa ? `la corrida ${floja.numero} ${floja.incoherencia}` : `la corrida ${floja.numero} ${sinCierre(floja)}` }); continue; }
@@ -609,6 +683,11 @@ function contarSesion({ sesion, equipo, segmentos, dudas: dudasDelGrupo, sinComp
   let bloquesPrevio = null; // el último resumen de bloques
   let bloques = null; // resúmenes de bloques seguidos: { t, desde, hasta }
   const corridas = new Map(); // número → la corrida
+  // La continuidad de las piezas (AUD-15): el lienzo da el primer id libre, así que una pieza quitada y otra agregada
+  // pueden llamarse igual. Cada alta o baja de un id le cambia la generación, y abrir un proyecto o un ejemplo cambia
+  // todo el circuito sin altas ni bajas: una falla solo se corrige en la misma pieza.
+  const generacion = new Map(); // id → cuántas altas y bajas tuvo en la sesión
+  let aperturas = 0; // proyectos y ejemplos abiertos en la sesión
   const huerfanas = new Map(); // corridas que no empezaron en la sesión pero tienen eventos aquí: sus fallas no se pierden
   const iniciosPerdidos = new Set(); // corridas cuyo simulacion_iniciada no se guardó (evento_descartado, AUD-07)
   const huecos = []; // { desdePos, hastaPos }: tramos de la sesión donde faltan líneas
@@ -671,6 +750,10 @@ function contarSesion({ sesion, equipo, segmentos, dudas: dudasDelGrupo, sinComp
       return;
     }
     if (DEL_CIRCUITO.has(tipo)) {
+      if (tipo === 'componente_agregado' || tipo === 'componente_quitado') {
+        generacion.set(datos.id, (generacion.get(datos.id) || 0) + 1);
+        for (const x of h.corridas) if (!x.cierres.length) x.cambiadas.add(datos.id); // cambió mientras esa corrida corría
+      }
       if (pulsos || bloques) cerrarGrupos();
       grupoCircuito = grupoCircuito || { t, evs: [] };
       grupoCircuito.evs.push({ tipo, datos });
@@ -744,8 +827,8 @@ function contarSesion({ sesion, equipo, segmentos, dudas: dudasDelGrupo, sinComp
         usar(datos.a);
         paso(t, `Cambió la placa: ${datos.de} → ${datos.a}.`);
         break;
-      case 'ejemplo_cargado': paso(t, `Abrió el ejemplo «${datos.id}».`); break;
-      case 'proyecto_abierto': usar(datos.placa); paso(t, `Abrió un proyecto (${datos.placa}).`); break;
+      case 'ejemplo_cargado': aperturas++; paso(t, `Abrió el ejemplo «${datos.id}».`); break;
+      case 'proyecto_abierto': aperturas++; usar(datos.placa); paso(t, `Abrió un proyecto (${datos.placa}).`); break;
       case 'codigo_compilado': {
         let texto = datos.ok ? `Compiló: bien${datos.bytes ? `, ${datos.bytes} bytes` : ''}` : `Compiló: con error${datos.error ? ` (${datos.error})` : ''}`;
         // «El mismo programa» solo si el C++ registrado es idéntico, carácter por carácter (decisión de Efraín, 20 oct)
@@ -797,16 +880,17 @@ function contarSesion({ sesion, equipo, segmentos, dudas: dudasDelGrupo, sinComp
         usar(datos.placa);
         const componentes = Array.isArray(datos.circuito.componentes) ? datos.circuito.componentes : [];
         const piezas = Object.create(null);
-        for (const p of componentes) if (p && typeof p.id === 'string') piezas[p.id] = p.tipo;
+        const generaciones = Object.create(null);
+        for (const p of componentes) if (p && typeof p.id === 'string') { piezas[p.id] = p.tipo; generaciones[p.id] = generacion.get(p.id) || 0; }
         // Las corridas que seguían abiertas al empezar esta: si después se cierran, las dos se cruzaron (INT-RES-03)
         const abiertas = h.corridas.filter((x) => !x.cierres.length).map((x) => x.numero);
         const nueva = {
-          numero: n, inicio: t, fin: null, modo: datos.modo, placa: datos.placa, activas: { ...(datos.activas || {}) }, piezas,
+          numero: n, inicio: t, fin: null, modo: datos.modo, placa: datos.placa, activas: { ...(datos.activas || {}) }, piezas, generaciones, aperturas,
           fallasVistas: [], cierres: [], pasosCierre: [], ms_sim: null, reinicios: 0, estado: 'corriendo', contradicciones: [],
           // Cada falla que llegó y cada cierre, con su tiempo simulado: las repetidas también (INT-RES-03a). El tramo
           // cuenta los RESET con el botón, que ponen el reloj de la corrida en cero; un reinicio por energía no lo hace.
           ocurrencias: [], tiemposCierre: [], tramo: 0, marcas: [],
-          desdePos: pos, hastaPos: pos, abiertas,
+          desdePos: pos, hastaPos: pos, abiertas, cambiadas: new Set(), genFalla: new Map(),
         };
         if (datos.circuito.placa !== undefined && datos.circuito.placa !== datos.placa) {
           aviso(`La corrida ${n} dice ${datos.placa}, pero su circuito dice ${datos.circuito.placa}.`);
@@ -824,6 +908,13 @@ function contarSesion({ sesion, equipo, segmentos, dudas: dudasDelGrupo, sinComp
       case 'falla':
         if (c && !c.fallasVistas.some((f) => claveFalla(f) === claveFalla(datos))) c.fallasVistas.push({ tipo: datos.tipo, componente: datos.componente, ms_sim: ev.ms_sim });
         if (c) c.ocurrencias.push({ tipo: datos.tipo, componente: datos.componente, ms_sim: ev.ms_sim ?? null, tramo: tramoDe(c) });
+        if (c) { // la pieza que la tuvo, con la generación de ese momento (AUD-15)
+          const p = piezaDe(datos);
+          const ahora = { aperturas, gen: p === 'placa' ? 0 : generacion.get(p) || 0 };
+          const antes = c.genFalla.get(claveFalla(datos));
+          if (antes === undefined) c.genFalla.set(claveFalla(datos), ahora);
+          else if (antes !== 'mixta' && !mismaPieza(antes, ahora)) c.genFalla.set(claveFalla(datos), 'mixta');
+        }
         paso(t, `   falla: ${nombreFalla(datos)}, a los ${segundos(ev.ms_sim || 0)} simulados.`, n);
         break;
       case 'reinicio_placa':
@@ -849,6 +940,9 @@ function contarSesion({ sesion, equipo, segmentos, dudas: dudasDelGrupo, sinComp
           aviso(`El cierre de la corrida ${n} dice ${datos.ms_sim} ms simulados y su sobre ${ev.ms_sim}.`);
           c.contradicciones.push('su cierre dice dos tiempos simulados distintos');
         }
+        // Un cierre sin la confirmación del simulador (la espera de 500 ms, cerrar la ventana): pudieron quedar fallas en
+        // camino, así que la corrida no se compara. No es un defecto del registro: no se avisa (REG-005, TC-2)
+        if (datos.confirmado === false) contradice(c, 'se cerró sin la confirmación del simulador (pudieron quedar fallas sin llegar)');
         if (!c.cierres.length) { // se cierra ahora: las que empezaron mientras seguía abierta se cruzaron con ella
           for (const x of h.corridas) {
             if (x === c || !x.abiertas.includes(n)) continue;
@@ -931,6 +1025,18 @@ function contarSesion({ sesion, equipo, segmentos, dudas: dudasDelGrupo, sinComp
       aviso(`La corrida ${c.numero}: las fallas del cierre (${lista(c.cierres[0].map(nombreFalla))}) no son las que llegaron (${lista(c.fallasVistas.map(nombreFalla))}).`);
     }
   }
+  // Cada falla con su pieza (AUD-15): si otra pieza con el mismo id ya tuvo esa falla en la sesión, esta se nombra
+  // «pieza 2» (y así, en el orden en que aparecen), también en los datos (`pieza`)
+  const piezasDeFalla = new Map(); // tipo|componente → las identidades, en orden
+  for (const c of h.corridas) {
+    for (const f of c.fallas) {
+      const ids = piezasDeFalla.get(claveFalla(f)) || [];
+      piezasDeFalla.set(claveFalla(f), ids);
+      const id = identidadDe(c, f);
+      if (!ids.includes(id)) ids.push(id);
+      if (ids.indexOf(id) > 0) f.pieza = ids.indexOf(id) + 1;
+    }
+  }
   // El cierre de cada corrida, y frente a la anterior: qué corrigió, qué ya no se observó (y por qué), qué sigue y qué
   // es nuevo. Solo se compara si las dos están completas y coherentes y no hay un hueco entre ellas; si no, se dice por
   // qué no y corrigio/yaNoSeObservo/siguen/nuevas quedan en null.
@@ -952,16 +1058,17 @@ function contarSesion({ sesion, equipo, segmentos, dudas: dudasDelGrupo, sinComp
           : previa && hayHueco(previa.desdePos, c.hastaPos) ? 'hay un hueco en el registro entre las dos' : null;
     if (previa && motivo) texto += ` No se compara con la corrida ${previa.numero}: ${motivo}.`;
     else if (!motivo) {
-      const antes = previa ? previa.fallas.map(claveFalla) : [];
-      const ahora = c.fallas.map(claveFalla);
-      c.corrigio = []; c.yaNoSeObservo = [];
-      for (const f of previa ? previa.fallas.filter((x) => !ahora.includes(claveFalla(x))) : []) {
-        const porque = cambioDeCondiciones(previa, c, f);
-        if (porque) c.yaNoSeObservo.push({ ...f, motivo: porque });
+      c.corrigio = []; c.yaNoSeObservo = []; c.siguen = [];
+      for (const f of previa ? previa.fallas : []) {
+        const ahora = c.fallas.find((x) => claveFalla(x) === claveFalla(f));
+        // La misma falla sigue solo si es de la misma pieza (AUD-15, F02): si la de ahora es de otra pieza con el mismo
+        // id, la de antes ya no se observó (con el motivo) y la de ahora es nueva
+        const porque = ahora ? otraPieza(previa, c, f, true) : cambioDeCondiciones(previa, c, f);
+        if (ahora && !porque) c.siguen.push(ahora);
+        else if (porque) c.yaNoSeObservo.push({ ...f, motivo: porque });
         else c.corrigio.push(f);
       }
-      c.siguen = c.fallas.filter((f) => antes.includes(claveFalla(f)));
-      c.nuevas = c.fallas.filter((f) => !antes.includes(claveFalla(f)));
+      c.nuevas = c.fallas.filter((f) => !c.siguen.includes(f));
       if (previa) {
         if (c.corrigio.length) texto += ` Corrigió: ${c.corrigio.map(nombreFalla).join(', ')}.`;
         if (c.yaNoSeObservo.length) texto += ` Ya no se observó: ${yaNoSeObservo(c.yaNoSeObservo.map((f) => ({ falla: f, motivo: f.motivo })))}.`;
@@ -976,6 +1083,7 @@ function contarSesion({ sesion, equipo, segmentos, dudas: dudasDelGrupo, sinComp
   h.sinAtribuir = [...huerfanas.values()].map((x) => ({ corrida: x.numero, fallas: hechos(x) })).filter((x) => x.fallas.length);
   h.huecos = huecos;
   h.resumen = resumen(h, hayHueco, entradas.length - 1);
+  for (const c of h.corridas) { delete c.cambiadas; delete c.genFalla; } // de uso interno: la identidad de las piezas
   return h;
 }
 

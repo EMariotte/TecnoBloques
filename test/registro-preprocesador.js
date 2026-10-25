@@ -4,7 +4,7 @@
 //   1. El compilador ve lo mismo: -E del original y -E del limpio dan los mismos símbolos.
 //   2. No queda ningún comentario: -E -CC (que conserva los comentarios, también los de un #define) y -E del limpio
 //      dan lo mismo.
-//   3. El limpio tiene las mismas líneas que el original.
+//   3. El limpio tiene las mismas líneas que el original, y limpiarlo otra vez no lo cambia.
 // Las tres usan -dD, que muestra cada #define aunque no se use (AUD-01-V3), y -undef. Para no mezclar los comentarios
 // de las cabeceras del sistema, los #include van a cabeceras vacías de prueba (-nostdinc); aparte, los programas que
 // compilan se compilan antes y después de limpiarlos con las cabeceras reales (-mmcu=atmega328p).
@@ -97,6 +97,8 @@ function contrastar(programas) {
       const sinVacio = (s) => juntar(s.split('/**/').join(' '));
       if (sinVacio(limpioC[n]) !== sinVacio(limpio[n])) motivos.push('quedó un comentario');
       if (lineas(p) !== lineas(limpios[n])) motivos.push('cambió el número de líneas');
+      // Limpiar otra vez lo limpio no lo cambia: la historia revisa así que el C++ del registro no tenga comentarios (REG-005, TB-1)
+      if (quitarComentarios(limpios[n]) !== limpios[n]) motivos.push('limpiarlo otra vez lo cambia');
       if (motivos.length) fallan.push({ programa: p, limpio: limpios[n], motivos, original: original[n], preprocesadoLimpio: limpio[n], conComentarios: limpioC[n] });
     });
   }

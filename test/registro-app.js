@@ -205,6 +205,14 @@ const LED = {
   const esperando = Number((lineaFalla.match(/(\d+) eventos? esperando/) || [])[1]);
   revisar(/^No se guarda desde las \d{2}:\d{2} · sin permiso para escribir · \d+ eventos? esperando$/.test(lineaFalla) && esperando > 2,
     `E3: el panel del instructor lo detalla: «${lineaFalla}»`);
+  // AUD-20 (R06 de la auditoría de Codex): con el panel abierto, la línea de la falla sigue lo que espera, no se queda en
+  // la cuenta de cuando se abrió
+  await win.evaluate(() => { registrarEditor('ejemplo_cargado', { id: 'eco' }); registrarEditor('ejemplo_cargado', { id: 'eco' }); });
+  const siguePanel = await win.waitForFunction((n) => {
+    const l = $('fallaRegistro');
+    return l && !l.hidden && Number(((l.textContent || '').match(/(\d+) eventos? esperando/) || [])[1]) >= n;
+  }, esperando + 2, { timeout: 3000, polling: 100 }).then(() => true, () => false);
+  revisar(siguePanel, `AUD-20: con el panel abierto, la línea pasa de ${esperando} a ${esperando + 2} eventos esperando o más («${await win.evaluate(() => $('fallaRegistro').textContent)}»)`);
   await win.screenshot({ path: path.join(SALIDA, 'registro_5_falla_instructor.png') });
   revisar(leerRegistro().filter((l) => l.equipo === 'C3').length === 1, 'mientras falla, el archivo no cambia (solo sesion_iniciada)');
   fs.chmodSync(path.join(registros, archivoC3), 0o666);
@@ -437,7 +445,9 @@ const LED = {
     confirmarEquipo('J7');
     $('modalAcciones').querySelector('.primario').click(); // «Sí, somos ese equipo», con el cierre de I6 pendiente
     await new Promise((r) => setTimeout(r, 30));
-    const antes = { equipo: registroEventos.equipo(), cambiando: cambiandoEquipo, ms: Math.round(performance.now() - t0) };
+    // El cambio de equipo sigue esperando: su promesa en la cola todavía no se cumplió (REG-005: la cola reemplaza la bandera)
+    const cambiando = await Promise.race([cambioDeEquipo.then(() => false), new Promise((r) => setTimeout(() => r(true), 0))]);
+    const antes = { equipo: registroEventos.equipo(), cambiando, ms: Math.round(performance.now() - t0) };
     __ret.soltar();
     await __detener;
     return antes;
@@ -745,7 +755,312 @@ const LED = {
   revisar((await esquina()).texto === 'Esta sesión se registra · Falta el código del equipo', 'AUD-07: al abrir otra vez, la cuenta empieza de cero (es desde que se abrió la app)');
   await app.close();
   fs.rmSync(datos2, { recursive: true, force: true });
-  revisar(!errores.length, 'sin errores en la consola, también en la sección 9' + (errores.length ? ': ' + errores.slice(0, 3).join(' | ') : ''));
+
+  // 10. REG-005 (22 oct): lo que encontró la revisión de código de la app, con la app real. En otra carpeta de datos.
+  const datos3 = path.join(os.tmpdir(), 'tecnobloques-prueba-registro-app-3');
+  if (path.dirname(path.resolve(datos3)) !== path.resolve(os.tmpdir())) throw new Error('Ruta temporal inesperada');
+  fs.rmSync(datos3, { recursive: true, force: true });
+  const registros3 = path.join(datos3, 'registros');
+  const leerRegistro3 = () => (fs.existsSync(registros3) ? fs.readdirSync(registros3).filter((f) => f.endsWith('.jsonl')) : [])
+    .flatMap((f) => fs.readFileSync(path.join(registros3, f), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)));
+  const cambiarSelector = (placa) => win.evaluate((p) => { const s = $('placa'); s.value = p; s.dispatchEvent(new Event('change')); }, placa);
+  ({ app, win } = await abrir(datos3));
+  await win.keyboard.press('Control+Alt+Shift+KeyR');
+  await win.waitForTimeout(300);
+  await win.locator('#pinNuevo').fill('1357');
+  await win.locator('#pinRepetido').fill('1357');
+  await boton(win, 'Crear PIN');
+  await win.waitForTimeout(300);
+  await boton(win, 'Encender el registro');
+  await win.waitForTimeout(400);
+  await win.locator('#codigoEquipo').fill('N1');
+  await win.locator('#codigoEquipo').press('Enter');
+  await win.waitForTimeout(200);
+  await boton(win, 'Sí, somos ese equipo');
+  await win.waitForTimeout(300);
+
+  // TB-10: una librería con - en el nombre es «libreria» en el registro y en lo que ve el aprendiz
+  const lib = await win.evaluate(() => {
+    const r = { ok: false, etapa: 'compilar', salida: 'C:\\x\\x.ino:1:10: fatal error: Adafruit-GFX.h: No such file or directory' };
+    return [tipoErrorCompilacion(r), explicarError(r, '').titulo];
+  });
+  revisar(lib[0] === 'libreria' && lib[1] === 'Falta una librería', `TB-10: Adafruit-GFX.h es «libreria» y «Falta una librería» (${lib.join(', ')})`);
+
+  // TB-8: un proyecto que no abre (un bloque que esta versión no conoce) no deja cambios de placa; uno que abre, uno
+  let desde = leerRegistro3().length;
+  const noAbrio = await win.evaluate(() => cargarProyecto({ app: 'TecnoBloques', placa: 'nano', nivel: 1,
+    bloques: { blocks: { languageVersion: 0, blocks: [{ type: 'bloque_que_no_existe', x: 0, y: 0 }] } } }, true));
+  await win.waitForTimeout(400);
+  const trasNoAbrio = leerRegistro3().slice(desde);
+  revisar(noAbrio !== true && await win.evaluate(() => placaActual) === 'uno' && !trasNoAbrio.some((l) => l.tipo === 'placa_cambiada'),
+    `TB-8: el proyecto que no abre vuelve a la placa de antes sin cambios de placa en el registro (${trasNoAbrio.map((l) => l.tipo).join(', ') || 'nada'})`);
+  desde = leerRegistro3().length;
+  const abrio = await win.evaluate(() => cargarProyecto({ app: 'TecnoBloques', placa: 'nano', nivel: 1, bloques: { blocks: { languageVersion: 0, blocks: [] } } }, true));
+  await win.waitForTimeout(400);
+  const cambios = leerRegistro3().slice(desde).filter((l) => l.tipo === 'placa_cambiada');
+  revisar(abrio === true && cambios.length === 1 && cambios[0].datos.de === 'uno' && cambios[0].datos.a === 'nano', 'control TB-8: el proyecto que abre deja un placa_cambiada uno → nano');
+  await cambiarSelector('uno');
+  await win.waitForTimeout(400);
+
+  // AUD-19 (auditoría de Codex de REG-005, R05 y R07): abrir proyectos seguidos no mezcla su C++, y uno que no abre
+  // devuelve el anterior entero, con su C++ escrito a mano. Se mira también lo que compila (codigoActual) y el autoguardado.
+  const vistaProyecto = () => win.evaluate(() => {
+    const p = proyectoActual();
+    return { nombre: p.nombre, placa: p.placa, nivel: p.nivel, texto: p.texto, modoTexto: !!estado.texto, base: estado.texto ? estado.texto.base : null,
+      codigo: codigoActual(), bloques: JSON.stringify(p.bloques), circuito: JSON.stringify(p.circuito || null), auto: (leerLocal(CLAVE_AUTO) || {}).texto || null };
+  });
+  const seguidos = (...textos) => win.evaluate(async (ts) => {
+    const r = ts.map((texto, i) => cargarProyecto({ app: 'TecnoBloques', placa: 'uno', nivel: 3, nombre: 'P' + i, texto, bloques: { blocks: { languageVersion: 0, blocks: [] } } }, true));
+    await new Promise((fin) => setTimeout(fin, 900)); // pasan los 200 ms del temporizador de antes y el autoguardado
+    return r;
+  }, textos);
+  const conMarca = (m) => `void setup() { int ${m} = 1; }\nvoid loop() {}\n`;
+  for (const [nombre, textos, marca] of [
+    ['A con C++ → B sin', [conMarca('SOLO_A'), null], null],
+    ['A → B → C, solo C sin C++', [conMarca('SOLO_A'), conMarca('SOLO_B'), null], null],
+    ['A con C++ → B con el suyo', [conMarca('SOLO_A'), conMarca('SOLO_B')], 'SOLO_B'],
+  ]) {
+    const abiertos = await seguidos(...textos);
+    const v = await vistaProyecto();
+    const ajenos = ['SOLO_A', 'SOLO_B'].filter((m) => m !== marca);
+    const limpio = (s) => !s || ajenos.every((m) => !s.includes(m));
+    revisar(abiertos.every((r) => r === true) && v.nombre === 'P' + (textos.length - 1) && limpio(v.codigo) && limpio(v.texto) && limpio(v.auto) &&
+      (marca ? v.modoTexto && v.codigo.includes(marca) && v.texto.includes(marca) && v.auto.includes(marca) : !v.modoTexto && v.texto === null && v.auto === null),
+    `AUD-19, ${nombre}: queda el C++ del último proyecto, también en lo que compila y en el autoguardado (${v.nombre}, modo texto ${v.modoTexto})`);
+  }
+  const malo = { app: 'TecnoBloques', placa: 'nano', nivel: 1, nombre: 'Malo', bloques: { blocks: { languageVersion: 0, blocks: [{ type: 'bloque_que_no_existe', x: 0, y: 0 }] } } };
+  // Modo texto: el C++ escrito a mano, su base, la placa, el nivel y el circuito vuelven igual
+  await win.evaluate((circuito) => {
+    cargarProyecto({ app: 'TecnoBloques', placa: 'uno', nivel: 3, nombre: 'Mio', circuito, bloques: { blocks: { languageVersion: 0, blocks: [{ type: 'programa', x: 40, y: 40 }] } } }, true);
+    entrarModoTexto(`void setup() { int CONSERVAR = 42; }\nvoid loop() {}\n`);
+  }, LED);
+  await win.waitForTimeout(900);
+  const antesTexto = await vistaProyecto();
+  const rechazoTexto = await win.evaluate((p) => cargarProyecto(p, true), malo);
+  await win.waitForTimeout(900);
+  const despuesTexto = await vistaProyecto();
+  const iguales = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  revisar(rechazoTexto !== true && antesTexto.modoTexto && antesTexto.codigo.includes('CONSERVAR') && iguales(antesTexto, despuesTexto),
+    `AUD-19, rechazo en modo texto: vuelve el proyecto entero, con el C++ a mano, su base y el autoguardado (${['nombre', 'placa', 'nivel', 'texto', 'base', 'codigo', 'circuito', 'auto'].filter((k) => antesTexto[k] !== despuesTexto[k]).join(', ') || 'todo igual'})`);
+  // Modo bloques: los bloques y el circuito vuelven igual, sin C++ a mano
+  await win.evaluate(() => salirModoTexto(true));
+  await win.waitForTimeout(900);
+  const antesBloques = await vistaProyecto();
+  const rechazoBloques = await win.evaluate((p) => cargarProyecto(p, true), malo);
+  await win.waitForTimeout(900);
+  const despuesBloques = await vistaProyecto();
+  revisar(rechazoBloques !== true && !antesBloques.modoTexto && iguales(antesBloques, despuesBloques),
+    `AUD-19, rechazo en modo bloques: vuelve igual, con sus bloques y su circuito (${['nombre', 'placa', 'nivel', 'texto', 'codigo', 'bloques', 'circuito', 'auto'].filter((k) => antesBloques[k] !== despuesBloques[k]).join(', ') || 'todo igual'})`);
+  await win.evaluate(() => cargarProyecto({ app: 'TecnoBloques', placa: 'uno', nivel: 1, bloques: { blocks: { languageVersion: 0, blocks: [] } } }, true));
+  await win.waitForTimeout(400);
+
+  // TB-3: «Cambiar a Nano» al subir (la placa conectada no coincide) también pasa el lienzo a la placa nueva
+  await win.evaluate(() => {
+    const s = $('puerto');
+    s.append(el('option', { value: 'COM98' }, 'COM98'));
+    s.value = 'COM98';
+    window.placaDetectada = () => 'nano';
+    window.subirOriginal = subirPlaca;
+    subirPlaca();
+  });
+  await win.waitForTimeout(300);
+  const tituloNoCoincide = await titulo(win);
+  await win.evaluate(() => { window.subirPlaca = async () => {}; }); // la subida no es de esta parte
+  await boton(win, 'Cambiar a');
+  await win.waitForTimeout(500);
+  const lienzoNano = await win.evaluate(() => [placaActual, simulador.lienzo && simulador.lienzo.circuito().placa]);
+  revisar(tituloNoCoincide === 'La placa no coincide' && lienzoNano.join() === 'nano,nano', `TB-3: «Cambiar a Nano» cambia la placa y el lienzo (${lienzoNano.join(', ')})`);
+
+  // TB-9: programa_subido dice la placa para la que se compiló, aunque la cambien mientras sube (a un puerto que no existe)
+  desde = leerRegistro3().length;
+  await win.evaluate(() => { window.subirPlaca = window.subirOriginal; subirPlaca(true); });
+  await win.waitForTimeout(300);
+  await cambiarSelector('uno');
+  const subio = await esperar(win, () => !puertos.ocupado && !/^Subir a/.test($('modalTitulo').textContent), 120000);
+  await win.waitForTimeout(400);
+  const subido = leerRegistro3().slice(desde).find((l) => l.tipo === 'programa_subido');
+  revisar(subio && subido && subido.datos.placa === 'nano' && subido.datos.ok === false,
+    `TB-9: subir al Nano y cambiar a Uno mientras sube: programa_subido dice ${subido ? subido.datos.placa : '(no salió)'}`);
+  await win.keyboard.press('Escape');
+  await win.waitForTimeout(200);
+
+  // TB-4: cambiar la placa mientras se prepara la simulación: no se simula en el lienzo nuevo
+  desde = leerRegistro3().length;
+  await win.evaluate(() => { simular(); setTimeout(() => { const s = $('placa'); s.value = 'nano'; s.dispatchEvent(new Event('change')); }, 100); });
+  const preparo = await esperar(win, () => !simulador.compilando, 120000);
+  await win.waitForTimeout(500);
+  const trasSimular = leerRegistro3().slice(desde).map((l) => l.tipo);
+  revisar(preparo && await win.evaluate(() => !simulador.sim) && trasSimular.includes('codigo_compilado') && !trasSimular.includes('simulacion_iniciada'),
+    `TB-4: la placa cambió mientras se preparaba: no hay simulación (${trasSimular.join(', ')})`);
+
+  // TB-7: dos códigos confirmados seguidos, el segundo mientras el primero espera: los dos cambios se hacen, en orden
+  desde = leerRegistro3().length;
+  const equipoFinal = await win.evaluate(async () => {
+    confirmarEquipo('N2'); document.querySelector('#modalAcciones .primario').click();
+    confirmarEquipo('N3'); document.querySelector('#modalAcciones .primario').click();
+    await cambioDeEquipo;
+    return registroEventos.equipo();
+  });
+  await win.waitForTimeout(400);
+  const inicios = leerRegistro3().slice(desde).filter((l) => l.tipo === 'sesion_iniciada').map((l) => l.equipo);
+  revisar(equipoFinal === 'N3' && inicios.join() === 'N2,N3', `TB-7: el segundo código no se pierde (equipo ${equipoFinal}; sesiones ${inicios.join(', ')})`);
+
+  // TB-2: si apagar el registro falla por el disco, el registro sigue encendido y el equipo vuelve a su sesión
+  const bloqueo = path.join(datos3, 'registro-config.json.tmp'); // una carpeta donde va el temporal: guardar() no puede
+  fs.mkdirSync(bloqueo);
+  await entrarPanel();
+  desde = leerRegistro3().length;
+  await boton(win, 'Apagar el registro');
+  await win.waitForTimeout(600);
+  const notaApagar = await win.evaluate(() => [...document.querySelectorAll('#modalCuerpo p.muted')].pop().textContent);
+  const trasFallo = leerRegistro3().slice(desde).map((l) => `${l.tipo}:${l.equipo}`);
+  const estadoFallo = await win.evaluate(() => [registroEventos.equipo(), registroEncendido]);
+  revisar(estadoFallo.join() === 'N3,true' && /No se pudo guardar en el disco\. Revisa que haya espacio libre/.test(notaApagar) &&
+    trasFallo.slice(-2).join() === 'sesion_terminada:N3,sesion_iniciada:N3',
+  `TB-2: apagar falló por el disco: sigue encendido con N3 en su sesión (${trasFallo.join(', ')}; «${notaApagar}»)`);
+  fs.rmSync(bloqueo, { recursive: true, force: true });
+  await boton(win, 'Apagar el registro');
+  await win.waitForTimeout(600);
+  revisar(await win.evaluate(() => registroEventos.equipo() === null && !registroEncendido), 'control TB-2: con el disco bien, se apaga');
+
+  // Al terminar TB-2 el registro quedó apagado: se enciende y vuelve N3
+  await entrarPanel();
+  await boton(win, 'Encender el registro');
+  await win.waitForTimeout(600);
+  await win.evaluate(async () => { cerrarModal(false); confirmarEquipo('N3'); document.querySelector('#modalAcciones .primario').click(); await cambioDeEquipo; });
+  await win.waitForTimeout(300);
+  revisar(await win.evaluate(() => registroEncendido && registroEventos.equipo() === 'N3'), 'antes de la sección 11: el registro encendido otra vez, con N3');
+
+  // 11. Verificación de Codex del 24 oct. AUD-17 (R03): lo que se sube se toma en un solo objeto antes de la primera
+  // espera. Si mientras se suelta el puerto cambia la placa o el puerto, la subida empieza otra vez con lo de ahora, una
+  // vez; si cambia el equipo, no se sube. Lo enviado y lo registrado coinciden siempre. La subida se reemplaza en el
+  // proceso principal (no se sube a ninguna placa).
+  await app.evaluate(({ ipcMain }) => {
+    globalThis._subidas = [];
+    ipcMain.removeHandler('tb:subir');
+    ipcMain.handle('tb:subir', (_e, d) => { globalThis._subidas.push(d); return { ok: false, etapa: 'subir', salida: 'Puerto sintético', memoria: {} }; });
+  });
+  const subirCon = async (cambio) => {
+    await app.evaluate(() => { globalThis._subidas = []; });
+    const antes = leerRegistro3().length;
+    const resultado = await win.evaluate(async (c) => {
+      // TB-3 dejó una placa detectada falsa: en estos puertos sintéticos no se detecta ninguna, salvo en el caso que la pide
+      window.placaDetectada = (p) => (c === 'puerto con otra placa' && p === 'COM92' ? 'nano' : null);
+      const s = $('puerto');
+      for (const p of ['COM91', 'COM92']) if (![...s.options].some((o) => o.value === p)) s.append(el('option', { value: p }, p));
+      ponerPlaca('uno'); refrescarPines(); abrirLienzo(); s.value = 'COM91';
+      if (c === 'codigo') entrarModoTexto('void setup() { int SUBIDO = 1; }\nvoid loop() {}\n');
+      const real = desconectarSerial;
+      let esperas = 0;
+      window.desconectarSerial = async () => {
+        esperas++;
+        if (c === 'placa' || (c === 'placa dos veces')) { const p = $('placa'); p.value = p.value === 'nano' ? 'uno' : 'nano'; p.dispatchEvent(new Event('change')); }
+        if (c === 'puerto' || c === 'puerto con otra placa') s.value = 'COM92';
+        if (c === 'codigo') $('editor').value = 'void setup() { int CAMBIADO = 2; }\nvoid loop() {}\n';
+        if (c === 'equipo') { confirmarEquipo('N4'); document.querySelector('#modalAcciones .primario').click(); await cambioDeEquipo; }
+        serial.conectado = c === 'placa dos veces'; // así la segunda vez también espera
+      };
+      serial.conectado = true;
+      try { await subirPlaca(true); } finally { window.desconectarSerial = real; serial.conectado = false; }
+      const titulo = $('modal').hidden ? null : $('modalTitulo').textContent;
+      cerrarModal(false);
+      if (estado.texto) salirModoTexto(true);
+      return { esperas, titulo, equipo: registroEventos.equipo() };
+    }, cambio);
+    await win.waitForTimeout(300);
+    const lineas = leerRegistro3().slice(antes);
+    return { ...resultado, subidas: await app.evaluate(() => globalThis._subidas), subido: lineas.filter((l) => l.tipo === 'programa_subido'), compilado: lineas.filter((l) => l.tipo === 'codigo_compilado') };
+  };
+  const controlSubida = await subirCon('ninguno');
+  revisar(controlSubida.subidas.length === 1 && /:uno$/.test(controlSubida.subidas[0].fqbn) && controlSubida.subidas[0].puerto === 'COM91' && controlSubida.subido.length === 1 && controlSubida.subido[0].datos.placa === 'uno',
+    'control AUD-17: sin cambios, se envía y se registra el Uno en COM91');
+  const conPlaca = await subirCon('placa');
+  revisar(conPlaca.subidas.length === 1 && /:nano/.test(conPlaca.subidas[0].fqbn) && conPlaca.subido.length === 1 && conPlaca.subido[0].datos.placa === 'nano' && conPlaca.esperas === 1,
+    `AUD-17: la placa cambia a Nano mientras se suelta el puerto: se sube otra vez, al Nano, y eso se registra (${conPlaca.subidas.map((x) => x.fqbn).join(' | ')}; ${conPlaca.subido.map((l) => l.datos.placa).join()})`);
+  const conPuerto = await subirCon('puerto');
+  revisar(conPuerto.subidas.length === 1 && conPuerto.subidas[0].puerto === 'COM92' && conPuerto.subido.length === 1,
+    `AUD-17: el puerto cambia mientras se suelta: se sube al puerto de ahora (${conPuerto.subidas.map((x) => x.puerto).join()})`);
+  const otraPlacaEnPuerto = await subirCon('puerto con otra placa');
+  revisar(otraPlacaEnPuerto.subidas.length === 0 && otraPlacaEnPuerto.titulo === 'La placa no coincide' && !otraPlacaEnPuerto.subido.length,
+    `AUD-17: al empezar otra vez se repiten las comprobaciones: en el puerto nuevo hay otra placa y se pregunta («${otraPlacaEnPuerto.titulo}»)`);
+  const conCodigo = await subirCon('codigo');
+  revisar(conCodigo.subidas.length === 1 && /SUBIDO/.test(conCodigo.subidas[0].codigo) && !/CAMBIADO/.test(conCodigo.subidas[0].codigo) &&
+    conCodigo.compilado.length === 1 && /SUBIDO/.test(conCodigo.compilado[0].datos.codigo),
+  'AUD-17: el código cambia mientras se suelta el puerto: se sube y se registra el que había al pulsar Subir');
+  const conEquipo = await subirCon('equipo');
+  revisar(conEquipo.subidas.length === 0 && !conEquipo.subido.length && !conEquipo.compilado.length && conEquipo.equipo === 'N4',
+    'AUD-17: el equipo cambia mientras se suelta el puerto: no se sube ni se registra nada (la subida ya no es de nadie)');
+  const dosVeces = await subirCon('placa dos veces');
+  revisar(dosVeces.subidas.length === 0 && !dosVeces.subido.length && dosVeces.titulo === 'No se subió el programa' && dosVeces.esperas === 2,
+    `AUD-17: si la placa cambia también la segunda vez, no se sube nada y se dice («${dosVeces.titulo}»)`);
+  await cambiarSelector('uno');
+  await win.waitForTimeout(400);
+
+  // AUD-18 (R04): apagar el registro y confirmar un equipo van en la misma fila. Un equipo que espera y le toca con el
+  // registro apagado no empieza; el editor queda sin equipo y el siguiente encendido pide un inicio nuevo. El cierre de la
+  // simulación se controla a mano para que las dos operaciones esperen a la vez.
+  const fila = async (pasos) => {
+    const antes = leerRegistro3().length;
+    const estadoFinal = await win.evaluate(async (ps) => {
+      const real = detenerSimulacion;
+      let soltar;
+      const cierre = new Promise((listo) => { soltar = listo; });
+      window.detenerSimulacion = () => cierre;
+      try {
+        for (const p of ps) {
+          if (p === 'apagar' || p === 'encender') {
+            panelInstructor('1357', { activo: p === 'apagar', archivos: 1, falla: null, descartados: null });
+            [...$('modalAcciones').querySelectorAll('button')].find((b) => b.textContent === (p === 'apagar' ? 'Apagar el registro' : 'Encender el registro')).click();
+          } else { confirmarEquipo(p); document.querySelector('#modalAcciones .primario').click(); }
+        }
+        soltar();
+        await new Promise((listo) => setTimeout(listo, 50));
+        await cambioDeEquipo;
+        await new Promise((listo) => setTimeout(listo, 100));
+      } finally { window.detenerSimulacion = real; }
+      cerrarModal(false);
+      return { equipo: registroEventos.equipo(), encendido: registroEncendido };
+    }, pasos);
+    await win.waitForTimeout(300);
+    return { ...estadoFinal, lineas: leerRegistro3().slice(antes).map((l) => `${l.tipo}:${l.equipo}`) };
+  };
+  const apagaPrimero = await fila(['apagar', 'N5']);
+  revisar(apagaPrimero.equipo === null && !apagaPrimero.encendido && !apagaPrimero.lineas.includes('sesion_iniciada:N5'),
+    `AUD-18: apagar y después confirmar N5 mientras se cierra la corrida: apagado, sin equipo y N5 no empieza (${apagaPrimero.lineas.join(', ')})`);
+  const reencender = await fila(['encender']);
+  const conN5 = await win.evaluate(async () => {
+    confirmarEquipo('N5'); document.querySelector('#modalAcciones .primario').click();
+    await cambioDeEquipo;
+    registrarEditor('codigo_compilado', { ok: true, error: null, bytes: 1, codigo: 'void setup(){}\nvoid loop(){}' });
+    return registroEventos.equipo();
+  });
+  await win.waitForTimeout(300);
+  const trasReencender = leerRegistro3().map((l) => `${l.tipo}:${l.equipo}`);
+  const inicioN5 = trasReencender.lastIndexOf('sesion_iniciada:N5'), compiloN5 = trasReencender.lastIndexOf('codigo_compilado:N5');
+  revisar(reencender.encendido && conN5 === 'N5' && inicioN5 >= 0 && compiloN5 > inicioN5,
+    'AUD-18: al encender otra vez y confirmar N5, su sesión empieza antes de lo que compila (sin una sesión huérfana)');
+  const confirmaPrimero = await fila(['N6', 'apagar']);
+  revisar(confirmaPrimero.equipo === null && !confirmaPrimero.encendido && confirmaPrimero.lineas.join() === 'sesion_terminada:N5,sesion_iniciada:N6,sesion_terminada:N6',
+    `AUD-18: confirmar N6 y después apagar: N6 empieza y termina antes de apagar (${confirmaPrimero.lineas.join(', ')})`);
+  await fila(['encender']);
+  await win.evaluate(async () => { confirmarEquipo('N7'); document.querySelector('#modalAcciones .primario').click(); await cambioDeEquipo; });
+  const dosYApagar = await fila(['N8', 'N9', 'apagar']);
+  revisar(dosYApagar.equipo === null && dosYApagar.lineas.join() === 'sesion_terminada:N7,sesion_iniciada:N8,sesion_terminada:N8,sesion_iniciada:N9,sesion_terminada:N9',
+    `AUD-18: dos códigos que esperan y después apagar: cada uno en orden y nada después del apagado (${dosYApagar.lineas.join(', ')})`);
+  await fila(['encender']);
+  const mismoCodigo = await win.evaluate(async () => { confirmarEquipo('N9'); document.querySelector('#modalAcciones .primario').click(); await cambioDeEquipo; return registroEventos.equipo(); });
+  await win.waitForTimeout(300);
+  revisar(mismoCodigo === 'N9' && leerRegistro3().map((l) => `${l.tipo}:${l.equipo}`).filter((x) => x === 'sesion_iniciada:N9').length === 2,
+    'AUD-18: al encender otra vez con el mismo código de antes, empieza una sesión nueva (no se queda con la de antes del apagado)');
+  await app.close();
+  await new Promise((r) => setTimeout(r, 300));
+  if (fs.existsSync(REVISOR)) {
+    const { revisarEvento } = require(REVISOR);
+    const problemas = leerRegistro3().flatMap((l, i) => revisarEvento(l).map((p) => `${i + 1} (${l.tipo}): ${p}`));
+    revisar(!problemas.length, `REG-005: las ${leerRegistro3().length} líneas de la sección 10 cumplen contrato/evento.schema.json` + (problemas.length ? ':\n  ' + problemas.slice(0, 10).join('\n  ') : ''));
+  }
+  fs.rmSync(datos3, { recursive: true, force: true });
+  revisar(!errores.length, 'sin errores en la consola, también en las secciones 9 y 10' + (errores.length ? ': ' + errores.slice(0, 3).join(' | ') : ''));
   console.log(fallos ? `\n${fallos} FALLA(S)` : '\nTODO BIEN');
   process.exit(fallos ? 1 : 0);
 })().catch((e) => { console.error(e); process.exit(1); });

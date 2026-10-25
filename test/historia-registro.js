@@ -885,6 +885,95 @@ try {
       revisar(exp.ok && conUno.cli.status === 1 && conTexto.cli.status === 1 && !conTexto.historias[0].resumen.includes(CORREGIDA) && conTexto.problemas.some((p) => p.includes('no es válido (pendientes')) && !!carpetaCola,
         `AUD-09-R1, con un evento de verdad en la cola: pendientes 1 avisa, y cambiado a "1" tampoco sale limpio (${conTexto.cli.status})`);
     }
+    // AUD-22: se analizan los mismos bytes cuya huella se comprobó. Aquí el archivo cambia justo después de leerlo para
+    // comprobarlo (como en el diagnóstico de Codex, 22 oct): antes se volvía a abrir y se analizaba el cambiado. La
+    // copia íntegra y la cambiada antes de admitirla son los casos de AUD-09 de arriba.
+    {
+      const carpeta = exportar();
+      const archivo = path.join(carpeta, unicoArchivo(carpeta));
+      const otro = fs.readFileSync(archivo, 'utf8').split('\n').filter((l) => l && !l.includes('"corrida":161') && !l.includes('sesion_terminada')).join('\n') + '\n';
+      const leerOriginal = fs.readFileSync;
+      let lecturas = 0;
+      fs.readFileSync = function (f, ...resto) {
+        const b = leerOriginal.call(this, f, ...resto);
+        if (path.resolve(String(f)) === path.resolve(archivo) && ++lecturas === 1) fs.writeFileSync(archivo, otro);
+        return b;
+      };
+      let r;
+      try { r = leerArchivos([carpeta]); } finally { fs.readFileSync = leerOriginal; }
+      const h = contarHistoria(r.lineas)[0];
+      revisar(lecturas === 1 && !r.problemas.length && h.corridas.length === 2 && h.resumen.endsWith(CORREGIDA),
+        `AUD-22: el archivo cambia después de comprobar su huella: se lee una vez y se analizan los bytes comprobados (${lecturas} lectura(s), ${h.corridas.length} corridas)`);
+      const otraVez = leerExportacion(carpeta);
+      revisar(otraVez.problemas.some((p) => /no coincide con su huella/.test(p)) && otraVez.cli.status === 1 && !otraVez.historias[0].resumen.includes(CORREGIDA),
+        'AUD-22: leída otra vez, la copia cambiada ya no coincide con su huella y no se admite');
+    }
+    // F01 (verificación de Codex del 24 oct): el mismo archivo, dado suelto y dentro de su exportación, en los dos órdenes.
+    // Se lee una vez, se analizan los bytes que se comprobaron y vale la restricción más exigente: la conclusión no
+    // depende del orden. Para la línea de comandos, un gancho cambia el archivo después de su primera lectura.
+    {
+      const gancho = path.join(raiz, 'cambiar-tras-leer.cjs');
+      fs.writeFileSync(gancho, [
+        "'use strict';",
+        "const fs = require('fs'), path = require('path');",
+        'const blanco = path.resolve(process.env.HISTORIA_BLANCO), otro = fs.readFileSync(process.env.HISTORIA_OTRO);',
+        'const leer = fs.readFileSync;',
+        'let n = 0;',
+        'fs.readFileSync = function (f, ...resto) { const b = leer.call(this, f, ...resto); if (typeof f === \'string\' && path.resolve(f) === blanco && ++n === 1) fs.writeFileSync(blanco, otro); return b; };',
+      ].join('\n'));
+      const sinLaSegunda = (texto) => texto.split('\n').filter((l) => l && !l.includes('"corrida":161') && !l.includes('sesion_terminada')).join('\n') + '\n';
+      // `cambiar`: después de la primera lectura del archivo, queda otro contenido (la sustitución entre comprobar y usar)
+      const leerContando = (entradas, archivo, cambiar) => {
+        const original = fs.readFileSync;
+        const otro = cambiar ? sinLaSegunda(original(archivo, 'utf8')) : null;
+        let lecturas = 0;
+        fs.readFileSync = function (f, ...resto) {
+          const b = original.call(this, f, ...resto);
+          if (path.resolve(String(f)) === path.resolve(archivo) && ++lecturas === 1 && otro) fs.writeFileSync(archivo, otro);
+          return b;
+        };
+        try { const r = leerArchivos(entradas); return { ...r, lecturas, h: contarHistoria(r.lineas)[0] }; } finally { fs.readFileSync = original; }
+      };
+      const cliCambiando = (entradas, archivo) => {
+        const otro = path.join(raiz, `otro-${++caso}.jsonl`);
+        fs.writeFileSync(otro, sinLaSegunda(fs.readFileSync(archivo, 'utf8')));
+        const r = spawnSync(process.execPath, ['-r', gancho, path.join(__dirname, '..', 'herramientas', 'historia-registro.js'), ...entradas, '--json'],
+          { encoding: 'utf8', env: { ...process.env, HISTORIA_BLANCO: archivo, HISTORIA_OTRO: otro } });
+        return { status: r.status, datos: JSON.parse(r.stdout) };
+      };
+      for (const orden of ['archivo primero', 'carpeta primero']) {
+        const entradas = (c) => { const a = path.join(c, unicoArchivo(c)); return { a, lista: orden === 'archivo primero' ? [a, c] : [c, a] }; };
+        // Copia íntegra
+        let c = exportar(); let { a, lista: e } = entradas(c);
+        const integra = leerContando(e, a, false);
+        revisar(integra.lecturas === 1 && !integra.problemas.length && integra.h.resumen.endsWith(CORREGIDA) && correrCli(...e).status === 0,
+          `F01, ${orden}, copia íntegra: una lectura, se concluye igual y la línea de comandos sale con 0`);
+        // Sustitución entre la comprobación y el uso
+        c = exportar(); ({ a, lista: e } = entradas(c));
+        const sustituida = leerContando(e, a, true);
+        revisar(sustituida.lecturas === 1 && !sustituida.problemas.length && sustituida.h.corridas.length === 2 && sustituida.h.resumen.endsWith(CORREGIDA),
+          `F01, ${orden}, el archivo cambia después de comprobarlo: se analizan los bytes comprobados (${sustituida.lecturas} lectura(s), ${sustituida.h.corridas.length} corridas)`);
+        c = exportar(); ({ a, lista: e } = entradas(c));
+        const cli = cliCambiando(e, a);
+        revisar(cli.status === 0 && cli.datos.historias[0].corridas.length === 2 && cli.datos.historias[0].resumen.endsWith(CORREGIDA),
+          `F01, ${orden}, lo mismo por la línea de comandos: sale con ${cli.status} y analiza los bytes comprobados`);
+        // Manifiesto inválido y eventos pendientes: la restricción vale aunque el archivo suelto venga antes
+        for (const [nombre, cambio, problema] of [['manifiesto inválido (pendientes «1»)', (m) => { m.pendientes = '1'; }, /no es válido \(pendientes/],
+          ['con 2 eventos pendientes', (m) => { m.pendientes = 2; }, /2 eventos esperaban/]]) {
+          c = exportar((x) => cambiarManifiesto(x, cambio)); ({ a, lista: e } = entradas(c));
+          const r = leerContando(e, a, false);
+          revisar(r.problemas.some((p) => problema.test(p)) && !r.h.resumen.includes(CORREGIDA) && r.h.resumen.includes('no se puede asegurar') && correrCli(...e).status === 1 &&
+            (nombre.startsWith('manifiesto') ? r.h.corridas[1].corrigio === null : true),
+          `F01, ${orden}, ${nombre}: la restricción se conserva y no se concluye`);
+        }
+      }
+      // La misma carpeta dos veces, y el archivo cambia entre las dos admisiones: no se sabe qué bytes valen
+      const c = exportar();
+      const a = path.join(c, unicoArchivo(c));
+      const doble = leerContando([c, c], a, true);
+      revisar(doble.problemas.some((p) => /cambió entre dos lecturas|no coincide con su huella/.test(p)) && !doble.h.resumen.includes(CORREGIDA) && doble.h.corridas[1].corrigio === null,
+        `F01: la misma carpeta dos veces con el archivo cambiado entre las dos lecturas: se dice y no se concluye (${doble.lecturas} lecturas)`);
+    }
     const noAdmitida = leerExportacion(exportar((c) => cambiarManifiesto(c, (m) => { m.completa = false; m.faltan = []; m.error = { archivo: 'X-2026-10-19.jsonl', codigo: 'ENOSPC' }; })));
     revisar(noAdmitida.historias[0].corridas[1].corrigio === null, 'AUD-09: en una exportación no admitida tampoco se comparan las corridas');
     // Leer un archivo suelto es una lectura cruda, deliberada: no se verifica la exportación
@@ -910,6 +999,140 @@ try {
     revisar(apartadas.length === 1 && apartadas[0].linea === 3 && r.lineas.some((l) => l.ev && l.ev.tipo === 'codigo_compilado' && l.ev.datos.codigo.includes('�')) && r.notas.some((n) => /BOM/.test(n)),
       `AUD-13: con BOM y CRLF, solo se aparta la línea del byte roto (la ${apartadas[0] && apartadas[0].linea}); el U+FFFD legítimo se conserva`);
   } finally { fs.rmSync(carpeta, { recursive: true, force: true }); }
+}
+
+// ---- Revisión de REG-005 (22 oct)
+// TB-1: el C++ que guarda la app con el separador /**/ de una \ suelta no es «C++ con comentarios» (antes, limpiarlo
+// otra vez agregaba un espacio y la historia avisaba AUD-01 sobre un registro correcto)
+{
+  const B = String.fromCharCode(92);
+  const guardados = ['int x = 1; ' + B + ' // nota\nint y;\n', 'int a = 1; ' + B + '/* a\nb */ int b;\n', '#define M a ' + B + '// x\nint z;\n'].map(quitarComentarios);
+  const separador = sesionCon(() => { for (const g of guardados) compila(g); });
+  revisar(guardados.every((g) => g.includes(B + '/**/')) && !con(separador, 'AUD-01'), `TB-1: el C++ con el separador /**/ no se acusa de tener comentarios (${separador.avisos.length} avisos)`);
+  const conComentario = sesionCon(() => { compila('int x = 1; // nota\n'); });
+  revisar(con(conComentario, 'AUD-01'), 'control TB-1: un C++ con un comentario de verdad sí se avisa');
+}
+// TC-2: un cierre sin la confirmación del simulador (confirmado: false) deja la corrida sin comparar, sin aviso; con
+// confirmado true o sin el campo (registros de antes del 22 oct), se compara como siempre
+{
+  const cerrarCon = (n, fallas, confirmado) => { pasar(1); sim('simulacion_detenida', n, 1000, { ms_sim: 1000, fallas: fallas.map((tipo) => ({ tipo, componente: 'led1' })), ...(confirmado === undefined ? {} : { confirmado }) }); };
+  const dos = (n, confirmado) => sesionCon(() => {
+    iniciar(n, 'realista', [LED], [{}, {}]); quemado(n); cerrarCon(n, ['led_quemado'], confirmado);
+    iniciar(n + 1, 'realista', [LED, R1], [{}, {}, {}]); cerrarCon(n + 1, [], true);
+  });
+  const sinConfirmar = dos(170, false);
+  revisar(sinConfirmar.corridas[0].contradicciones.includes('se cerró sin la confirmación del simulador (pudieron quedar fallas sin llegar)') &&
+    sinConfirmar.corridas[1].corrigio === null && !sinConfirmar.resumen.includes(CORREGIDA) && !sinConfirmar.avisos.length,
+  `TC-2: la corrida cerrada sin confirmación no se compara y no se avisa («${pasoDe(sinConfirmar, 171)}»)`);
+  for (const [n, confirmado] of [[172, true], [174, undefined]]) {
+    const h = dos(n, confirmado);
+    revisar(h.corridas[1].corrigio.length === 1 && h.resumen.endsWith(CORREGIDA) && !h.avisos.length, `control TC-2: con confirmado ${confirmado} se compara como siempre`);
+  }
+  const ultima = sesionCon(() => { iniciar(176, 'realista', [LED], [{}, {}]); quemado(176); cerrarCon(176, ['led_quemado'], false); });
+  revisar(ultima.resumen.includes('no se puede asegurar, porque la corrida 176 se cerró sin la confirmación del simulador'), `TC-2: si es la última corrida, el final no se asegura («${ultima.resumen}»)`);
+  // AUD-16: la falla volvió en la segunda corrida, pero su foto se perdió; el simulador cierra esa corrida sin confirmar
+  const perdidaDespues = sesionCon(() => {
+    iniciar(178, 'realista', [LED], [{}, {}]); quemado(178); cerrarCon(178, ['led_quemado'], true);
+    iniciar(179, 'realista', [LED], [{}, {}]); cerrarCon(179, [], false);
+  });
+  revisar(perdidaDespues.corridas[1].corrigio === null && !perdidaDespues.resumen.includes(CORREGIDA) && perdidaDespues.resumen.includes('no se puede asegurar'),
+    `AUD-16: la corrida que perdió una foto no acredita la corrección de la anterior («${perdidaDespues.resumen}»)`);
+}
+
+// AUD-15: una falla se corrige solo en la misma pieza. El lienzo da el primer id libre: si quitan led1 y agregan otro LED,
+// el nuevo también es led1, y que no se queme no corrige al anterior. Abrir un proyecto o un ejemplo cambia todo el
+// circuito sin altas ni bajas.
+{
+  const bajaLed = () => circuito('componente_quitado', { id: 'led1', tipo: 'led' });
+  const altaLed = () => circuito('componente_agregado', { id: 'led1', tipo: 'led' });
+  const dosCorridas = (n, entre, segunda = [LED]) => sesionCon(() => {
+    iniciar(n, 'realista', [LED], [{}, {}]); quemado(n); cerrar(n, ['led_quemado']);
+    pasar(1); entre();
+    iniciar(n + 1, 'realista', segunda, [{}, {}]); cerrar(n + 1, []);
+  });
+  const misma = dosCorridas(180, () => circuito('componente_cambiado', { id: 'led1', props: { color: 'verde' } }));
+  revisar(misma.corridas[1].corrigio.length === 1 && misma.resumen.endsWith(CORREGIDA) && !misma.avisos.length, 'control AUD-15: la misma pieza, con un cambio de color: corrigió');
+  const otraPieza = dosCorridas(182, () => { circuito('componente_quitado', { id: 'r1', tipo: 'resistencia' }); circuito('componente_agregado', { id: 'r1', tipo: 'resistencia' }); });
+  revisar(otraPieza.corridas[1].corrigio.length === 1 && otraPieza.resumen.endsWith(CORREGIDA), 'control AUD-15: reemplazar otra pieza no cambia la del LED: corrigió');
+  const casos = [
+    ['baja y alta con el mismo id y tipo', () => { bajaLed(); altaLed(); }, [LED], /se reemplazó led1/],
+    ['mismo id con otro tipo', () => { bajaLed(); circuito('componente_agregado', { id: 'led1', tipo: 'resistencia' }); }, [{ ...R1, id: 'led1' }], /led1 ahora es otra pieza: resistencia/],
+    ['abrió otro proyecto', () => registro.editor('proyecto_abierto', { placa: 'uno' }), [LED], /abrió otro proyecto o ejemplo/],
+    ['abrió un ejemplo', () => registro.editor('ejemplo_cargado', { id: 'parpadeo' }), [LED], /abrió otro proyecto o ejemplo/],
+  ];
+  for (const [nombre, entre, segunda, motivo] of casos) {
+    const h = dosCorridas(184, entre, segunda);
+    const c2 = h.corridas[1];
+    revisar(c2.corrigio.length === 0 && c2.yaNoSeObservo.length === 1 && motivo.test(c2.yaNoSeObservo[0].motivo) && !h.resumen.includes('Corregidas al final: LED quemado') &&
+      motivo.test(h.resumen) && motivo.test(pasoDe(h, 185)),
+    `AUD-15, ${nombre}: no corrigió, ya no se observó (${c2.yaNoSeObservo[0] && c2.yaNoSeObservo[0].motivo})`);
+  }
+  // En el resumen, la corrida que vio la falla se compara con todas las siguientes: ninguna es la misma pieza
+  const tres = sesionCon(() => {
+    iniciar(190, 'realista', [LED], [{}, {}]); quemado(190); cerrar(190, ['led_quemado']);
+    pasar(1); bajaLed(); altaLed();
+    iniciar(191, 'realista', [LED], [{}, {}]); cerrar(191, []);
+    iniciar(192, 'realista', [LED], [{}, {}]); cerrar(192, []);
+  });
+  revisar(!tres.resumen.includes('Corregidas al final: LED quemado') && /Ya no se observaron al final: LED quemado \(led1\) \(se reemplazó led1/.test(tres.resumen),
+    `AUD-15: con dos corridas después del reemplazo, el resumen tampoco la da por corregida («${tres.resumen}»)`);
+  // La pieza nueva sí se corrige: se quemó en su propia corrida y después ya no. Desde F02 (24 oct) el resumen nombra
+  // aparte la falla de cada pieza: la nueva es «pieza 2» y la de la primera ya no se observó
+  const nueva = sesionCon(() => {
+    iniciar(194, 'realista', [LED], [{}, {}]); quemado(194); cerrar(194, ['led_quemado']);
+    pasar(1); bajaLed(); altaLed();
+    iniciar(195, 'realista', [LED], [{}, {}]); quemado(195); cerrar(195, ['led_quemado']);
+    iniciar(196, 'realista', [LED], [{}, {}]); cerrar(196, []);
+  });
+  revisar(nueva.corridas[2].corrigio.length === 1 && nueva.corridas[2].corrigio[0].pieza === 2 &&
+    nueva.resumen.endsWith('Corregidas al final: LED quemado (led1, pieza 2). Ya no se observaron al final: LED quemado (led1) (se reemplazó led1: quitó la que estaba y agregó otra con el mismo nombre). Sin corregir: ninguna.'),
+  `control AUD-15: la pieza nueva que se quemó y después no, sí se corrigió («${nueva.resumen}»)`);
+
+  // F02 (verificación de Codex del 24 oct): la misma falla en la pieza nueva no «sigue» la de la anterior. La de antes ya
+  // no se observó (con el motivo) y la de ahora es nueva, también en el resumen
+  const conFallaDos = (n, entre) => sesionCon(() => {
+    iniciar(n, 'realista', [LED], [{}, {}]); quemado(n); cerrar(n, ['led_quemado']);
+    pasar(1); entre();
+    iniciar(n + 1, 'realista', [LED], [{}, {}]); quemado(n + 1); cerrar(n + 1, ['led_quemado']);
+  });
+  for (const [nombre, entre, motivo] of [
+    ['baja y alta con el mismo id y tipo', () => { bajaLed(); altaLed(); }, /se reemplazó led1/],
+    ['abrió otro proyecto', () => registro.editor('proyecto_abierto', { placa: 'uno' }), /abrió otro proyecto o ejemplo/],
+    ['abrió un ejemplo', () => registro.editor('ejemplo_cargado', { id: 'parpadeo' }), /abrió otro proyecto o ejemplo/],
+  ]) {
+    const h = conFallaDos(200, entre);
+    const c2 = h.corridas[1];
+    revisar(c2.siguen.length === 0 && c2.nuevas.length === 1 && c2.nuevas[0].pieza === 2 && c2.corrigio.length === 0 &&
+      c2.yaNoSeObservo.length === 1 && motivo.test(c2.yaNoSeObservo[0].motivo) && /Nuevas: LED quemado \(led1, pieza 2\)/.test(pasoDe(h, 201)) && !/Siguen/.test(pasoDe(h, 201)) &&
+      h.resumen.startsWith('2 corrida(s). Fallas vistas: LED quemado (led1), LED quemado (led1, pieza 2). Corregidas al final: ninguna. Ya no se observaron al final: LED quemado (led1) (') &&
+      h.resumen.endsWith('Sin corregir: LED quemado (led1, pieza 2).') && !h.avisos.length,
+    `F02, ${nombre} y la misma falla: no sigue, es nueva («${pasoDe(h, 201)}»)`);
+  }
+  const persiste = conFallaDos(204, () => circuito('componente_cambiado', { id: 'led1', props: { color: 'verde' } }));
+  revisar(persiste.corridas[1].siguen.length === 1 && persiste.corridas[1].nuevas.length === 0 && !persiste.corridas[1].siguen[0].pieza &&
+    persiste.resumen === '2 corrida(s). Fallas vistas: LED quemado (led1). Corregidas al final: ninguna. Sin corregir: LED quemado (led1).',
+  'control F02: la misma pieza con la misma falla sigue');
+  // Una pieza agregada mientras la corrida corría es la misma en la corrida siguiente si no se tocó más; si se reemplaza
+  // durante la siguiente, o si en una misma corrida la falla la tuvieron dos piezas, no se compara esa pieza
+  const durante = (n, mientrasDos) => sesionCon(() => {
+    iniciar(n, 'realista', [], []); pasar(1); altaLed(); quemado(n); cerrar(n, ['led_quemado']);
+    iniciar(n + 1, 'realista', [LED], [{}, {}]); mientrasDos(); cerrar(n + 1, []);
+  });
+  const agregadaDurante = durante(206, () => {});
+  revisar(agregadaDurante.corridas[1].corrigio.length === 1 && agregadaDurante.resumen.endsWith(CORREGIDA),
+    `control F02: la pieza agregada durante la corrida 206 es la misma en la 207: corrigió («${agregadaDurante.resumen}»)`);
+  const cambiadaDurante = durante(208, () => { pasar(1); bajaLed(); altaLed(); });
+  revisar(cambiadaDurante.corridas[1].corrigio.length === 0 && /led1 se agregó o se quitó durante la corrida 209/.test(cambiadaDurante.corridas[1].yaNoSeObservo[0].motivo) &&
+    !cambiadaDurante.resumen.includes(CORREGIDA), `F02: la pieza reemplazada mientras corría la 209 no acredita la corrección (${cambiadaDurante.corridas[1].yaNoSeObservo[0].motivo})`);
+  const mixta = sesionCon(() => {
+    iniciar(210, 'realista', [LED], [{}, {}]); quemado(210); pasar(1); bajaLed(); altaLed(); quemado(210); cerrar(210, ['led_quemado']);
+    iniciar(211, 'realista', [LED], [{}, {}]); cerrar(211, []);
+  });
+  revisar(mixta.corridas[1].corrigio.length === 0 && /led1 se agregó o se quitó durante la corrida 210/.test(mixta.corridas[1].yaNoSeObservo[0].motivo) && !mixta.resumen.includes(CORREGIDA),
+    `F02: si en la corrida 210 la misma falla la tuvieron dos piezas, la 211 no la corrige (${mixta.corridas[1].yaNoSeObservo[0].motivo})`);
+  // Los datos no traen lo de uso interno, y la primera pieza de cada falla no lleva `pieza`
+  revisar(conFallaDos(212, () => { bajaLed(); altaLed(); }).corridas.every((c) => !('genFalla' in c) && !('cambiadas' in c)) && !persiste.corridas[0].fallas[0].pieza,
+    'F02: la identidad de las piezas es de uso interno y la primera pieza no lleva «pieza»');
 }
 
 // ---- La línea de comandos (INT-06, INT-07 y la decisión 3): siempre muestra la historia y sale con 1 si hay problemas

@@ -21,7 +21,11 @@ contextBridge.exposeInMainWorld('tbEscritorio', {
     escribir: (linea) => ipcRenderer.send('tb:registrar', linea),
     /** fn({falla, fin}): falla = {motivo, desde, pendientes, perdidos} o null; fin = 'escrito' | 'apagado' al terminar */
     alFalla: (fn) => { ipcRenderer.on('tb:registro-falla', (_e, d) => fn(d)); },
-    /** fn({cantidad, sinAnotar, ultimo: {tipo, motivo, t}}): un evento no se pudo guardar y quedó anotado (AUD-07) */
+    /**
+     * fn({cantidad, anotados, pendientes, sinAnotar, ultimo: {tipo, motivo, t}, sesiones}): un evento no se pudo guardar
+     * (AUD-07). Su evento_descartado está anotado (escrito), pendiente (espera al disco) o sin anotar; `sesiones`, por
+     * sesión. La cuenta es desde que se abrió la app.
+     */
     alDescarte: (fn) => { ipcRenderer.on('tb:registro-descartado', (_e, d) => fn(d)); },
   },
   alProgreso: (fn) => {

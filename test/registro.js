@@ -670,19 +670,54 @@ console.log('— Cada exportación en su propia carpeta (AUD-08)');
   revisar(e3.ok && path.basename(e3.carpeta) === 'TecnoBloques-registros-2026-10-21_1205-5' && fs.readdirSync(path.join(usb, 'TecnoBloques-registros-2026-10-21_1205-3')).join() === 'nota.txt' &&
     fs.readFileSync(path.join(usb, 'TecnoBloques-registros-2026-10-21_1205-4'), 'utf8') === 'un archivo', `con nombres ya ocupados (una carpeta y un archivo), usa el siguiente libre: ${path.basename(e3.carpeta)}`);
 
-  // Una copia que falla a mitad: la carpeta queda, exportacion.json dice que está incompleta y la app lo sabe
-  const copiar = fs.copyFileSync;
+  // Una copia que falla a mitad: la carpeta queda, exportacion.json dice que está incompleta y la app lo sabe. Desde
+  // AUD-21 la copia lee el original y escribe la copia por separado: la USB llena falla al escribir el segundo archivo
+  const escribirCopia = fs.writeFileSync;
   let copias = 0;
-  fs.copyFileSync = function (de, a, ...resto) {
-    if (String(a).startsWith(usb) && ++copias === 2) throw Object.assign(new Error('ENOSPC sintético'), { code: 'ENOSPC' });
-    return copiar.call(this, de, a, ...resto);
+  fs.writeFileSync = function (a, ...resto) {
+    if (String(a).startsWith(usb) && String(a).endsWith('.jsonl') && ++copias === 2) throw Object.assign(new Error('ENOSPC sintético'), { code: 'ENOSPC' });
+    return escribirCopia.call(this, a, ...resto);
   };
   let e4;
-  try { e4 = disco.exportar({ pin: '2468', destino: usb }); } finally { fs.copyFileSync = copiar; }
+  try { e4 = disco.exportar({ pin: '2468', destino: usb }); } finally { fs.writeFileSync = escribirCopia; }
   const m4 = e4.carpeta && manifiesto(e4.carpeta);
   revisar(e4.ok === false && e4.motivo === 'copia-incompleta' && e4.copiados === 1 && e4.total === 2 && /E2-2026-10-21\.jsonl: ENOSPC/.test(e4.mensaje) &&
     m4.completa === false && m4.archivos.length === 1 && igual(m4.error, { archivo: 'E2-2026-10-21.jsonl', codigo: 'ENOSPC', donde: 'destino' }) && igual(m4.faltan, ['E2-2026-10-21.jsonl']) && e4.codigo === 'ENOSPC' && e4.donde === 'destino' && cuadra(e4.carpeta) && !fs.existsSync(path.join(e4.carpeta, 'E2-2026-10-21.jsonl')),
   `una copia que falla a mitad: «copia-incompleta» (${e4.copiados} de ${e4.total}) y exportacion.json con completa: false y el error`);
+  // REG-005, TB-6: un original que existe pero está bloqueado (un antivirus) es un error del origen, no de la USB. Desde
+  // AUD-21, el bloqueo aparece al leerlo
+  const leerOriginal = fs.readFileSync;
+  const bloqueadoAlLeer = (codigo) => function (p, ...resto) {
+    if (!String(p).startsWith(usb) && String(p).endsWith('E2-2026-10-21.jsonl')) throw Object.assign(new Error(`${codigo} sintético`), { code: codigo });
+    return leerOriginal.call(this, p, ...resto);
+  };
+  fs.readFileSync = bloqueadoAlLeer('EBUSY');
+  let e4b;
+  try { e4b = disco.exportar({ pin: '2468', destino: usb }); } finally { fs.readFileSync = leerOriginal; }
+  revisar(e4b.ok === false && e4b.motivo === 'copia-incompleta' && e4b.donde === 'origen' && e4b.codigo === 'EBUSY' && manifiesto(e4b.carpeta).error.donde === 'origen' && cuadra(e4b.carpeta),
+    `TB-6: el original bloqueado es del lado del origen (${e4b.donde}), y una USB llena sigue siendo del destino (${e4.donde})`);
+  // AUD-21 (R09 de la auditoría de Codex): el original abre, pero falla al leer su contenido (EIO). Antes, como sí se podía
+  // abrir, se le culpaba a la USB
+  fs.readFileSync = bloqueadoAlLeer('EIO');
+  let e4c;
+  try { e4c = disco.exportar({ pin: '2468', destino: usb }); } finally { fs.readFileSync = leerOriginal; }
+  const abre = (() => { try { fs.closeSync(fs.openSync(path.join(disco.carpeta, 'E2-2026-10-21.jsonl'), 'r')); return true; } catch (e) { return false; } })();
+  revisar(abre && e4c.ok === false && e4c.motivo === 'copia-incompleta' && e4c.donde === 'origen' && e4c.codigo === 'EIO' && manifiesto(e4c.carpeta).error.donde === 'origen' &&
+    !fs.existsSync(path.join(e4c.carpeta, 'E2-2026-10-21.jsonl')) && cuadra(e4c.carpeta),
+  `AUD-21: el original abre pero falla al leerlo: del lado del origen (${e4c.donde}, ${e4c.codigo}), sin dejar un pedazo en la USB`);
+  // Y del lado de la USB: sin permiso para escribir, y una copia que se lee distinta de lo escrito
+  for (const [nombre, romper, codigo] of [
+    ['sin permiso para escribir en la USB', () => { fs.writeFileSync = function (a, ...resto) { if (String(a).startsWith(usb) && String(a).endsWith('E2-2026-10-21.jsonl')) throw Object.assign(new Error('EPERM sintético'), { code: 'EPERM' }); return escribirCopia.call(this, a, ...resto); }; }, 'EPERM'],
+    ['la copia se lee distinta de lo escrito', () => { fs.readFileSync = function (p, ...resto) { const b = leerOriginal.call(this, p, ...resto); if (String(p).startsWith(usb) && String(p).endsWith('E2-2026-10-21.jsonl')) { const c = Buffer.from(b); c[0] ^= 1; return c; } return b; }; }, 'DISTINTA'],
+    ['la copia no se puede leer para su huella', () => { fs.readFileSync = function (p, ...resto) { if (String(p).startsWith(usb) && String(p).endsWith('E2-2026-10-21.jsonl')) throw Object.assign(new Error('EIO sintético'), { code: 'EIO' }); return leerOriginal.call(this, p, ...resto); }; }, 'EIO'],
+  ]) {
+    romper();
+    let e;
+    try { e = disco.exportar({ pin: '2468', destino: usb }); } finally { fs.writeFileSync = escribirCopia; fs.readFileSync = leerOriginal; }
+    revisar(e.ok === false && e.motivo === 'copia-incompleta' && e.donde === 'destino' && e.codigo === codigo && manifiesto(e.carpeta).error.donde === 'destino' &&
+      !fs.existsSync(path.join(e.carpeta, 'E2-2026-10-21.jsonl')) && cuadra(e.carpeta),
+    `AUD-21: ${nombre}: del lado del destino (${e.codigo}), sin dejar un pedazo`);
+  }
   // Si no se puede escribir exportacion.json, tampoco cuenta como completa
   const escribirArchivo = fs.writeFileSync;
   fs.writeFileSync = function (a, ...resto) { if (String(a).endsWith('exportacion.json')) throw Object.assign(new Error('EIO sintético'), { code: 'EIO' }); return escribirArchivo.call(this, a, ...resto); };
@@ -692,6 +727,27 @@ console.log('— Cada exportación en su propia carpeta (AUD-08)');
     'sin exportacion.json, la exportación no se da por completa');
   const e6 = disco.exportar({ pin: '2468', destino: path.join(base, 'usb-que-no-existe') });
   revisar(e6.ok === false && e6.motivo === 'disco' && !fs.existsSync(path.join(base, 'usb-que-no-existe')), 'un destino que ya no existe (se sacó la USB): «disco», sin crear nada');
+  // REG-005, TB-5: exportar intenta antes escribir lo que espera. Con el disco todavía lleno, queda pendiente; si ya se
+  // recuperó, va en la copia y no queda como pendiente
+  {
+    const anexar = fs.appendFileSync;
+    let lleno = true;
+    fs.appendFileSync = function (archivo, ...resto) {
+      if (lleno && String(archivo).startsWith(carpeta)) throw Object.assign(new Error('ENOSPC sintético'), { code: 'ENOSPC' });
+      return anexar.call(this, archivo, ...resto);
+    };
+    let sigueLleno, recuperado;
+    try {
+      disco.escribir(ev('E1', 77));
+      sigueLleno = disco.exportar({ pin: '2468', destino: usb });
+      lleno = false;
+      recuperado = disco.exportar({ pin: '2468', destino: usb });
+    } finally { fs.appendFileSync = anexar; }
+    const lineasE1 = fs.readFileSync(path.join(recuperado.carpeta, 'E1-2026-10-21.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    revisar(sigueLleno.ok && sigueLleno.pendientes === 1 && manifiesto(sigueLleno.carpeta).pendientes === 1 &&
+      recuperado.ok && recuperado.pendientes === 0 && manifiesto(recuperado.carpeta).pendientes === 0 && lineasE1.some((l) => l.datos && l.datos.bloques === 77) && cuadra(recuperado.carpeta),
+    `TB-5: con el disco lleno queda 1 pendiente; recuperado, la línea va en la copia (pendientes ${recuperado.pendientes})`);
+  }
   revisar(manifiesto(e1.carpeta).archivos.every((a) => sha(path.join(e1.carpeta, a.archivo)) === a.sha256) && sha(copiaE1) === antes.sha, 'después de todo, la primera exportación sigue igual');
   // La historia de dos exportaciones de lo mismo: cada línea se cuenta una vez (INT-06)
   const { leerArchivos, contarHistoria } = require('../herramientas/historia-registro.js');
@@ -828,19 +884,70 @@ console.log('— Lote de la auditoría profunda: configuración, anotación, ses
     const vacio = nuevo();
     revisar(vacio.d.exportar({ pin: '2468', destino: usb }).motivo === 'sin-archivos', 'control AUD-14: una carpeta de registros que todavía no existe sigue siendo «sin archivos»');
   }
-  // A-04: una copia que escribe la mitad y falla no deja un .jsonl a medias; O-02: una copia con otro tamaño tampoco
-  for (const [nombre, copiaMala] of [['escribe la mitad y falla', (de, a) => { fs.writeFileSync(a, fs.readFileSync(de).subarray(0, 10)); throw Object.assign(new Error('EIO sintético'), { code: 'EIO' }); }],
-    ['termina con otro tamaño sin fallar', (de, a) => { fs.writeFileSync(a, fs.readFileSync(de).subarray(0, 10)); }]]) {
+  // AUD-20 (R06 de la auditoría de Codex): el aviso de la falla sigue lo que espera y lo que se perdió, no solo su
+  // comienzo. Enseguida al empezar, al perder líneas y al terminar; si solo cambia cuánto espera, junto, cada avisoColaMs
+  esperas.push((async () => {
+    const base20 = path.join(require('os').tmpdir(), 'tecnobloques-prueba-registro-aud20');
+    if (path.dirname(path.resolve(base20)) !== path.resolve(require('os').tmpdir())) throw new Error('Ruta temporal inesperada');
+    fs.rmSync(base20, { recursive: true, force: true });
+    const avisos = [];
+    const d = crearRegistroDisco({ carpeta: base20, ahora: () => reloj7, alCambiar: (f, fin) => avisos.push({ f, fin }), reintentoMs: 60000, avisoColaMs: 20 });
+    d.instructor({ accion: 'crear-pin', pin: '2468' });
+    d.instructor({ accion: 'activar', pin: '2468', activo: true });
+    const pausa = (ms) => new Promise((listo) => setTimeout(listo, ms));
+    const anexar = fs.appendFileSync;
+    let dejaPasar = 0; // cuántas líneas acepta el disco antes de volver a fallar
+    const discoQueFalla = function (a, ...resto) {
+      if (String(a).startsWith(base20)) {
+        if (dejaPasar > 0) { dejaPasar--; return anexar.call(this, a, ...resto); }
+        throw Object.assign(new Error('ENOSPC sintético'), { code: 'ENOSPC' });
+      }
+      return anexar.call(this, a, ...resto);
+    };
+    // El disco falla solo mientras corre cada tramo: entre una espera y otra corren otras pruebas que tocan appendFileSync
+    const conFalla = (cuerpo) => { const antes = fs.appendFileSync; fs.appendFileSync = discoQueFalla; try { cuerpo(); } finally { fs.appendFileSync = antes; } };
+    const ultimo = () => avisos.filter((x) => x.f).at(-1).f;
+    try {
+      conFalla(() => { for (let i = 0; i < 3; i++) d.escribir(ev()); });
+      const alEmpezar = avisos.length;
+      await pausa(60);
+      revisar(alEmpezar === 1 && avisos[0].f.pendientes === 1 && avisos.length === 2 && ultimo().pendientes === 3 && ultimo().perdidos === 0,
+        `AUD-20: la cola crece de 1 a 3: un aviso al empezar y otro, junto, con las 3 (${avisos.length} avisos)`);
+      conFalla(() => { for (let i = 0; i < 4999; i++) d.escribir(ev()); });
+      const enSaturacion = d.estado().falla;
+      revisar(enSaturacion && enSaturacion.pendientes === 5000 && enSaturacion.perdidos === 2 && ultimo().pendientes === 5000 && ultimo().perdidos === 2,
+        `AUD-20: con la cola llena y 2 perdidas, el último aviso ya lo dice (${ultimo().pendientes} esperando, ${ultimo().perdidos} perdidas), sin esperar`);
+      revisar(avisos.length <= 6, `AUD-20: 5002 eventos en falla no mandan un aviso por evento (${avisos.length} avisos)`);
+      dejaPasar = 100;
+      conFalla(() => d.reintentar()); // el disco escribe 100 y vuelve a fallar
+      await pausa(60);
+      revisar(d.estado().falla && d.estado().falla.pendientes === 4900 && ultimo().pendientes === 4900 && ultimo().perdidos === 2,
+        `AUD-20: una recuperación parcial (100 escritas) también se avisa: ${ultimo().pendientes} esperando`);
+      dejaPasar = Infinity;
+      conFalla(() => d.reintentar());
+      const alTerminar = avisos.length;
+      await pausa(60);
+      revisar(d.estado().falla === null && avisos[alTerminar - 1].f === null && avisos[alTerminar - 1].fin === 'escrito' && avisos.length === alTerminar,
+        'AUD-20: al recuperarse del todo se avisa el fin, y después no llega un aviso viejo');
+    } finally {
+      fs.rmSync(base20, { recursive: true, force: true });
+    }
+  })());
+
+  // A-04: una copia que escribe la mitad y falla no deja un .jsonl a medias; O-02: una copia con otro tamaño tampoco.
+  // Desde AUD-21 la escritura de la copia es la que escribe la mitad
+  const escribirReal = fs.writeFileSync;
+  for (const [nombre, copiaMala] of [['escribe la mitad y falla', (a, datos) => { escribirReal(a, datos.subarray(0, 10)); throw Object.assign(new Error('EIO sintético'), { code: 'EIO' }); }],
+    ['termina con otro tamaño sin fallar', (a, datos) => { escribirReal(a, datos.subarray(0, 10)); }]]) {
     const f = nuevo();
     f.d.escribir(ev());
     f.d.escribir(ev({ equipo: 'L2', sesion: 's2' }));
     const usb = path.join(f.carpeta, 'usb');
     fs.mkdirSync(usb);
-    const copiar = fs.copyFileSync;
     let copias = 0;
-    fs.copyFileSync = function (de, a, ...resto) { if (String(a).startsWith(usb) && ++copias === 2) return copiaMala(de, a); return copiar.call(this, de, a, ...resto); };
+    fs.writeFileSync = function (a, datos, ...resto) { if (String(a).startsWith(usb) && String(a).endsWith('.jsonl') && ++copias === 2) return copiaMala(a, datos); return escribirReal.call(this, a, datos, ...resto); };
     let r;
-    try { r = f.d.exportar({ pin: '2468', destino: usb }); } finally { fs.copyFileSync = copiar; }
+    try { r = f.d.exportar({ pin: '2468', destino: usb }); } finally { fs.writeFileSync = escribirReal; }
     const quedan = fs.readdirSync(r.carpeta).sort();
     const m = JSON.parse(fs.readFileSync(path.join(r.carpeta, 'exportacion.json'), 'utf8'));
     revisar(r.ok === false && r.motivo === 'copia-incompleta' && r.copiados === 1 && quedan.join() === 'L1-2026-10-21.jsonl,exportacion.json' && m.completa === false && m.faltan.join() === 'L2-2026-10-21.jsonl',

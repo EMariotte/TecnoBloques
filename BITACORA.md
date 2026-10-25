@@ -1373,3 +1373,64 @@ Una falla está «corregida al final» si alguna corrida posterior a la última 
 ## 2026-10-21 · Historia del registro: el manifiesto de una exportación se valida como estructura (AUD-09-R1 de Codex)
 
 `herramientas/historia-registro.js`, `camposMalos()`: `app`, `version_tb`, `t`, `completa`, `total`, `archivos` y `pendientes` obligatorios y con sus tipos (enteros seguros no negativos, sin convertir; un `pendientes` que falta no es cero); con `completa: false`, `faltan` y `error`. Si no es válido, la exportación no se admite. `test:historia` 192.
+
+## 2026-10-22 · Contrato 1: confirmado en el cierre; revisión final del registro (REG-005)
+
+Fase 5 del registro: revisión de código de los dos proyectos y corrección de lo que encontró (detalle y tabla de riesgos en COMO-FUNCIONA 70 de TecnoCircuito). Cada corrección tiene una regresión, que falla con el código anterior.
+
+- **Contrato 1 (aditivo):** `simulacion_detenida` suma `confirmado` (decisión de Efraín). La historia no compara una corrida con `confirmado: false`, sin avisarlo como defecto.
+- **`src/registro.js`:** `quitarComentarios` deja igual el `/**/` que ya separa una `\` suelta. Limpiar otra vez ya no cambia nada; antes la historia acusaba «C++ con comentarios» sobre un registro correcto. `test:registro-preprocesador` lo revisa en cada caso.
+- **`src/app.js`:**
+  - Si apagar el registro falla por el disco, el equipo vuelve a su sesión.
+  - «Cambiar a Nano» al subir rehace el lienzo.
+  - Si cambian la placa o el proyecto mientras se compila, la simulación no empieza.
+  - `programa_subido` toma la placa al empezar.
+  - Los cambios de equipo van en cola: un código confirmado mientras otro espera ya no se pierde.
+  - Un proyecto que no abre no deja `placa_cambiada`.
+  - Una librería con «-» es «libreria».
+  - Los mensajes del instructor dicen qué hacer.
+- **`escritorio/registro-disco.js`:** exportar intenta antes escribir lo que espera. Si la copia falla y el original no se puede abrir para leer, el error es del origen y no de la USB.
+- **`escritorio/preload.js`:** el comentario de `alDescarte` dice los estados anotado, pendiente y sin anotar.
+
+Pruebas: `test:registro` 204, `test:historia` 198, `test:registro-app` 115 (sección 10 nueva, con la app real; sus 7 regresiones fallan con el `app.js` anterior), `test:simulador` 53 y `test:registro-preprocesador` sin fallas.
+
+
+## 2026-10-22 11:55 · Codex: auditoría completa de REG-005, devuelta
+
+Auditoría completa autorizada por Efraín de CLA-20261022-002 sobre TC main cfeee9b / TB main 1c6c660 / TS main a3c8ca2 y entrega sin commit identificada por SHA256. Nueve defectos funcionales, uno de comprobación y dos documentales; seguimiento AUD-15–AUD-23 y 15 riesgos/límites con posibles soluciones. [Informe y reproducciones](../TecnoCircuito/docs/AUDITORIA-REG005-CODEX-2026-10-22.md). Sin visto bueno del conjunto ni reapertura automática de cierres históricos.
+
+TC completo: 1251 OK y una falla de pausa; repetición aislada 18/18 sin cambios, KiCad real Uno/Nano ejecutado. TB registro 204, historia 198, preprocesador 74 con 2000 aleatorios, Electron registro 115, simulador 53, graficador 28 y generales aprobados con errores revisados. Históricos 14/14 y 23/23; diagnósticos propios Node 6 incumplimientos en 9 escenarios y Electron 4 en 5, con controles y sin errores JS. No son regresiones aprobadas. Solo datos sintéticos; fuentes y memorias de Claude preservadas, sin implementar producto, commit, push, etiqueta ni publicación. No probado instalador, USB real, hardware ni aula. Efraín decide prioridad; Claude conserva la implementación.
+
+
+## 2026-10-24 — Lote alto de la auditoría de REG-005 (AUD-15, AUD-16, AUD-19 y AUD-22)
+
+Efraín aprobó corregir primero los cuatro defectos de prioridad alta de la [auditoría de Codex](../TecnoCircuito/docs/AUDITORIA-REG005-CODEX-2026-10-22.md). Antes de corregir, los reproduje con copias de sus diagnósticos. Lo de este proyecto:
+
+- **AUD-15 (R01), `herramientas/historia-registro.js`:** el lienzo da el primer id libre, así que si quitaban `led1` y agregaban otro LED, el nuevo también era `led1`, y el lector daba por corregida la falla del anterior. Ahora cada alta o baja de un id cambia su generación, y abrir un proyecto o un ejemplo cambia todo el circuito. Si la pieza no es la misma, la falla «ya no se observó» con el motivo.
+- **AUD-22 (R10), el mismo lector:** cada archivo de una exportación se leía dos veces, una para su sha256 y otra para analizarlo; si cambiaba entre las dos, la conclusión salía de bytes que nadie comprobó. Ahora se lee una vez y ese mismo buffer sirve para el tamaño, el hash, la decodificación y el análisis.
+- **AUD-19 (R05 y R07), `src/app.js`:** el C++ de un proyecto entraba con un temporizador de 200 ms, que lo ponía en el proyecto que estuviera abierto entonces, aunque ya fuera otro. Ahora entra en la misma carga. Al abrir un proyecto que falla, el respaldo se tomaba después de salir del modo texto y se perdía el C++ escrito a mano. Ahora se toma antes de cambiar nada, con su base y los bloques propios del proyecto. Los avisos diferidos de una carga (versión más nueva, versiones de Mis bloques) no se muestran si ya se abrió otro proyecto.
+- **AUD-16 (R02):** la corrección está en TecnoCircuito (su bitácora). Aquí, una regresión del lector: la corrida que perdió una foto no acredita la corrección de la anterior.
+
+Las regresiones nuevas fallan con el código anterior, reconstruido y con el mismo sha256 que auditó Codex: historia 5 de 11 (las otras son controles que pasan con los dos) y Electron 3 de 5 (los dos controles pasan con los dos).
+
+Pruebas (corridas una tras otra): `probar:fotos` 52, `probar:contrato` 191, `probar:nucleo` 120, `probar:corte` 7; Chromium: registro 18, simulación 20, T1/T2 17, prototipo 25, servo 19. En TecnoBloques: `test:registro` 204, `test:historia` 209, `test:registro-app` 120, `test:registro-preprocesador` 74, `test:simulador` 53, `test:graficador` 28. Sin fallas. Los diagnósticos de Codex, corridos desde una copia, pasan en R01, R02 (las dos variantes), R10, R05 y R07; R03, R04, R06 y R09 siguen fallando: son del lote siguiente. No se corrió la suite global de TC, KiCad, el instalador, hardware ni el aula.
+
+## 2026-10-25 — Lote final del registro (F01 a F05, AUD-17 a AUD-26, D01 y D02)
+
+La verificación profunda de Codex del 24 oct ([informe](../TecnoSuite/registro/auditoria-20261024/INFORME.md)) verificó AUD-16, devolvió AUD-15, AUD-19 y AUD-22 (F02, F03 y F01) y abrió AUD-24 y AUD-25 (F04 y F05). Efraín decidió entregar en un lote todo lo que quedaba del registro, incluido el riesgo W-R1 (AUD-26, en TecnoCircuito). Lo de este proyecto:
+
+- **AUD-22 (F01), `herramientas/historia-registro.js`:** el archivo suelto antes que su carpeta exportada perdía los bytes comprobados con el manifiesto y su restricción. Ahora el mismo archivo por dos caminos se junta en un descriptor: se analizan los bytes admitidos y vale la restricción más exigente; si dos lecturas dieron bytes distintos, no se concluye.
+- **AUD-15 (F02), el mismo lector:** la identidad de la pieza (generación y aperturas) entra también en «siguen» y «nuevas». La misma falla en otra pieza con el mismo id es nueva y se nombra «pieza 2»; la anterior «ya no se observó», con el motivo.
+- **AUD-19 (F03), `src/app.js`:** `texto` cadena, también vacía, abre en modo texto; `null` o sin el campo, en bloques; otro tipo se rechaza sin cambiar nada.
+- **AUD-24 (F04):** al guardar, los bloques propios salen del programa en ese momento (`generarPrograma`, con los que ellos llaman), no del código que se actualiza 120 ms después.
+- **AUD-25 (F05):** cada archivo elegido tiene su número; la lectura vieja no escribe, la caja se vacía al elegir otro, Abrir espera la lectura, el error se dice y escribir a mano suelta la lectura pendiente.
+- **AUD-17 (R03):** la subida se toma en un objeto antes de soltar el puerto (código, placa, FQBN, puerto, equipo). Si cambia el equipo, no se sube; si cambia la placa o el puerto, se empieza otra vez una vez, y si vuelve a cambiar se dice sin subir.
+- **AUD-18 (R04):** apagar y encender el registro van en la fila de los cambios de equipo; un cambio que llega con el registro apagado no empieza sesión.
+- **AUD-20 (R06), `escritorio/registro-disco.js`:** el aviso al panel sale enseguida al empezar o terminar la falla, al cambiar el motivo o al perder líneas; lo que espera se avisa junto, cada 250 ms.
+- **AUD-21 (R09):** la copia se hace en dos etapas, leer el original y escribir la copia, y el lado del error es la etapa que falló. Una copia distinta del original es del destino.
+- **Prueba nueva** `test/proyectos-app.js` (`npm run test:proyectos`): abrir, guardar y recuperar proyectos en Electron.
+- **D01 y D02:** la matriz de los 25 hallazgos y qué son sesión y corrida, en COMO-FUNCIONA 71 y el contrato de TecnoCircuito.
+
+Pruebas (una tras otra, 25 oct): TC completo (`npm --prefix prototipo run probar`, con KiCad real y Chromium) 1277 OK y ninguna falla; en él, `probar:fotos` 71. En TecnoBloques: `test:historia` 228, `test:registro` 213, `test:registro-preprocesador` 74 (con 2000 al azar), `test:registro-app` 134, `test:proyectos` 28, `test:simulador` 53, `test:graficador` 28 y `npm test` con las dos secciones de errores vacías; sin errores en la consola. Con la versión auditada por Codex (reconstruida desde HEAD y su parche final) fallan las regresiones nuevas: historia 13 y registro 10 de las pruebas Node; registro-app 12 y proyectos 13 en Electron. Los controles pasan con las dos.
+
+Diagnósticos de Codex, corridos desde una copia que solo cambia las rutas: lector 13/13, proyectos 10/10, bordes Electron 4/4, originales Electron 5/5, aceptación histórica 14/14 y originales Node 9 de 10. El que no pasa es R09, y en la profunda histórica del 21 oct, la copia incompleta (22 de 23): los dos inyectan el error en `fs.copyFileSync`, que la exportación ya no usa, así que el error no ocurre y la copia sale bien. Con un instrumento propio que pone el mismo error en `readFileSync` del original y en `writeFileSync` de la copia, el error de lectura es del origen y la copia incompleta queda con `completa: false` y la línea de comandos en 1. No se corrió el instalador, una USB real, hardware ni el aula.

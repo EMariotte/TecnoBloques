@@ -64,8 +64,12 @@ function quitarComentarios(codigo) {
         pegar(fuera, c.slice(copia, i));
         if (!bloque) quitarEspaciosAlFinal(fuera);
         // Una \ suelta justo antes del comentario, pegada al salto, sería un empalme y uniría dos líneas: el comentario
-        // vacío /**/ la separa (no lleva nada del comentario).
-        if (terminaEnBarra(fuera)) pegar(fuera, '/**/');
+        // vacío /**/ la separa (no lleva nada del comentario). Si ya está ese separador, queda igual: limpiar otra vez
+        // un código limpio no lo cambia, y la historia lo revisa así (REG-005, TB-1).
+        if (terminaEnBarra(fuera)) {
+          pegar(fuera, '/**/');
+          if (c.slice(i, fin) === '/**/') { i = copia = fin; continue; }
+        }
         const saltos = c.slice(i, fin).match(/\r\n|\r|\n/g);
         if (!saltos) pegar(fuera, bloque ? ' ' : '');
         else if (bloque && (enDirectiva || (!inicioDeLinea && sigueAlmohadilla(c, fin, almohadilla)))) {

@@ -528,22 +528,63 @@ function exportarLibreria() {
     JSON.stringify({ app: 'TecnoBloques-libreria', version: 1, exportado: new Date().toISOString(), bloques: lib }, null, 1), 'application/json',
     `Guarda este archivo en tu USB o carpeta. En otro computador usa Mis bloques → Importar. Contiene ${Object.keys(lib).length} bloque(s).`);
 }
+/** Lee un archivo como texto. La promesa lleva `cancelar()`: suelta la lectura si el lector lo permite. */
 function leerArchivoTexto(archivo) {
-  return new Promise((ok, mal) => { const r = new FileReader(); r.onload = () => ok(String(r.result)); r.onerror = () => mal(r.error); r.readAsText(archivo); });
+  let r;
+  const lectura = new Promise((ok, mal) => {
+    r = new FileReader();
+    r.onload = () => ok(String(r.result));
+    r.onerror = () => mal(r.error || new Error('no se pudo leer el archivo'));
+    r.onabort = () => mal(new Error('se canceló la lectura'));
+    r.readAsText(archivo);
+  });
+  lectura.cancelar = () => { try { if (typeof r.abort === 'function') r.abort(); } catch (e) { /* ya terminó */ } };
+  return lectura;
 }
+/**
+ * El diálogo para abrir un archivo de texto (un proyecto o una librería): se elige el archivo o se pega su contenido.
+ * Se abre solo lo del archivo elegido ahora (AUD-25, F05 de la verificación de Codex): cada selección tiene su número,
+ * y la lectura de una anterior que termina tarde no escribe en la caja; al elegir otro archivo la caja se vacía, Abrir
+ * espera a que termine la lectura y un error de lectura se dice. Si se escribe en la caja mientras se lee, manda lo
+ * escrito: la lectura pendiente se suelta y el archivo deja de estar elegido.
+ */
 function modalAbrirTexto({ titulo, explicacion, alLeer }) {
   const inputArchivo = el('input', { type: 'file', accept: '.json,application/json', id: 'archivoModal', class: 'entrada' });
   const ta = el('textarea', { placeholder: '…o pega aquí el contenido del archivo', 'aria-label': 'Contenido del archivo' });
   const error = el('p', { class: 'error' });
+  let seleccion = 0; // sube con cada archivo elegido (o con lo que se escribe a mano mientras se lee)
+  let leyendo = null; // la lectura de la selección actual, mientras dura
+  const soltarLectura = () => { if (leyendo) leyendo.cancelar(); leyendo = null; };
   inputArchivo.addEventListener('change', async () => {
+    const esta = ++seleccion;
+    soltarLectura();
+    ta.value = '';
+    error.textContent = '';
     const f = inputArchivo.files && inputArchivo.files[0];
-    if (f) ta.value = await leerArchivoTexto(f);
+    if (!f) return;
+    const lectura = leerArchivoTexto(f);
+    leyendo = lectura;
+    try {
+      const texto = await lectura;
+      if (esta === seleccion) ta.value = texto;
+    } catch (e) {
+      if (esta === seleccion) error.textContent = `No se pudo leer el archivo: ${(e && e.message) || e}. Elígelo otra vez.`;
+    } finally {
+      if (esta === seleccion) leyendo = null;
+    }
+  });
+  ta.addEventListener('input', () => {
+    if (!leyendo) return;
+    seleccion++; // lo que se escribe a mano manda: la lectura pendiente ya no escribe en la caja
+    soltarLectura();
+    inputArchivo.value = '';
   });
   modal({
     titulo,
     cuerpo: [el('p', null, explicacion), el('label', { for: 'archivoModal' }, 'Archivo', inputArchivo), ta, error],
-    botones: [{ texto: 'Cancelar' }, {
+    botones: [{ texto: 'Cancelar', accion: () => { seleccion++; soltarLectura(); } }, {
       texto: 'Abrir', primario: true, accion: () => {
+        if (leyendo) { error.textContent = 'Todavía se está leyendo el archivo. Espera un momento y vuelve a pulsar Abrir.'; return false; }
         let datos;
         try { datos = JSON.parse(ta.value); } catch (e) { error.textContent = 'El contenido no es un archivo válido de TecnoBloques.'; return false; }
         const r = alLeer(datos);
@@ -839,10 +880,18 @@ function compararVersiones(a, b) {
 function proyectoMasNuevo(p) {
   return (p.version || 1) > FORMATO_PROYECTO || compararVersiones(p.creadoCon, TB_VERSION) > 0;
 }
+/**
+ * Los bloques propios que usa el programa ahora, también los que ellos llaman: se sacan del programa en este momento,
+ * no del último código generado, que se actualiza 120 ms después de cada cambio. Guardar enseguida de abrir un proyecto
+ * o de agregar una llamada se llevaba el proyecto sin la definición, y en otro computador no abría igual (AUD-24).
+ */
+function bloquesPropiosDelPrograma() {
+  try { return generarPrograma(espacio).externos; } catch (e) { return ultimo.externos || []; }
+}
 function proyectoActual() {
   const lib = leerLibreria();
   const usados = {};
-  (ultimo.externos || []).forEach(n => { const d = embebidos[n] || lib[n]; if (d) usados[n] = d; });
+  bloquesPropiosDelPrograma().forEach(n => { const d = embebidos[n] || lib[n]; if (d) usados[n] = d; });
   return Object.assign({}, extrasProyecto, {
     app: 'TecnoBloques', version: FORMATO_PROYECTO, nombre: $('nombreProyecto').value, placa: placaActual, nivel: nivelActual,
     bloques: Blockly.serialization.workspaces.save(espacio), embebidos: usados,
@@ -851,39 +900,58 @@ function proyectoActual() {
 }
 let autoTimer = null;
 function autoguardar() { clearTimeout(autoTimer); autoTimer = setTimeout(() => { if (espacio) guardarLocal(CLAVE_AUTO, proyectoActual()); }, 600); }
+let cargas = 0; // cada carga de un proyecto: lo diferido de una carga no toca la siguiente (AUD-19)
 function cargarProyecto(p, silencioso, sinRespaldo) {
   if (!p || p.app !== 'TecnoBloques' || !p.bloques) return 'Ese archivo no es un proyecto de TecnoBloques.';
+  // El C++ escrito a mano (`texto`): una cadena, también vacía, abre en modo texto; null o sin el campo, en bloques. Otra
+  // cosa no es un proyecto válido y se rechaza antes de cambiar nada (AUD-19, F03 de la verificación de Codex)
+  if (p.texto !== undefined && p.texto !== null && typeof p.texto !== 'string') return 'Ese archivo no es un proyecto válido de TecnoBloques: su C++ no es un texto.';
+  // Si este no abre, se vuelve al anterior entero, también con su C++ escrito a mano: el respaldo se toma antes de
+  // cambiar nada (AUD-19, R07 de la auditoría de Codex). Así el autoguardado tampoco queda vacío.
+  const previo = proyectoActual();
+  const basePrevia = estado.texto ? estado.texto.base : null;
+  const embebidosPrevios = embebidos;
+  const carga = ++cargas;
   if (estado.texto) salirModoTexto(true);
-  const previo = proyectoActual(); // si este no abre, se vuelve al anterior (el autoguardado no queda vacío)
   const masNuevo = proyectoMasNuevo(p);
   embebidos = p.embebidos || {};
   extrasProyecto = {};
   Object.keys(p).forEach(k => { if (!CAMPOS_PROYECTO.includes(k)) extrasProyecto[k] = p[k]; });
-  if (p.placa && PLACAS[p.placa]) ponerPlaca(p.placa);
+  const placaAntes = placaActual;
+  if (p.placa && PLACAS[p.placa]) ponerPlaca(p.placa, { registrar: false }); // se registra si el proyecto abre (abajo)
   if ([1, 2, 3].includes(p.nivel)) ponerNivel(p.nivel, { vista: !silencioso, aviso: !silencioso });
   $('nombreProyecto').value = p.nombre || 'Mi proyecto';
   Blockly.Events.disable();
   try { espacio.clear(); } finally { Blockly.Events.enable(); }
   try { Blockly.serialization.workspaces.load(p.bloques, espacio); }
   catch (e) {
-    if (!sinRespaldo) cargarProyecto(previo, true, true);
+    if (!sinRespaldo) {
+      cargarProyecto(previo, true, true);
+      embebidos = embebidosPrevios; // los que tenía, no solo los que usaba
+      if (estado.texto && basePrevia !== null) estado.texto.base = basePrevia;
+    }
     if (masNuevo) return `Este proyecto se hizo con TecnoBloques ${p.creadoCon || 'más nuevo'} y usa bloques que esta versión (${TB_VERSION}) no conoce. Actualiza TecnoBloques para abrirlo.`;
     return 'No se pudo abrir el proyecto: ' + e.message;
   }
+  // El cambio de placa queda en el registro solo si el proyecto abrió: uno que no abre vuelve al anterior sin dejar
+  // dos cambios que nadie hizo (REG-005, TB-8). La vuelta atrás (sinRespaldo) no cambia nada.
+  if (!sinRespaldo && placaActual !== placaAntes) registrarEditor('placa_cambiada', { de: placaAntes, a: placaActual });
   asegurarPrograma();
   encuadrar();
-  if (p.texto) setTimeout(() => entrarModoTexto(p.texto, ''), 200);
   if (!silencioso) {
-    if (masNuevo) avisarProyectoNuevo(p, revisarVersiones);
+    if (masNuevo) avisarProyectoNuevo(p, revisarVersiones, carga);
     else revisarVersiones();
   }
   abrirLienzo(); // el circuito del proyecto (si lo trae) en la pestaña Circuito
   programarActualizacion();
+  // El C++ del proyecto entra en la misma carga. Antes lo ponía un temporizador de 200 ms en el proyecto que estuviera
+  // abierto entonces, aunque ya fuera otro (AUD-19, R05)
+  if (typeof p.texto === 'string') entrarModoTexto(p.texto, ''); // vacío también: el aprendiz borró todo el C++
   return true;
 }
 /** El proyecto viene de una versión más nueva: se abre igual, pero puede faltar algo. Luego sigue `despues`. */
-function avisarProyectoNuevo(p, despues) {
-  setTimeout(() => modal({
+function avisarProyectoNuevo(p, despues, carga) {
+  setTimeout(() => carga === cargas && modal({
     titulo: 'Este proyecto es de una versión más nueva',
     cuerpo: [el('p', null, `Se hizo con TecnoBloques ${p.creadoCon || 'más nuevo'} y aquí tienes la ${TB_VERSION}. Puede que algo no funcione igual.`),
       el('p', null, 'Pídele al instructor que actualice TecnoBloques en este computador.')],
@@ -895,7 +963,8 @@ function revisarVersiones() {
   const lib = leerLibreria();
   const distintos = Object.keys(embebidos).filter(n => lib[n] && !mismaDef(lib[n], embebidos[n]));
   if (!distintos.length) return;
-  setTimeout(() => modal({
+  const suyos = embebidos; // si mientras tanto se abre otro proyecto, la pregunta ya no es de este (AUD-19)
+  setTimeout(() => embebidos === suyos && modal({
     titulo: 'Hay otra versión de tus bloques',
     cuerpo: [el('p', null, 'Este proyecto trae una copia de estos bloques, y en Mis bloques tienes una versión distinta:'),
       el('ul', null, distintos.map(n => el('li', null, n, el('span', { class: 'muted' }, (lib[n].actualizado || 0) > (embebidos[n].actualizado || 0) ? ' (la de Mis bloques es más nueva)' : ' (la del proyecto es más nueva)'))))],
@@ -1334,7 +1403,7 @@ function placaDetectada(puerto) {
   if (!p || !p.fqbn) return null;
   return Object.keys(PLACAS).find(k => PLACAS[k].fqbn.startsWith(p.fqbn)) || null;
 }
-async function subirPlaca(forzar) {
+async function subirPlaca(forzar, { otraVez = false, reconectarDespues = false } = {}) {
   const puerto = $('puerto').value;
   if (!puerto) {
     modal({ titulo: 'No encuentro la placa', cuerpo: [el('ul', null,
@@ -1351,20 +1420,33 @@ async function subirPlaca(forzar) {
       botones: [
         { texto: 'Subir igual', accion: () => { setTimeout(() => subirPlaca(true), 50); } },
         { texto: `Cambiar a ${PLACAS[detectada].nombre}`, primario: true, accion: () => {
-          ponerPlaca(detectada); refrescarPines(); actualizar(); setTimeout(() => subirPlaca(true), 50);
+          // Como el selector de placa: también el lienzo pasa a la placa nueva (REG-005, TB-3)
+          ponerPlaca(detectada); refrescarPines(); abrirLienzo(); actualizar(); setTimeout(() => subirPlaca(true), 50);
         } }
       ]
     });
     return;
   }
   if (!estado.texto) actualizar(); // el código más reciente de los bloques
-  const turno = turnoEquipo; // antes de la primera espera: la subida es del equipo que pulsó Subir (AUD-04)
-  const reconectar = serial.conectado;
-  if (reconectar) await desconectarSerial(); // el puerto no se puede compartir con la carga
+  // Lo que se sube va en un solo objeto, tomado antes de la primera espera (AUD-17, R03 de la auditoría de Codex): el
+  // código, la placa con su FQBN, el puerto y el equipo que pulsó Subir (AUD-04). Lo que se envía, lo que se muestra y
+  // lo que se registra es eso mismo, aunque después cambie la placa elegida (REG-005, TB-9).
+  const subida = { codigo: codigoActual(), placa: placaActual, nombre: placa().nombre, fqbn: placa().fqbn, puerto, turno: turnoEquipo };
+  const reconectar = reconectarDespues || serial.conectado;
+  if (serial.conectado) await desconectarSerial(); // el puerto no se puede compartir con la carga
+  // Mientras se soltaba el puerto pudo cambiar algo. Si cambió el equipo, la subida ya no es de nadie y no se hace. Si
+  // cambió la placa o el puerto, se empieza otra vez con lo que se ve ahora, con todas sus comprobaciones; una vez sola.
+  if (turnoEquipo !== subida.turno) { if (reconectar) setTimeout(conectarSerial, 300); return; }
+  if (placaActual !== subida.placa || $('puerto').value !== subida.puerto) {
+    if (!otraVez) return subirPlaca(false, { otraVez: true, reconectarDespues: reconectar });
+    modal({ titulo: 'No se subió el programa', cuerpo: [el('p', null, 'La placa o el puerto cambiaron mientras se preparaba la subida, así que no se subió nada. Revísalos arriba y pulsa Subir otra vez.')] });
+    if (reconectar) setTimeout(conectarSerial, 300);
+    return;
+  }
   puertos.ocupado = true;
   const etapa = el('p', { class: 'subir-etapa' }, 'Preparando tu programa…');
   const pista = el('p', { class: 'muted' }, 'No desconectes la placa hasta que termine.');
-  modal({ titulo: `Subir a ${placa().nombre}`, cuerpo: [etapa, el('div', { class: 'subir-barra' }, el('span')), pista],
+  modal({ titulo: `Subir a ${subida.nombre}`, cuerpo: [etapa, el('div', { class: 'subir-barra' }, el('span')), pista],
     botones: [{ texto: 'Cancelar', accion: () => { etapa.textContent = 'Cancelando…'; if (escritorio.cancelar) escritorio.cancelar(); return false; } }] });
   const quitar = escritorio.alProgreso((m) => {
     if (m.etapa === 'compilar') etapa.textContent = 'Preparando tu programa…';
@@ -1373,24 +1455,23 @@ async function subirPlaca(forzar) {
     const x = /attempt (\d+) of (\d+): not in sync/i.exec(m.texto || '');
     if (x) {
       etapa.textContent = `La placa no contesta (intento ${x[1]} de ${x[2]})…`;
-      pista.textContent = `¿Elegiste la placa correcta arriba? Ahora está "${placa().nombre}". Si no es esa, pulsa Cancelar y cámbiala.`;
-    } else if (!/no contesta|Cancelando/.test(etapa.textContent)) etapa.textContent = `Subiendo a ${puerto}…`;
+      pista.textContent = `¿Es un ${subida.nombre}? Así se está subiendo. Si no es esa placa, pulsa Cancelar y cámbiala arriba.`;
+    } else if (!/no contesta|Cancelando/.test(etapa.textContent)) etapa.textContent = `Subiendo a ${subida.puerto}…`;
   });
   let r;
-  const codigoSubido = codigoActual();
-  try { r = await escritorio.subir({ codigo: codigoSubido, fqbn: placa().fqbn, puerto }); }
+  try { r = await escritorio.subir({ codigo: subida.codigo, fqbn: subida.fqbn, puerto: subida.puerto }); }
   catch (e) { r = { ok: false, etapa: 'app', salida: e.message }; }
   finally { quitar(); puertos.ocupado = false; }
-  if (turno === turnoEquipo) { // si cambió el equipo mientras subía, no es del equipo nuevo (AUD-04)
-    registrarCompilacion(r, codigoSubido);
-    if (r.etapa === 'subir') registrarEditor('programa_subido', { ok: r.ok, placa: placaActual });
+  if (subida.turno === turnoEquipo) { // si cambió el equipo mientras subía, no es del equipo nuevo (AUD-04)
+    registrarCompilacion(r, subida.codigo);
+    if (r.etapa === 'subir') registrarEditor('programa_subido', { ok: r.ok, placa: subida.placa });
   }
   if (r.ok) {
     const m = r.memoria || {};
     const cuerpo = [el('p', null, 'Tu programa ya está en la placa.')];
     if (m.flash !== null && m.flash !== undefined) cuerpo.push(el('p', { class: 'subir-memoria' }, `Usa el ${m.flash} % de la memoria de programa y el ${m.ram} % de la memoria de variables.`));
     if (m.ram >= 75) cuerpo.push(el('p', null, el('b', null, 'Ojo: '), 'la memoria de variables está casi llena y la placa puede comportarse raro. Usa menos textos largos o variables.'));
-    const usaSerial = /Serial\.begin\(/.test(codigoActual());
+    const usaSerial = /Serial\.begin\(/.test(subida.codigo);
     if (usaSerial && !reconectar) cuerpo.push(el('p', { class: 'muted' }, 'Puedes abrir el monitor serial cuando quieras con el botón «Monitor serial» de arriba.'));
     modal({ titulo: '¡Listo!', cuerpo, botones: usaSerial && !reconectar
       ? [{ texto: 'Abrir monitor serial', accion: () => setTimeout(abrirMonitor, 300) }, { texto: 'Cerrar', primario: true }]
@@ -1401,6 +1482,8 @@ async function subirPlaca(forzar) {
     modal({ titulo: ex.titulo, cuerpo: ex.cuerpo.concat([el('details', { class: 'subir-detalle' }, el('summary', null, 'Ver el mensaje completo'), el('pre', null, r.salida || ''))]) });
   }
 }
+// Falta una librería: el nombre puede llevar -, + o una carpeta (avr/...). Lo usan explicarError y el registro (REG-005, TB-10).
+const ERROR_LIBRERIA = /fatal error: ([\w./+-]+)\.h: No such file/;
 /** Traduce lo que dicen el compilador y avrdude a algo que un aprendiz pueda arreglar. */
 function explicarError(r, puerto) {
   const s = r.salida || '';
@@ -1408,7 +1491,7 @@ function explicarError(r, puerto) {
   if (r.etapa === 'cancelado') return { titulo: 'Subida cancelada', cuerpo: [el('p', null, 'No se cambió nada en la placa. Revisa la placa y el puerto de arriba y vuelve a intentarlo.')] };
   if (r.etapa === 'ocupado') return { titulo: 'Espera un momento', cuerpo: [el('p', null, 'Ya se está subiendo un programa.')] };
   if (r.etapa === 'compilar') {
-    const lib = /fatal error: ([\w]+)\.h: No such file/.exec(s);
+    const lib = ERROR_LIBRERIA.exec(s);
     if (lib) return { titulo: 'Falta una librería', cuerpo: [el('p', null, `Este computador no tiene la librería ${NOMBRES_LIB[lib[1]] || lib[1]}. Pídele al instructor que actualice TecnoBloques.`)] };
     if (/Sketch too big|text section exceeds/.test(s)) return { titulo: 'El programa no cabe', cuerpo: [el('p', null, `Es muy grande para la memoria del ${placa().nombre}. Quita bloques que no uses o textos largos, o usa un Arduino Mega.`)] };
     if (/data section exceeds|not enough memory/i.test(s)) return { titulo: 'No alcanza la memoria', cuerpo: [el('p', null, 'El programa usa más memoria de variables de la que tiene la placa. Usa menos textos largos o variables.')] };
@@ -1509,7 +1592,16 @@ let tResumenBloques = null;
 // AUD-04: lo que hace un equipo queda en su sesión. turnoEquipo sube cada vez que cambia el equipo (o termina su
 // sesión): una compilación que empezó con otro turno ya no es de nadie y se descarta (decisión de Efraín, 18 oct).
 let turnoEquipo = 0;
-let cambiandoEquipo = false; // mientras se espera el cierre de la corrida del equipo anterior (AUD-03)
+// Los cambios de equipo, uno detrás de otro: cada uno espera el cierre de la corrida del equipo anterior (AUD-03). Un
+// código confirmado mientras otro cambio espera ya no se pierde: se hace después (REG-005, TB-7). Encender y apagar el
+// registro van en la misma fila (AUD-18): un cambio que espera no empieza una sesión después de un apagado.
+let cambioDeEquipo = Promise.resolve();
+/** Pone una operación de equipo o del registro al final de la fila y devuelve su resultado (undefined si falló). */
+function enFilaDeEquipo(operacion) {
+  const hecha = cambioDeEquipo.then(operacion).catch((e) => { console.error(e); return undefined; });
+  cambioDeEquipo = hecha;
+  return hecha;
+}
 
 function pintarAvisoRegistro() {
   const a = $('avisoRegistro');
@@ -1611,7 +1703,8 @@ const MOTIVOS_DISCO = {
 function textoErrorExportar(r) {
   const codigo = String(r.codigo || '');
   if (codigo === 'TOPE') return 'ya hay demasiadas exportaciones de ese minuto en esa carpeta; elige otra';
-  if (codigo === 'TAMANO') return 'un archivo cambió de tamaño durante la copia';
+  // La copia se compara con lo que se leyó del original (AUD-21): si no quedó igual, es de la carpeta elegida
+  if (codigo === 'TAMANO' || codigo === 'DISTINTA') return 'la copia en la carpeta elegida no quedó igual al original';
   if (r.donde === 'origen') {
     const que = { ENOENT: 'un archivo del registro ya no estaba', EACCES: 'no hay permiso para leer los registros de este computador',
       EPERM: 'no hay permiso para leer los registros de este computador', EIO: 'el disco de este computador falló al leer los registros' };
@@ -1652,14 +1745,13 @@ function confirmarEquipo(codigo) {
       { texto: 'Corregir', accion: () => { setTimeout(() => pedirEquipo(codigo), 50); } },
       { texto: 'Sí, somos ese equipo', primario: true, accion: async () => {
         // El mismo equipo sigue en su sesión, con su simulación (AUD-04). Un segundo clic mientras se cierra la
-        // corrida del equipo anterior no abre otra sesión.
-        if (registroEventos.equipo() !== codigo && !cambiandoEquipo) {
-          cambiandoEquipo = true;
-          try {
-            if (await cerrarTrabajoDelEquipo()) mostrarToast('La simulación se detuvo porque cambió el equipo. Pulsen «Simular» para empezar la suya.');
-            registroEventos.empezar(codigo, { placa: placaActual, nivel: nivelActual });
-          } finally { cambiandoEquipo = false; }
-        }
+        // corrida del equipo anterior no abre otra sesión: cuando le toca, ya es su equipo. Si cuando le toca el
+        // registro ya está apagado (el instructor lo apagó mientras esperaba), no empieza ninguna sesión (AUD-18).
+        await enFilaDeEquipo(async () => {
+          if (!registroEncendido || registroEventos.equipo() === codigo) return;
+          if (await cerrarTrabajoDelEquipo()) mostrarToast('La simulación se detuvo porque cambió el equipo. Pulsen «Simular» para empezar la suya.');
+          if (registroEncendido) registroEventos.empezar(codigo, { placa: placaActual, nivel: nivelActual });
+        });
         pintarAvisoRegistro();
       } }
     ],
@@ -1681,11 +1773,14 @@ function cerrarTrabajoDelEquipo(opciones) {
 }
 /** Lo que pasa en el editor: si no hay equipo, registroEventos no escribe nada. */
 function registrarEditor(tipo, datos) { registroEventos.editor(tipo, datos); }
-/** Cambia la placa elegida y, si de verdad cambió, lo deja en el registro antes de lo que provoca (REG-004). */
-function ponerPlaca(nueva) {
+/**
+ * Cambia la placa elegida y, si de verdad cambió, lo deja en el registro antes de lo que provoca (REG-004). Abrir un
+ * proyecto lo registra él mismo, solo si abre ({ registrar: false }).
+ */
+function ponerPlaca(nueva, { registrar = true } = {}) {
   const de = placaActual;
   placaActual = nueva; $('placa').value = nueva;
-  if (nueva !== de) registrarEditor('placa_cambiada', { de, a: nueva });
+  if (registrar && nueva !== de) registrarEditor('placa_cambiada', { de, a: nueva });
 }
 /** Un resumen de los bloques unos segundos después del último cambio (no el XML). */
 function programarResumenBloques() {
@@ -1702,7 +1797,7 @@ function escribirResumenBloques() {
 function tipoErrorCompilacion(r) {
   if (r.ok) return null;
   const s = r.salida || '';
-  if (/fatal error: [\w]+\.h: No such file/.test(s)) return 'libreria';
+  if (ERROR_LIBRERIA.test(s)) return 'libreria';
   if (/Sketch too big|text section exceeds/.test(s)) return 'memoria_programa';
   if (/data section exceeds|not enough memory/i.test(s)) return 'memoria_variables';
   const m = /\.ino:\d+:\d+: error: (.*)/.exec(s);
@@ -1732,7 +1827,8 @@ function campoPin(id, etiqueta) {
 }
 const MOTIVOS_PIN = {
   pin: 'Ese no es el PIN.', 'pin-invalido': 'El PIN debe tener de 4 a 8 dígitos.', espera: 'Demasiados intentos. Espera un minuto.',
-  'config-ilegible': 'La configuración está dañada: confirma que quieres crear un PIN nuevo.', disco: 'No se pudo guardar en el disco.'
+  'config-ilegible': 'La configuración está dañada: confirma que quieres crear un PIN nuevo.',
+  disco: 'No se pudo guardar en el disco. Revisa que haya espacio libre y vuelve a intentarlo.'
 };
 /** Crear el PIN del instructor: la primera vez o, con la configuración dañada, uno nuevo (`reemplazarIlegible`). */
 function crearPinInstructor(reemplazarIlegible) {
@@ -1811,11 +1907,23 @@ function panelInstructor(pin, estado) {
         return false;
       } }] : []),
       { texto: estado.activo ? 'Apagar el registro' : 'Encender el registro', accion: async () => {
-        if (estado.activo) { await cerrarTrabajoDelEquipo(); registroEventos.terminar(); } // la última línea del equipo, antes de apagar
-        const r = await escritorio.registro.instructor({ accion: 'activar', pin, activo: !estado.activo });
-        if (!r.ok) { nota.textContent = MOTIVOS_PIN[r.motivo] || 'No se pudo cambiar.'; return false; }
-        registroEncendido = r.activo;
-        registroFalla = r.falla || null;
+        // En la fila de los cambios de equipo (AUD-18): un cambio que esperaba se hace antes, o después ve el registro
+        // apagado y no empieza; así el editor no queda con un equipo que el disco ya no registra
+        const r = await enFilaDeEquipo(async () => {
+          const equipoAntes = registroEventos.equipo();
+          if (estado.activo) { await cerrarTrabajoDelEquipo(); registroEventos.terminar(); } // la última línea del equipo, antes de apagar
+          const hecho = await escritorio.registro.instructor({ accion: 'activar', pin, activo: !estado.activo });
+          // No se apagó: el registro sigue encendido y el equipo vuelve a su sesión, para que lo que haga no se pierda
+          // sin aviso (REG-005, TB-2)
+          if (!hecho.ok && estado.activo && equipoAntes) registroEventos.empezar(equipoAntes, { placa: placaActual, nivel: nivelActual });
+          if (hecho.ok) { registroEncendido = hecho.activo; registroFalla = hecho.falla || null; }
+          return hecho;
+        });
+        if (!r || !r.ok) {
+          pintarAvisoRegistro();
+          nota.textContent = (r && MOTIVOS_PIN[r.motivo]) || 'No se pudo cambiar. Vuelve a intentarlo.';
+          return false;
+        }
         pintarAvisoRegistro();
         mostrarToast(r.activo ? 'Registro encendido en este computador.' : 'Registro apagado en este computador.');
         if (r.activo) setTimeout(pedirEquipo, 50);
@@ -1831,7 +1939,7 @@ function panelInstructor(pin, estado) {
         // copia a medias queda marcada como incompleta en su exportacion.json
         if (r.motivo === 'copia-incompleta') nota.textContent = `La copia quedó incompleta en ${r.carpeta}: se copiaron ${r.copiados} de ${r.total} archivos (${textoErrorExportar(r)}). Vuelve a exportar.`;
         else if (r.motivo === 'disco') nota.textContent = `No se pudo exportar: ${textoErrorExportar(r)}.`;
-        else if (r.motivo !== 'cancelado') nota.textContent = r.motivo === 'sin-archivos' ? 'Todavía no hay registros en este computador.' : (MOTIVOS_PIN[r.motivo] || 'No se pudo copiar.');
+        else if (r.motivo !== 'cancelado') nota.textContent = r.motivo === 'sin-archivos' ? 'Todavía no hay registros en este computador.' : (MOTIVOS_PIN[r.motivo] || 'No se pudo copiar. Revisa la carpeta elegida y vuelve a exportar.');
         return false;
       } },
       { texto: 'Cambiar el PIN', accion: () => { setTimeout(() => cambiarPin(pin), 50); } },
@@ -1904,21 +2012,31 @@ async function simular() {
   if (!estado.texto) actualizar(); // el código más reciente de los bloques
   const codigo = codigoActual();
   const turno = turnoEquipo;
+  // El .hex es de esta placa y para este lienzo: si mientras se prepara cambian la placa o abren otro proyecto o
+  // ejemplo, no se simula en el lienzo nuevo (REG-005, TB-4)
+  const placaCompilada = placaActual;
+  const lienzo = simulador.lienzo;
+  const cambioLienzo = () => placaActual !== placaCompilada || simulador.lienzo !== lienzo;
   simulador.compilando = true;
   uiSimulador('Preparando tu programa…');
   await cierreAnterior; // el cierre de la corrida anterior queda antes que lo de esta (AUD-03)
   let r;
-  try { r = await escritorio.compilarHex({ codigo, fqbn: placa().fqbn }); }
+  try { r = await escritorio.compilarHex({ codigo, fqbn: PLACAS[placaCompilada].fqbn }); }
   catch (e) { r = { ok: false, etapa: 'app', salida: e.message }; }
   if (turno === turnoEquipo) registrarCompilacion(r, codigo);
   // El monitor muestra la simulación: la placa real se desconecta antes. Es la última espera; después ya no hay
   // ninguna hasta iniciar, así que el turno se revisa una sola vez y nada preparado queda para otro equipo (AUD-04-V1).
-  if (turno === turnoEquipo && r.ok && r.hex && serial.conectado) await desconectarSerial();
+  if (turno === turnoEquipo && !cambioLienzo() && r.ok && r.hex && serial.conectado) await desconectarSerial();
   simulador.compilando = false;
   if (turno !== turnoEquipo) {
     // El equipo cambió mientras se preparaba: la simulación no es del equipo nuevo (AUD-04).
     uiSimulador();
     mostrarToast('Cambió el equipo mientras se preparaba el programa. Pulsen «Simular» otra vez.');
+    return;
+  }
+  if (cambioLienzo()) {
+    uiSimulador();
+    mostrarToast('Cambiaste la placa o el proyecto mientras se preparaba el programa. Pulsa «Simular» otra vez.');
     return;
   }
   if (!r.ok || !r.hex) {

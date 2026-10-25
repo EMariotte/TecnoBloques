@@ -25,12 +25,14 @@ const COLA_LINEAS = 5000; // lo que puede esperar mientras el disco falla
 const COLA_BYTES = 20 * 1024 * 1024;
 
 /**
- * `alCambiar(falla, fin)` avisa cuando el registro entra en falla (con su resumen) o cuando la falla termina (null),
- * con `fin`: 'escrito' si lo que esperaba quedó en el disco, 'apagado' si el instructor apagó el registro.
+ * `alCambiar(falla, fin)` avisa cuando el registro entra en falla (con su resumen), cuando cambia lo que espera o lo que
+ * se perdió (AUD-20) y cuando la falla termina (null), con `fin`: 'escrito' si lo que esperaba quedó en el disco,
+ * 'apagado' si el instructor apagó el registro. Si solo cambia cuánto espera, los cambios seguidos van en un aviso cada
+ * `avisoColaMs`.
  * `alDescartar(descartados)` avisa cada vez que un evento no se pudo guardar (AUD-07), con la cuenta desde que se abrió.
  * `version`: la de TecnoBloques, para el exportacion.json de cada exportación (AUD-08).
  */
-function crearRegistroDisco({ carpeta, ahora = () => Date.now(), alCambiar = () => {}, alDescartar = () => {}, reintentoMs = 30000, version = null }) {
+function crearRegistroDisco({ carpeta, ahora = () => Date.now(), alCambiar = () => {}, alDescartar = () => {}, reintentoMs = 30000, avisoColaMs = 250, version = null }) {
   const archivoConfig = path.join(carpeta, 'registro-config.json');
   // Mientras la carpeta dañada está movida aparte y la nueva todavía no quedó en su lugar, existe esta marca: si el
   // reemplazo no termina ni se puede deshacer, la app sabe al abrir que la recuperación quedó a medias (AUD-02-V4).
@@ -42,7 +44,9 @@ function crearRegistroDisco({ carpeta, ahora = () => Date.now(), alCambiar = () 
   let bytesCola = 0;
   let falla = null; // { motivo, desde, sesiones: Map(equipo y sesión → { sobre, recuperados, perdidos }) }
   let reloj = null;
-  let avisado = null; // lo último que se avisó con alCambiar, para avisar solo los cambios
+  let avisado = null; // motivo, inicio y pérdidas de lo último que se avisó con alCambiar: un cambio de esto se avisa ya
+  let ultimoAviso = null; // el último resumen avisado
+  let tAvisoCola = null; // el aviso de cuánto espera, que junta los cambios seguidos (AUD-20)
   let comoTermino = null; // 'escrito' o 'apagado': cómo terminó la última falla
   const pendientesDeCortar = new Map(); // archivo → tamaño: una escritura falló a medias y no se pudo cortar todavía
   const revisados = new Set(); // archivos que ya se revisó que terminan en una línea completa
@@ -151,11 +155,30 @@ function crearRegistroDisco({ carpeta, ahora = () => Date.now(), alCambiar = () 
     for (const s of falla.sesiones.values()) perdidos += s.perdidos;
     return { motivo: falla.motivo, desde: falla.desde, pendientes: cola.length, perdidos };
   }
+  /**
+   * Avisa el estado de la falla cuando cambia, para que el panel abierto muestre lo de ahora (AUD-20): enseguida si
+   * empieza o termina, cambia su motivo o se pierden líneas; si solo cambia cuánto espera, los cambios seguidos van
+   * juntos en un aviso cada `avisoColaMs` (una cola que crece de a una línea no manda un mensaje por línea a la ventana).
+   */
+  const claveDeAviso = (r) => r && `${r.motivo}|${r.desde}|${r.perdidos}`;
   function avisarSiCambio() {
     const r = resumenFalla();
-    const clave = r && `${r.motivo}|${r.desde}`;
-    if (clave === avisado) return;
-    avisado = clave;
+    if (claveDeAviso(r) !== avisado) { avisar(r); return; }
+    if (!r || tAvisoCola || (ultimoAviso && r.pendientes === ultimoAviso.pendientes)) return;
+    tAvisoCola = setTimeout(avisarCola, avisoColaMs);
+    if (tAvisoCola.unref) tAvisoCola.unref();
+  }
+  function avisarCola() {
+    tAvisoCola = null;
+    const r = resumenFalla();
+    if (claveDeAviso(r) !== avisado) avisarSiCambio();
+    else if (r && (!ultimoAviso || r.pendientes !== ultimoAviso.pendientes)) avisar(r);
+  }
+  function avisar(r) {
+    clearTimeout(tAvisoCola);
+    tAvisoCola = null;
+    avisado = claveDeAviso(r);
+    ultimoAviso = r;
     try { alCambiar(r, r ? null : comoTermino); } catch (e) { /* avisar nunca debe impedir escribir */ }
   }
   function fallar(e) {
@@ -182,6 +205,36 @@ function crearRegistroDisco({ carpeta, ahora = () => Date.now(), alCambiar = () 
     }
   }
   const tamano = (archivo) => { try { return fs.statSync(archivo).size; } catch (e) { if (e.code === 'ENOENT') return 0; throw e; } };
+  /**
+   * Copia un registro en dos etapas, para saber de qué lado falló (AUD-21): leer el original es de este PC ('origen');
+   * escribir la copia, sin pisar nada, y leerla para su huella es de la carpeta elegida ('destino'). Con la copia del
+   * sistema no se sabía cuál de las dos falló: un original que abre pero falla al leerse se le culpaba a la USB. Si la
+   * copia no queda igual al original, también es del destino. Devuelve los bytes copiados; si falla, lanza el error con
+   * su lado en `donde` y borra el pedazo que alcanzó a escribir (nunca un archivo que ya estaba).
+   */
+  function copiarRegistro(origen, destino) {
+    const deLado = (e, donde) => Object.assign(e instanceof Error ? e : new Error(String(e)), { donde });
+    let contenido;
+    try { contenido = fs.readFileSync(origen); } catch (e) { throw deLado(e, 'origen'); }
+    try {
+      fs.writeFileSync(destino, contenido, { flag: 'wx' });
+    } catch (e) {
+      // Un pedazo escrito no se deja: terminaría en .jsonl y parecería un registro entero
+      if (!e || e.code !== 'EEXIST') try { fs.rmSync(destino, { force: true }); } catch (e2) { /* lo dice exportacion.json */ }
+      throw deLado(e, 'destino');
+    }
+    let copia;
+    try {
+      copia = fs.readFileSync(destino); // lo que quedó en la copia
+      if (!copia.equals(contenido)) {
+        throw Object.assign(new Error(`la copia tiene ${copia.length} bytes y no es igual al original (${contenido.length} bytes)`), { code: copia.length !== contenido.length ? 'TAMANO' : 'DISTINTA' });
+      }
+    } catch (e) {
+      try { fs.rmSync(destino, { force: true }); } catch (e2) { /* lo dice exportacion.json */ }
+      throw deLado(e, 'destino');
+    }
+    return copia;
+  }
   /**
    * Agrega una línea entera o nada (AUD-02-V1). Si la escritura falla a medias (el disco se llenó en la mitad), corta
    * el archivo al tamaño que tenía; si ni eso se puede, no se vuelve a escribir en él hasta cortarlo. La primera vez que
@@ -435,7 +488,8 @@ function crearRegistroDisco({ carpeta, ahora = () => Date.now(), alCambiar = () 
       try { return listar(); } catch (e) { return []; }
     },
     /**
-     * Copia los .jsonl a una carpeta nueva dentro de `destino`. Pide el PIN. Lo que espera en la cola no va.
+     * Copia los .jsonl a una carpeta nueva dentro de `destino`. Pide el PIN. Antes intenta escribir lo que espera; lo que
+     * siga esperando no va (`pendientes` en exportacion.json).
      * Cada exportación tiene su propia carpeta, aunque haya otra del mismo minuto (AUD-08): se reserva con mkdir sin
      * `recursive`, que falla si ya existe, y se prueba con -2, -3… Ningún archivo se copia encima de otro. Al final va
      * exportacion.json, con el nombre, los bytes y el sha256 de cada archivo copiado y `completa: true`; si una copia
@@ -447,6 +501,10 @@ function crearRegistroDisco({ carpeta, ahora = () => Date.now(), alCambiar = () 
     exportar({ pin, destino }) {
       const r = comprobar(pin);
       if (!r.ok) return r;
+      // Lo que espera se intenta escribir antes de copiar: si el disco ya se recuperó, va en la copia y no queda como
+      // pendiente (REG-005, TB-5)
+      vaciar();
+      avisarSiCambio();
       const noSePudo = (donde, e, extra) => ({ ok: false, motivo: 'disco', donde, codigo: String((e && e.code) || 'DESCONOCIDO'), mensaje: e && e.message, ...extra });
       let archivos;
       try { archivos = listar(); } catch (e) { return noSePudo('origen', e); }
@@ -465,18 +523,11 @@ function crearRegistroDisco({ carpeta, ahora = () => Date.now(), alCambiar = () 
       const copiados = [];
       let error = null;
       for (const f of archivos) {
-        const origen = path.join(registros, f);
-        const destinoArchivo = path.join(carpetaDestino, f);
         try {
-          const tamano = fs.statSync(origen).size;
-          fs.copyFileSync(origen, destinoArchivo, fs.constants.COPYFILE_EXCL);
-          const contenido = fs.readFileSync(destinoArchivo); // lo que quedó en la copia
-          if (contenido.length !== tamano) throw Object.assign(new Error(`la copia tiene ${contenido.length} bytes y el original ${tamano}`), { code: 'TAMANO' });
-          copiados.push({ archivo: f, bytes: contenido.length, sha256: crypto.createHash('sha256').update(contenido).digest('hex') });
+          const copia = copiarRegistro(path.join(registros, f), path.join(carpetaDestino, f));
+          copiados.push({ archivo: f, bytes: copia.length, sha256: crypto.createHash('sha256').update(copia).digest('hex') });
         } catch (e) {
-          error = { archivo: f, codigo: String(e.code || 'DESCONOCIDO'), mensaje: e.message, donde: fs.existsSync(origen) ? 'destino' : 'origen' };
-          // El pedazo que alcanzó a copiarse no se deja: terminaría en .jsonl y parecería un registro entero
-          if (e.code !== 'EEXIST') try { fs.rmSync(destinoArchivo, { force: true }); } catch (e2) { /* lo dice exportacion.json */ }
+          error = { archivo: f, codigo: String(e.code || 'DESCONOCIDO'), mensaje: e.message, donde: e.donde || 'destino' };
           break;
         }
       }
