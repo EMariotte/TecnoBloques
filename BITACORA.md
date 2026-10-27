@@ -1452,3 +1452,14 @@ Pruebas (25 oct, con la copia local de TecnoCircuito): `test:simulador` 58 OK (5
 ## 2026-10-25 — TecnoBloques 0.4.1 con TecnoCircuito v0.3.1 y el ajuste del CH340
 
 Efraín cerró hoy las pruebas humanas de la 0.4.0 (sin problemas) y pidió el siguiente candidato. TecnoCircuito quedó etiquetado `v0.3.1` (commit `4872a92`, con el chip de la serigrafía de MARCA-002; suite completa con cargador: 1298 OK). TecnoBloques pasa a 0.4.1 con `github:EMariotte/TecnoCircuito#v0.3.1`; otra vez `npm install` solo cambió el lock al nombrar la dependencia. El paquete instalado es idéntico a `dist/tecnocircuito.js` de la etiqueta. Entra `escritorio/instalador.nsh`: si Windows ya tiene el driver CH340 no pregunta, y con `/S` lo instala en silencio. `npm test` con las secciones de errores vacías, `test:simulador` 58 y `test:app` sin errores, con la 0.4.1. El instalador se arma después de este commit (DIST-001); publicar el Release es decisión de Efraín.
+
+## 2026-10-27 — Contrato 1: `vatios` y `modelo` en las piezas básicas (PIEZA-001 y PIEZA-002)
+
+TecnoCircuito pasó el LED, la resistencia, el potenciómetro y el pulsador a Piezas Tecno, con los dibujos medidos del kit (su bitácora y su COMO-FUNCIONA, sección 74). El contrato suma, de forma aditiva, `vatios` en la resistencia (`0.25` o `0.5`) y `modelo` en el potenciómetro (`16mm`) y el pulsador (`6x6`, decisión de Efraín del 27 oct). TecnoBloques guarda el circuito tal cual, así que su código no cambia. Un proyecto guardado sin esas props abre como antes, con las mismas conexiones.
+
+Del lado de TecnoBloques:
+
+- **Ejemplos:** `val_adc` y `val_nano_adc67` traen el potenciómetro del kit (`modelo: "16mm"`). En `val_adc`, el potenciómetro se corre a (245, 205) y los dobleces de sus cables llegan a sus patas, ahora a 2 pasos.
+- **`test/simulador.js`:** lee el LED medido (`data-brillo` y `data-encendido`) en lugar del elemento de wokwi.
+
+Pruebas (27 oct, con la copia local de TecnoCircuito): `test:simulador` 58 OK y `test:registro-app` 134 OK, sin fallas; `npm test` y `test:app` sin errores. Sin commit.
