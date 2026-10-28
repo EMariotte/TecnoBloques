@@ -1463,3 +1463,13 @@ Del lado de TecnoBloques:
 - **`test/simulador.js`:** lee el LED medido (`data-brillo` y `data-encendido`) en lugar del elemento de wokwi.
 
 Pruebas (27 oct, con la copia local de TecnoCircuito): `test:simulador` 58 OK y `test:registro-app` 134 OK, sin fallas; `npm test` y `test:app` sin errores. Sin commit.
+
+## 2026-10-28 — Contrato 1, sección 4: precisiones de la revisión de PIEZA-001 y PIEZA-002
+
+Solo redacción, sin cambiar el formato (decisiones de Efraín, 28 oct; bitácora de TecnoCircuito y su COMO-FUNCIONA 74, «Revisión»): la resistencia guardada sin `vatios` también se corre al abrir para quedar sobre sus huecos; el potenciómetro y el pulsador sin `modelo` toman el dibujo nuevo al levantarlos y eso ya no emite `componente_cambiado {modelo}`, así que la historia del registro no lo cuenta como un cambio del aprendiz (el `modelo` llega con el circuito de la siguiente `simulacion_iniciada`); una versión anterior de TecnoCircuito abre bien estos circuitos, pero dibuja las piezas con wokwi sobre los huecos nuevos. El código de TecnoBloques no cambia.
+
+Pruebas (28 oct, con la copia local de TecnoCircuito corregida): `test:simulador` 58 OK y `test:registro-app` 134 OK, sin fallas. Sin commit: espera la verificación de Codex y la revisión de Efraín.
+
+## 2026-10-28 — PIEZA-001 y PIEZA-002 verificadas por Codex
+
+Codex verificó la revisión y cerró F01 (de TecnoCircuito: la resistencia guardada sin `vatios` que pasa a ½ W ya cambia de dibujo). Con este TecnoCircuito, `test:simulador` 58 y `test:registro-app` 134, sin fallas; Codex los repitió con el mismo resultado. Commit y push con el sí de Efraín. Sigue PIEZA-003 en TecnoCircuito: quitar `@wokwi/elements` y Lit; cuando se haga, cambia el texto «Acerca de» de `src/app.js`, que los nombra.
