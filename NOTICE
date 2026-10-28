@@ -6,3 +6,8 @@ TecnoAcademia Tolima (SENA, SENNOVA).
 
 Este producto incluye software desarrollado por Google LLC:
 Blockly (https://developers.google.com/blockly), licencia Apache 2.0.
+
+Incluye las fuentes Atkinson Hyperlegible (Copyright 2020 Braille Institute
+of America, Inc.) y JetBrains Mono (Copyright 2020 The JetBrains Mono Project
+Authors), con la licencia SIL Open Font License 1.1; sus textos están en
+fuentes/OFL-atkinson-hyperlegible.txt y fuentes/OFL-jetbrains-mono.txt.

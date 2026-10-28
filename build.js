@@ -28,6 +28,13 @@ const VERSION_TB = require('./package.json').version;
 const medioJS = `window.TB_MEDIA = ${JSON.stringify(media)}; window.TB_VERSION = ${JSON.stringify(VERSION_TB)};`;
 const fuentes = '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>' +
   '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@400;600&display=swap">';
+// La versión local lleva las mismas fuentes dentro (fuentes/, SIL OFL 1.1, juego latino de Fontsource): en el aula
+// no hay internet y no debe pedir nada afuera (DIST-002)
+const fuentesLocales = '<style>' + [
+  ['Atkinson Hyperlegible', 400, 'atkinson-hyperlegible-400'], ['Atkinson Hyperlegible', 700, 'atkinson-hyperlegible-700'],
+  ['JetBrains Mono', 400, 'jetbrains-mono-400'], ['JetBrains Mono', 600, 'jetbrains-mono-600'],
+].map(([familia, peso, archivo]) => `@font-face{font-family:'${familia}';font-style:normal;font-weight:${peso};font-display:swap;` +
+  `src:url(data:font/woff2;base64,${b64('fuentes/' + archivo + '.woff2')}) format('woff2')}`).join('') + '</style>';
 const esc = (s) => s.replace(/<\/script/gi, '<\\/script');
 
 // Simulador TecnoCircuito (proyecto hermano, ver «Proyecto hermano» en CLAUDE.md). Entra al HTML solo si:
@@ -55,7 +62,7 @@ const simuladorJS = simulador
 
 fs.mkdirSync(path.join(__dirname, 'dist'), { recursive: true });
 
-// Versión local: funciona sin internet (las fuentes caen a las del sistema)
+// Versión local: funciona sin internet, con las fuentes dentro
 const local = `<!doctype html>
 <html lang="es">
 <head>
@@ -63,7 +70,7 @@ const local = `<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>TecnoBloques</title>
 ${iconos}
-${fuentes}
+${fuentesLocales}
 <style>
 [hidden]{display:none!important}
 body{margin:0}

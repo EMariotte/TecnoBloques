@@ -57,6 +57,8 @@
       "package.json",
       "LICENSE",
       "NOTICE",
+      "fuentes/OFL-atkinson-hyperlegible.txt",
+      "fuentes/OFL-jetbrains-mono.txt",
       "escritorio/icono.ico"
     ],
     "extraResources": [
