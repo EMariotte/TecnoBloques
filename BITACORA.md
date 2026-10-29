@@ -1473,3 +1473,9 @@ Pruebas (28 oct, con la copia local de TecnoCircuito corregida): `test:simulador
 ## 2026-10-28 — PIEZA-001 y PIEZA-002 verificadas por Codex
 
 Codex verificó la revisión y cerró F01 (de TecnoCircuito: la resistencia guardada sin `vatios` que pasa a ½ W ya cambia de dibujo). Con este TecnoCircuito, `test:simulador` 58 y `test:registro-app` 134, sin fallas; Codex los repitió con el mismo resultado. Commit y push con el sí de Efraín. Sigue PIEZA-003 en TecnoCircuito: quitar `@wokwi/elements` y Lit; cuando se haga, cambia el texto «Acerca de» de `src/app.js`, que los nombra.
+
+## 2026-10-28 — Contrato 1, sección 4: potenciómetro y pulsador sin `modelo` (PIEZA-003)
+
+TecnoCircuito dejó de incluir `@wokwi/elements` y Lit (su bitácora y su COMO-FUNCIONA, sección 75). Un proyecto guardado con el potenciómetro o el pulsador sin `modelo` abre con el dibujo del kit; si estaban en la protoboard y sus patas ya no caben, quedan sueltos con un aviso. El formato no cambia y TecnoBloques guarda el circuito tal cual. Del lado de TecnoBloques solo cambia el texto «Acerca de» de `src/app.js`: ya no nombra Wokwi Elements ni Lit.
+
+Pruebas (28 oct, con la copia local de TecnoCircuito): `test:simulador` 58 y `test:registro-app` 134, sin fallas; `npm test` y `test:app` sin errores. Sin commit: falta la verificación de Codex.
