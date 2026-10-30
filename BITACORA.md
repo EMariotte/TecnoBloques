@@ -1485,3 +1485,7 @@ Pruebas (28 oct, con la copia local de TecnoCircuito): `test:simulador` 58 y `te
 Decisión de Efraín (29 oct): el orden de las piezas en el lienzo es solo cosmético y no debe mover los nombres. TecnoCircuito ya no reordena `componentes`: guarda el puesto de cada pieza suelta en su `capa` (contrato 1, sección 4, aditivo). TecnoBloques no cambia: guarda el circuito tal cual. `test:simulador` (sección 4a) sube una pieza desde la ficha, guarda, reabre el proyecto y comprueba las capas, `componentes` sin cambios, el lienzo y la imagen SVG: 60/0.
 
 Verificada por Codex con LIENZO-002 (30 oct, COD-20261030-001): guardado, reapertura y SVG conformes; `test:simulador` 60, `test:registro-app` 134 y graficador 28. Commit con el sí de Efraín.
+
+## 2026-10-30 — Contrato 1: el tramo del potenciómetro en Mediciones (MED-001)
+
+Pedido de un colega de Efraín (29 oct) para las cuentas de la ley de Ohm. TecnoCircuito agrega `tramos` a cada potenciómetro de `sim.mediciones()` (aditivo), y su `filasDeMediciones()` muestra el tramo entre el centro y la pata a GND (regla de Efraín: si ninguna va a GND, el tramo en uso; si van las dos, los dos). TecnoBloques no cambia: el panel de Mediciones usa la misma tabla y toma la fila nueva con la dependencia de TecnoCircuito que la traiga. `test:simulador` y `test:registro-app` con la copia local, sin fallas.
