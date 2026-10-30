@@ -193,6 +193,47 @@ const LIENZO = "document.querySelector('#lienzoCircuito .tecnocircuito').shadowR
   }
   revisar(guardado.vacio, 'un proyecto nuevo empieza sin circuito');
 
+  // 4a. El orden de las piezas (LIENZO-002): «Traer adelante» en la ficha sube la primera pieza un puesto. Es solo del
+  // dibujo (decisión de Efraín): el proyecto guarda la `capa` de cada pieza y `componentes` no cambia. Al abrirlo, el
+  // lienzo y la imagen SVG conservan la pila.
+  await win.evaluate(() => { cambiarVista('dividido'); seleccionarPestana('circuito'); });
+  await win.waitForTimeout(300);
+  const ordenAntes = await win.evaluate(() => simulador.lienzo.circuito().componentes.map((k) => k.id));
+  const punto = await win.evaluate(`(() => { const r = ${LIENZO}; const id = ${JSON.stringify(ordenAntes[0])};
+    const caja = r.querySelector('.tc-comp[data-id="' + id + '"]').getBoundingClientRect();
+    for (let x = caja.left + 2; x < caja.right; x += 2) for (let y = caja.top + 2; y < caja.bottom; y += 2) {
+      const e = r.elementFromPoint(x, y);
+      if (e && !e.closest('.tc-pin') && e.closest('.tc-comp')?.dataset.id === id) return [x, y];
+    }
+    return null; })()`);
+  if (punto) {
+    await win.mouse.click(punto[0], punto[1]);
+    await win.locator('#lienzoCircuito .tc-ficha [data-accion="adelante"]').click({ timeout: 5000 }).catch(() => {});
+    await win.waitForTimeout(200);
+  }
+  const esperado = [ordenAntes[1], ordenAntes[0], ...ordenAntes.slice(2)];
+  // La pila según las capas guardadas (contrato, sección 4): sin capa, encima, en el orden de `componentes`.
+  const pilaDe = (c) => c.componentes.map((k, n) => [k, n])
+    .sort((a, b) => ((Number.isInteger(a[0].capa) ? a[0].capa : Infinity) - (Number.isInteger(b[0].capa) ? b[0].capa : Infinity)) || a[1] - b[1])
+    .map(([k]) => k.id);
+  const guardadoOrden = await win.evaluate(() => {
+    const p = JSON.parse(JSON.stringify(proyectoActual()));
+    nuevoProyecto();
+    cargarProyecto(p, true);
+    return p.circuito;
+  });
+  await win.waitForTimeout(400);
+  const reabierto = await win.evaluate(`(() => ({
+    datos: simulador.lienzo.circuito(),
+    dibujo: [...${LIENZO}.querySelector('.tc-capa-comp').children].map((d) => d.dataset.id).filter((id) => id !== 'placa'),
+    svg: simulador.lienzo.exportarSVG() }))()`);
+  const enSvg = [...reabierto.svg.matchAll(/<svg id="tc-([^"]+)"/g)].map((m) => m[1]).filter((id) => id !== 'placa');
+  const ids = (c) => c.componentes.map((k) => k.id);
+  revisar(!!punto && JSON.stringify(pilaDe(guardadoOrden)) === JSON.stringify(esperado) && JSON.stringify(ids(guardadoOrden)) === JSON.stringify(ordenAntes),
+    `«Traer adelante» sube ${ordenAntes[0]} un puesto: el proyecto guarda la pila en las capas (${pilaDe(guardadoOrden).join(', ')}) y componentes no cambia (${ids(guardadoOrden).join(', ')})`);
+  revisar([pilaDe(reabierto.datos), reabierto.dibujo, enSvg].every((o) => JSON.stringify(o) === JSON.stringify(esperado)) && JSON.stringify(ids(reabierto.datos)) === JSON.stringify(ordenAntes),
+    `al reabrir el proyecto, el lienzo y la imagen SVG conservan la pila (${reabierto.dibujo.join(', ')} · SVG ${enSvg.join(', ')})`);
+
   // 4b. Agrandar el circuito: el divisor, la vista «Circuito» y el botón «Ampliar»
   await win.evaluate(() => { cambiarVista('dividido'); seleccionarPestana('circuito'); });
   await win.waitForTimeout(200);

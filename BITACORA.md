@@ -1479,3 +1479,9 @@ Codex verificó la revisión y cerró F01 (de TecnoCircuito: la resistencia guar
 TecnoCircuito dejó de incluir `@wokwi/elements` y Lit (su bitácora y su COMO-FUNCIONA, sección 75). Un proyecto guardado con el potenciómetro o el pulsador sin `modelo` abre con el dibujo del kit; si estaban en la protoboard y sus patas ya no caben, quedan sueltos con un aviso. El formato no cambia y TecnoBloques guarda el circuito tal cual. Del lado de TecnoBloques solo cambia el texto «Acerca de» de `src/app.js`: ya no nombra Wokwi Elements ni Lit.
 
 Pruebas (28 oct, con la copia local de TecnoCircuito): `test:simulador` 58 y `test:registro-app` 134, sin fallas; `npm test` y `test:app` sin errores. Sin commit: falta la verificación de Codex.
+
+## 2026-10-29 — Contrato 1: `capa` de las piezas, solo del dibujo (LIENZO-002)
+
+Decisión de Efraín (29 oct): el orden de las piezas en el lienzo es solo cosmético y no debe mover los nombres. TecnoCircuito ya no reordena `componentes`: guarda el puesto de cada pieza suelta en su `capa` (contrato 1, sección 4, aditivo). TecnoBloques no cambia: guarda el circuito tal cual. `test:simulador` (sección 4a) sube una pieza desde la ficha, guarda, reabre el proyecto y comprueba las capas, `componentes` sin cambios, el lienzo y la imagen SVG: 60/0.
+
+Verificada por Codex con LIENZO-002 (30 oct, COD-20261030-001): guardado, reapertura y SVG conformes; `test:simulador` 60, `test:registro-app` 134 y graficador 28. Commit con el sí de Efraín.
