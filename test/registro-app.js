@@ -337,17 +337,33 @@ const LED = {
     prog.getInput('LOOP').connection.connect(b.previousConnection);
   });
   await win.waitForTimeout(300);
+  // MED-002, F01 (verificación de Codex, 1 nov): F3 también marca una medida en la gráfica (la lista es la de la
+  // corrida de E2) y confirma G4 antes de 1,5 s. Su grafica_vista es de F3, no de G4.
+  const vistasDe = (equipo) => deEquipo(equipo).filter((l) => l.tipo === 'grafica_vista').map((l) => l.datos.medidas);
+  const graficaA = (indice) => win.evaluate((i) => {
+    cambiarVista('circuito');
+    plegarMediciones(false, false);
+    verPestanaMediciones('grafica');
+    const m = simulador.grafica.estado().medidas.filter((k) => k.endsWith('.corriente'))[i];
+    return simulador.grafica.marcar(m, true) && m;
+  }, indice);
+  const medidaF3 = await graficaA(0);
   await cambiarCodigo('G4');
   await win.waitForTimeout(3500);
   revisar(tiposDe('F3').slice(-2).join() === 'bloques_cambiados,sesion_terminada' && !tiposDe('G4').includes('bloques_cambiados'),
     `AUD-04 bloques: el resumen que esperaba queda en F3, antes de su sesion_terminada, y no pasa a G4 (F3 termina: ${tiposDe('F3').slice(-2).join(', ')})`);
+  revisar(medidaF3 && JSON.stringify(vistasDe('F3').slice(-1)) === JSON.stringify([[medidaF3]]) && !vistasDe('G4').length,
+    `MED-002 F01: F3 marca ${medidaF3} y cambia de equipo antes de 1,5 s; su grafica_vista queda en F3 y G4 no tiene ninguno (F3: ${JSON.stringify(vistasDe('F3'))})`);
 
-  // Cerrar la ventana: G4 simula y se cierra la app
+  // Cerrar la ventana: G4 simula, marca otra medida en la gráfica (MED-002, F01) y se cierra la app enseguida
   revisar(await simularLED(), 'AUD-04: G4 simula');
+  const medidaG4 = await graficaA(1);
   await app.close();
   await new Promise((r) => setTimeout(r, 500));
   revisar(corridasCompletas('G4') && finDe('G4', 2) === 'simulacion_detenida,sesion_terminada',
     `AUD-04 cerrar: al cerrar la app, la corrida de G4 se cierra antes de su sesion_terminada (${tiposDe('G4').slice(-2).join(', ')})`);
+  revisar(medidaG4 && JSON.stringify(vistasDe('G4').slice(-1)) === JSON.stringify([[medidaF3, medidaG4]]),
+    `MED-002 F01: G4 marca ${medidaG4} y cierra la app antes de 1,5 s; su grafica_vista queda antes de sesion_terminada (G4: ${JSON.stringify(vistasDe('G4'))})`);
 
   // AUD-04-V1: al simular con el monitor serial conectado, la placa se desconecta antes de empezar. Si el equipo cambia
   // mientras se cierra el puerto, la simulación no empieza para el equipo nuevo. El puerto es un objeto de prueba cuyo

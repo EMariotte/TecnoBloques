@@ -66,7 +66,7 @@ const NECESITA = {
   simulacion_iniciada: { placa: 'string', modo: 'string', circuito: 'object' }, simulacion_detenida: { fallas: 'array' },
   simulacion_pausada: {}, simulacion_reanudada: {}, falla: { tipo: 'string', componente: 'string' }, reinicio_placa: { motivo: 'string' },
   componente_agregado: { id: 'string', tipo: 'string' }, componente_quitado: { id: 'string' }, componente_cambiado: { id: 'string' },
-  cable_agregado: {}, cable_quitado: {}, boton_pulsado: { id: 'string' },
+  cable_agregado: {}, cable_quitado: {}, boton_pulsado: { id: 'string' }, grafica_vista: { medidas: 'array' },
 };
 const DEL_CIRCUITO = new Set(['componente_agregado', 'componente_quitado', 'componente_cambiado', 'cable_agregado', 'cable_quitado']);
 const esDe = (v, tipo) => (tipo === 'array' ? Array.isArray(v) : tipo === 'object' ? !!v && typeof v === 'object' && !Array.isArray(v)
@@ -828,6 +828,8 @@ function contarSesion({ sesion, equipo, segmentos, dudas: dudasDelGrupo, sinComp
         paso(t, `Cambió la placa: ${datos.de} → ${datos.a}.`);
         break;
       case 'ejemplo_cargado': aperturas++; paso(t, `Abrió el ejemplo «${datos.id}».`); break;
+      // MED-002: qué miró en la gráfica de mediciones (solo los ids, sin valores ni tiempos)
+      case 'grafica_vista': paso(t, datos.medidas.length ? `Miró en la gráfica: ${datos.medidas.join(', ')}.` : 'Abrió la gráfica de mediciones.'); break;
       case 'proyecto_abierto': aperturas++; usar(datos.placa); paso(t, `Abrió un proyecto (${datos.placa}).`); break;
       case 'codigo_compilado': {
         let texto = datos.ok ? `Compiló: bien${datos.bytes ? `, ${datos.bytes} bytes` : ''}` : `Compiló: con error${datos.error ? ` (${datos.error})` : ''}`;

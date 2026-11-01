@@ -74,6 +74,8 @@ pasar(3); sim('falla', 3, 2900, { tipo: 'corriente_pin', componente: 'placa' });
 circuito('boton_pulsado', { id: 'btn1', ms: 300 });
 circuito('boton_pulsado', { id: 'btn1', ms: 250 });
 sim('reinicio_placa', 3, 3100, { motivo: 'energia_usb', nuevos: 3, total: 3 });
+circuito('grafica_vista', { medidas: [] }); // MED-002: abrió la gráfica y marcó dos medidas
+circuito('grafica_vista', { medidas: ['D13.corriente', 'placa_5V.corriente'] });
 pasar(20); sim('simulacion_detenida', 3, 23000, { ms_sim: 23000, fallas: [{ tipo: 'corriente_pin', componente: 'placa' }] });
 pasar(120); registro.terminar();
 
@@ -130,6 +132,8 @@ const esperado = [
   '10:07     falla: corriente del pin (placa), a los 2,9 s simulados.',
   '10:07  Pulsó btn1 2 veces.',
   '10:07     la placa se reinició (energía del USB, 3 veces).',
+  '10:07  Abrió la gráfica de mediciones.',
+  '10:07  Miró en la gráfica: D13.corriente, placa_5V.corriente.',
   '10:07  ■ Corrida 3 terminó: 23,0 s simulados. Fallas: corriente del pin (placa). Nuevas: corriente del pin (placa).',
   '10:09  Terminó la sesión (10 min).',
   'Resumen: 3 corrida(s). Fallas vistas: LED quemado (led1), corriente del pin (placa). Corregidas al final: LED quemado (led1). Sin corregir: corriente del pin (placa).',

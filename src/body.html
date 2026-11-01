@@ -126,11 +126,18 @@
               <button type="button" class="btn chico plegar" id="btnPlegarMediciones" aria-expanded="true" aria-controls="cuerpoMediciones" title="Ocultar las mediciones para tener más espacio para el circuito">Ocultar ▸</button>
             </div>
             <div id="cuerpoMediciones">
+            <div class="pestanas-med" role="tablist" aria-label="Mediciones" id="pestanasMediciones" hidden>
+              <button type="button" role="tab" id="tabTablaMed" aria-selected="true" aria-controls="vistaTablaMed">Tabla</button>
+              <button type="button" role="tab" id="tabGraficaMed" aria-selected="false" aria-controls="graficaMediciones">Gráfica</button>
+            </div>
+            <div id="vistaTablaMed" role="tabpanel" aria-labelledby="tabTablaMed">
             <p class="muted" id="notaMediciones">Pulsa Simular para ver el voltaje y la corriente de cada pieza, como con un multímetro.</p>
             <table id="tablaMediciones" hidden>
               <thead><tr><th>Pieza</th><th>Voltaje</th><th>Corriente</th></tr></thead>
               <tbody></tbody>
             </table>
+            </div>
+            <div id="graficaMediciones" role="tabpanel" aria-labelledby="tabGraficaMed" hidden></div>
             </div>
           </aside>
         </div>

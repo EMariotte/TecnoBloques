@@ -796,6 +796,7 @@ function cambiarVista(v) {
   $('btnAmpliarCircuito').title = v === 'circuito' ? 'Volver a ver los bloques al lado' : 'Ver solo el circuito, en toda la ventana';
   setTimeout(() => { if (espacio) Blockly.svgResize(espacio); }, 30);
   guardarPreferencias({ vista: v });
+  actualizarGrafica();
 }
 function ponerPestanas(p) {
   pestanaActual = p;
@@ -1551,6 +1552,7 @@ const simulador = {
   codigo: '', // el C++ que se está simulando, para avisar si el programa cambió
   compilando: false,
   eventos: [], // los últimos eventos del lienzo y del simulador, en memoria (el registro en disco va aparte)
+  grafica: null, // la gráfica de mediciones en el tiempo (TecnoCircuito.crearGrafica, MED-002), si el paquete la trae
   reloj: 0
 };
 function registrarEventoSim(ev) {
@@ -1800,13 +1802,15 @@ function confirmarEquipo(codigo) {
 }
 /**
  * Antes de que termine la sesión de un equipo (cambia el código, el instructor apaga el registro o se cierra la app):
- * una compilación en curso deja de ser suya, su resumen de bloques pendiente se escribe ya y su simulación se detiene
- * (AUD-04). La promesa se cumple cuando sale su simulacion_detenida, con todas las fallas de la corrida (AUD-03): quien
- * cierra la sesión la espera. Se cumple con true si detuvo una simulación. Al cerrar la ventana no se puede esperar:
+ * una compilación en curso deja de ser suya, su resumen de bloques y su grafica_vista pendientes se escriben ya y su
+ * simulación se detiene (AUD-04). La promesa se cumple cuando sale su simulacion_detenida, con todas las fallas de la
+ * corrida (AUD-03): quien cierra la sesión la espera. Se cumple con true si detuvo una simulación. Al cerrar la ventana no se puede esperar:
  * { sinEsperar: true } saca el cierre en el mismo instante.
  */
 function cerrarTrabajoDelEquipo(opciones) {
   const habiaSimulacion = !!simulador.sim;
+  // Las medidas que el equipo acaba de marcar en la gráfica son suyas: su grafica_vista sale ya (MED-002, F01)
+  if (simulador.grafica && simulador.grafica.publicarPendiente) simulador.grafica.publicarPendiente();
   turnoEquipo++;
   if (tResumenBloques) escribirResumenBloques();
   return detenerSimulacion(opciones).then(() => habiaSimulacion);
@@ -2099,6 +2103,7 @@ async function simular() {
     $('fallasSim').innerHTML = ''; $('fallasSim').hidden = true;
     simulador.sim = sim;
     simulador.codigo = codigo;
+    if (simulador.grafica) simulador.grafica.conectar(sim); // la gráfica empieza de cero con cada simulación
     lineaEspecial('Simulación: aquí sale lo que imprime el programa simulado, y lo que envíes le llega a él.', 'sistema');
     sim.iniciar();
   } catch (e) {
@@ -2135,6 +2140,23 @@ function plegarMediciones(plegado, guardar = true) {
   b.title = plegado ? 'Mostrar las mediciones (voltaje y corriente de cada pieza)' : 'Ocultar las mediciones para tener más espacio para el circuito';
   if (!plegado) pintarMediciones();
   if (guardar) guardarPreferencias({ medicionesPlegado: plegado });
+  actualizarGrafica();
+}
+/** Mediciones en dos pestañas (MED-002): la tabla y la gráfica en el tiempo. La gráfica solo se dibuja a la vista, y
+ *  al abrirla deja en el registro `grafica_vista` con las medidas marcadas (sin valores: decisión de Efraín). */
+let pestanaMediciones = 'tabla';
+function verPestanaMediciones(p) {
+  pestanaMediciones = p;
+  const esGrafica = p === 'grafica';
+  $('tabTablaMed').setAttribute('aria-selected', String(!esGrafica));
+  $('tabGraficaMed').setAttribute('aria-selected', String(esGrafica));
+  $('vistaTablaMed').hidden = esGrafica;
+  $('graficaMediciones').hidden = !esGrafica;
+  actualizarGrafica();
+}
+function actualizarGrafica() {
+  if (!simulador.grafica) return;
+  simulador.grafica.mostrar(estado.vista === 'circuito' && !$('cuerpoMediciones').hidden && pestanaMediciones === 'grafica');
 }
 function enviarSim(texto) {
   if (!simulador.sim) { mostrarToast('Pulsa «Simular» primero.'); return; }
@@ -2162,6 +2184,7 @@ function detenerSimulacion(opciones) {
   let fin;
   try { fin = sim.destruir ? sim.destruir(opciones) : sim._destruir ? sim._destruir(opciones) : sim.detener(); } catch (e) { /* ya estaba detenida */ }
   if (soltar) {
+    if (simulador.grafica) simulador.grafica.desconectar(); // conserva lo que tiene: se puede mirar y exportar
     uiSimulador();
     pintarMediciones();
     uiSerial();
@@ -2321,6 +2344,13 @@ function iniciar() {
     setInterval(pintarMediciones, 250); // la tabla se pinta solo con el circuito ampliado
     $('btnPlegarSerialSim').addEventListener('click', () => plegarSerialSim(!$('cuerpoSerialSim').hidden));
     $('btnPlegarMediciones').addEventListener('click', () => plegarMediciones(!$('cuerpoMediciones').hidden));
+    // La gráfica de mediciones viene con el paquete (contrato 1, aditivo desde MED-002): un paquete anterior no la trae
+    if (typeof TecnoCircuito.crearGrafica === 'function') {
+      simulador.grafica = TecnoCircuito.crearGrafica($('graficaMediciones'), { alEvento: registrarEventoSim });
+      $('pestanasMediciones').hidden = false;
+      $('tabTablaMed').addEventListener('click', () => verPestanaMediciones('tabla'));
+      $('tabGraficaMed').addEventListener('click', () => verPestanaMediciones('grafica'));
+    }
     plegarSerialSim(!!(pref && pref.serialSimPlegado), false);
     plegarMediciones(!!(pref && pref.medicionesPlegado), false);
     $('formSim').addEventListener('submit', (e) => {

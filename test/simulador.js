@@ -342,10 +342,73 @@ const LIENZO = "document.querySelector('#lienzoCircuito .tecnocircuito').shadowR
   const vueltos = await win.evaluate(() => ({ serial: !$('cuerpoSerialSim').hidden, med: !$('cuerpoMediciones').hidden, punto: $('nuevoSerialSim').hidden, ancho: $('lienzoCircuito').clientWidth }));
   revisar(aviso && vueltos.serial && vueltos.med && vueltos.punto && vueltos.ancho === anchoAntes,
     'recogido, el monitor avisa con un punto que llegó texto; al mostrarlos vuelven como estaban');
+  // 4g. La gráfica de mediciones en el tiempo (MED-002): segunda pestaña de Mediciones, de TecnoCircuito.crearGrafica.
+  // Al abrirla queda en el registro grafica_vista (sin medidas); al marcar, otro con las marcadas, sin valores.
+  await win.locator('#tabGraficaMed').click();
+  await win.waitForTimeout(400);
+  const g1 = await win.evaluate(() => ({
+    pestana: !$('pestanasMediciones').hidden && !$('graficaMediciones').hidden && $('vistaTablaMed').hidden,
+    estado: simulador.grafica && simulador.grafica.estado(),
+    vistas: simulador.eventos.filter((e) => e.tipo === 'grafica_vista').map((e) => e.datos.medidas),
+  }));
+  revisar(g1.pestana && g1.estado && g1.estado.conectada && g1.estado.medidas.includes('D9.voltaje') && g1.vistas.length === 1 && g1.vistas[0].length === 0,
+    `la pestaña «Gráfica» abre la gráfica conectada a la simulación (${g1.estado ? g1.estado.medidas.length : 0} medidas) y deja grafica_vista sin medidas`);
+  await win.locator('#graficaMediciones [data-medida="D9.voltaje"]').click();
+  await win.locator('#graficaMediciones [data-medida="D9.corriente"]').click();
+  await win.waitForTimeout(2200);
+  const g2 = await win.evaluate(() => ({
+    estado: simulador.grafica.estado(),
+    ultimo: simulador.eventos.filter((e) => e.tipo === 'grafica_vista').pop(),
+    lienzo: (() => { const c = $('graficaMediciones').querySelector('canvas'); return !!c && c.width > 0; })(),
+  }));
+  revisar(JSON.stringify(g2.estado.marcadas) === '["D9.voltaje","D9.corriente"]' && JSON.stringify(g2.ultimo.datos) === '{"medidas":["D9.voltaje","D9.corriente"]}'
+    && g2.ultimo.origen === 'circuito' && g2.estado.ventana.filas > 10 && g2.lienzo,
+    `marcar el voltaje y la corriente del pin 9: se grafican (${g2.estado.ventana.filas} muestras) y el registro guarda solo las medidas`);
+  await win.screenshot({ path: path.join(SALIDA, 'sim_6b_grafica.png') });
+  // F01 (verificación de Codex, 1 nov): marcar y salir de la gráfica antes de 1,5 s (volver a Tabla, plegar el panel o
+  // cambiar de vista) deja la selección en el registro en ese momento, una sola vez
+  const vistasGrafica = () => win.evaluate(() => simulador.eventos.filter((e) => e.tipo === 'grafica_vista').map((e) => e.datos.medidas));
+  const [otraV, otraI] = await win.evaluate(() => {
+    const ms = simulador.grafica.estado().medidas.filter((k) => !k.startsWith('D9.'));
+    return [ms.find((k) => k.endsWith('.voltaje')), ms.find((k) => k.endsWith('.corriente'))];
+  });
+  const salidas = [
+    ['volver a Tabla', otraV, () => win.locator('#tabTablaMed').click(), () => win.locator('#tabGraficaMed').click()],
+    ['plegar el panel', otraV, () => win.locator('#btnPlegarMediciones').click(), () => win.locator('#btnPlegarMediciones').click()],
+    ['pasar a la vista dividida', otraI, () => win.evaluate(() => cambiarVista('dividido')), () => win.evaluate(() => cambiarVista('circuito'))],
+  ];
+  for (const [como, medida, salir, volver] of salidas) {
+    const n = (await vistasGrafica()).length;
+    await win.locator(`#graficaMediciones [data-medida="${medida}"]`).click();
+    const marcadas = await win.evaluate(() => simulador.grafica.estado().marcadas);
+    await salir();
+    await win.waitForTimeout(100);
+    const alSalir = await vistasGrafica();
+    await win.waitForTimeout(1700);
+    const despues = (await vistasGrafica()).length;
+    await volver();
+    await win.waitForTimeout(300);
+    revisar(alSalir.length === n + 1 && JSON.stringify(alSalir[n]) === JSON.stringify(marcadas) && despues === n + 1,
+      `F01: marcar y ${como} antes de 1,5 s deja la selección al instante, una sola vez (${JSON.stringify(alSalir[n])})`);
+  }
+  await win.locator(`#graficaMediciones [data-medida="${otraI}"]`).click(); // vuelve a D9.voltaje y D9.corriente
+  await win.waitForTimeout(1700);
+  const revisorEventos = path.join(RAIZ, '..', 'TecnoCircuito', 'prototipo', 'pruebas', 'contrato_eventos.js');
+  if (!fs.existsSync(revisorEventos)) console.log('      (sin ../TecnoCircuito: no se revisan los eventos contra el contrato)');
+  else {
+    const archivo = path.join(SALIDA, 'sim_grafica_eventos.json');
+    fs.writeFileSync(archivo, JSON.stringify(await win.evaluate(() => simulador.eventos.filter((e) => e.tipo === 'grafica_vista'))));
+    const r = require('child_process').spawnSync(process.execPath, [revisorEventos, '--emitidos', archivo], { encoding: 'utf8' });
+    revisar(r.status === 0, 'los eventos grafica_vista cumplen contrato/evento.schema.json de TecnoCircuito' + (r.status === 0 ? '' : ': ' + (r.stdout + r.stderr).trim()));
+  }
+  await win.locator('#tabTablaMed').click();
+  revisar(await win.evaluate(() => !$('vistaTablaMed').hidden && $('graficaMediciones').hidden), 'la pestaña «Tabla» vuelve a la tabla');
   await win.evaluate(() => cambiarVista('dividido'));
   const oculto = await win.evaluate(() => getComputedStyle($('panelMediciones')).display === 'none');
   revisar(oculto, 'en la vista dividida el panel de mediciones no aparece (el panel de la derecha es angosto)');
   await win.evaluate(() => detenerSimulacion());
+  const detenida = await win.evaluate(() => simulador.grafica.estado());
+  revisar(!detenida.conectada && detenida.muestras > 10, `al detener, la gráfica deja de tomar muestras y conserva las ${detenida.muestras}`);
 
   // 4f. Monitor para analizar: el gráfico y el CSV, con «Validar: ruido de analogRead()» (imprime min, max,
   //     promedio y desviacion cada medio segundo)
