@@ -1505,3 +1505,7 @@ Viene de TecnoCircuito (SERVO-001, con LAB-001): sin golpe de arranque, el Uno c
 ## 2026-11-01 — SERVO-002: cada servo con su desviación propia
 
 Viene de TecnoCircuito (SERVO-002, decisión de Efraín): cada servo del lienzo tiene una desviación propia de −5° a +5° en cada límite, que se ve en su ficha y se guarda en el proyecto (`props.desviacion`, contrato 1, aditivo). Un proyecto guardado sin ella la recibe la primera vez que se abre; queda guardada cuando el equipo guarda el proyecto. Aquí no cambia código.
+
+## 2026-11-01 — 0.5.0 con TecnoCircuito v0.4.0 (DIST-003)
+
+Con el sí de Efraín (1 nov) a la versión y a su publicación. `package.json` sube a 0.5.0 y depende de `github:EMariotte/TecnoCircuito#v0.4.0` (resuelta a `f1d2617`; hizo falta `npm install` con la etiqueta, porque el lock seguía en la 0.3.1). Con el build normal (simulador de la etiqueta): `npm test` sin errores, `compilar` y `test:app` sin errores; además `test:simulador` 68, `test:registro-app` 136, `test:graficador` 28 y `test:historia` 228. Commit `b816e27`. Sigue el instalador y la verificación del candidato por Codex antes de publicar el Release.
