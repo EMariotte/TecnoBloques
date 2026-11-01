@@ -1501,3 +1501,7 @@ Pedido de Efraín (29 oct). El panel de Mediciones (vista Circuito) tiene ahora 
 ## 2026-11-01 — SERVO-001: los servos ya no reinician la placa con seis
 
 Viene de TecnoCircuito (SERVO-001, con LAB-001): sin golpe de arranque, el Uno con 6 SG90 no se reinicia, como el real (que tampoco se reinició con 6 SG90 y 4 MG90S). Aquí cambian solo los textos de «Validar: seis servos en el USB» y «Validar: cuatro servos en el USB», que decían que la placa se reinicia.
+
+## 2026-11-01 — SERVO-002: cada servo con su desviación propia
+
+Viene de TecnoCircuito (SERVO-002, decisión de Efraín): cada servo del lienzo tiene una desviación propia de −5° a +5° en cada límite, que se ve en su ficha y se guarda en el proyecto (`props.desviacion`, contrato 1, aditivo). Un proyecto guardado sin ella la recibe la primera vez que se abre; queda guardada cuando el equipo guarda el proyecto. Aquí no cambia código.
