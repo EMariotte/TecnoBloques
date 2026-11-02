@@ -192,7 +192,7 @@ npm run test:placas -- uno:COM12:eco:monitor nano:COM5:otto   # con placas reale
 npm run app:simulador            # la app con la copia local del simulador (pestaña «Circuito» y botón «Simular»)
 npm run test:simulador           # prueba la integración: compila programas de bloques y los simula (comprobaciones de integración)
 npm run instalador               # arma %LOCALAPPDATA%\TecnoBloques-build\TecnoBloques-Setup-<versión>.exe
-npm run publicar                 # arma y sube el Release a GitHub (necesita GH_TOKEN; ver "Publicar una versión")
+npm run publicar                 # ya no publica (DIST-003): el Release se crea con gh release create; ver "Publicar una versión"
 ```
 
 - **Después de cada cambio en `src/` hay que correr `npm run build`.** El HTML de `dist/` no se actualiza solo.
@@ -453,8 +453,9 @@ Un solo archivo JSON lleva todo lo necesario para **abrir el proyecto en otro co
 
 1. Sube `version` en `package.json` (por ejemplo 0.2.0 → 0.2.1). Las apps instaladas solo se actualizan si la versión es mayor.
 2. `npm test`, `npm run compilar` y `npm run test:app`.
-3. `npm run instalador` y prueba el `.exe`: `node test/app-empaquetada.js "%LOCALAPPDATA%\TecnoBloques-build\win-unpacked"` y, con placas conectadas, `TB_EXE=<win-unpacked>\TecnoBloques.exe npm run test:placas -- …`.
-4. Crea el Release `v<versión>` en GitHub con estos 3 archivos: `TecnoBloques-Setup-<versión>.exe`, `TecnoBloques-Setup-<versión>.exe.blockmap` y `latest.yml`. Se puede hacer con `gh release create v<versión> <archivos> --title … --notes …`, o con `npm run publicar` y `GH_TOKEN`.
+3. `npm run instalador` (al final revisa el contenido con `escritorio/revisar-paquete.js`: sin el inventario ni las cachés de Arduino del PC, y con avr8js en el NOTICE; si algo falla, no termina) y prueba el `.exe`: `node test/app-empaquetada.js "%LOCALAPPDATA%\TecnoBloques-build\win-unpacked"` y, con placas conectadas, `TB_EXE=<win-unpacked>\TecnoBloques.exe npm run test:placas -- …`.
+4. Codex verifica el candidato exacto (hashes).
+5. Crea el Release `v<versión>` en GitHub con estos 3 archivos: `TecnoBloques-Setup-<versión>.exe`, `TecnoBloques-Setup-<versión>.exe.blockmap` y `latest.yml`, con `gh release create v<versión> <archivos> --title … --notes …`. `npm run publicar` ya no publica (DIST-003): electron-builder subiría el Release en el mismo paso, antes de revisar nada.
 
 ### Marca (`marca/`)
 

@@ -34,14 +34,27 @@ if (html.includes('window.TB_SIMULADOR_ORIGEN = "etiqueta"')) {
     process.exit(1);
   }
 }
+// Publicar va después de revisar el instalador (abajo) y de que Codex verifique el candidato: el Release se crea con
+// `gh release create` (DIST-003). electron-builder publicaría en el mismo paso, antes de cualquier revisión.
+if (process.argv.includes('--publicar')) {
+  console.error('No se publica desde aquí: arma con «npm run instalador», que revisa el contenido, y publica el Release con gh release create (DIST-003).');
+  process.exit(1);
+}
 const salida = path.join(process.env.LOCALAPPDATA || path.join(raiz, '..'), 'TecnoBloques-build');
 fs.rmSync(salida, { recursive: true, force: true });
 
 const env = Object.assign({}, process.env, { CSC_IDENTITY_AUTO_DISCOVERY: 'false' }); // sin certificado de firma por ahora
 delete env.ELECTRON_RUN_AS_NODE; // si VS Code la deja puesta, Electron no arranca como app
-const publicar = process.argv.includes('--publicar');
-const r = spawnSync(process.execPath, [require.resolve('electron-builder/cli.js'), '--win', '--publish', publicar ? 'always' : 'never',
+const r = spawnSync(process.execPath, [require.resolve('electron-builder/cli.js'), '--win', '--publish', 'never',
   `-c.directories.output=${salida}`], { cwd: raiz, env, stdio: 'inherit' });
 if (r.status !== 0) process.exit(r.status || 1);
+// Lo que se distribuye (DIST-003): sin el inventario ni las cachés de Arduino de este PC, y con avr8js en el NOTICE.
+// win-unpacked es lo mismo que lleva el instalador.
+const problemas = require('./revisar-paquete.js').revisarPaquete(path.join(salida, 'win-unpacked'));
+if (problemas.length) {
+  console.error('\nEl instalador no se puede distribuir así:\n- ' + problemas.join('\n- '));
+  process.exit(1);
+}
+console.log('Contenido revisado: sin inventario ni cachés de Arduino de este PC, y el NOTICE nombra avr8js.');
 const exe = fs.readdirSync(salida).find(f => /^TecnoBloques-Setup-.*\.exe$/.test(f));
 console.log(`\nInstalador listo: ${path.join(salida, exe)} (${(fs.statSync(path.join(salida, exe)).size / 1048576).toFixed(0)} MB)`);

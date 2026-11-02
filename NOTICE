@@ -7,6 +7,11 @@ TecnoAcademia Tolima (SENA, SENNOVA).
 Este producto incluye software desarrollado por Google LLC:
 Blockly (https://developers.google.com/blockly), licencia Apache 2.0.
 
+Incluye TecnoCircuito (https://github.com/EMariotte/TecnoCircuito), el simulador de
+circuitos, de la misma autoría y con licencia Apache 2.0; su aviso completo va en
+node_modules/tecnocircuito/NOTICE. TecnoCircuito embebe avr8js
+(https://github.com/wokwi/avr8js), Copyright Uri Shaked, licencia MIT.
+
 Incluye las fuentes Atkinson Hyperlegible (Copyright 2020 Braille Institute
 of America, Inc.) y JetBrains Mono (Copyright 2020 The JetBrains Mono Project
 Authors), con la licencia SIL Open Font License 1.1; sus textos están en

@@ -64,7 +64,13 @@
     "extraResources": [
       {
         "from": "escritorio/recursos/arduino",
-        "to": "arduino"
+        "to": "arduino",
+        "filter": [
+          "**/*",
+          "!datos/inventory.yaml",
+          "!datos/staging/**",
+          "!datos/tmp/**"
+        ]
       },
       {
         "from": "escritorio/recursos/drivers",
