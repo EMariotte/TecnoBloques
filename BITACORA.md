@@ -1520,3 +1520,7 @@ Hallazgo de Codex. En `test/registro-app.js`, AUD-19 leía el autoguardado a los
 
 Hallazgo de Codex en DIST-003. `test/app.js` y `test/app-empaquetada.js` solo salían distinto de 0 con errores de JavaScript: si la app no compilaba, salían con 0. Ahora comprueban cada paso (versión, compilación, «No se pudo abrir COM99», el error de C++ con «velocidad»; en la empaquetada, que es la empaquetada con el Arduino del paquete, el título y la compilación) y salen con 1 ante cualquier falla. Solo cambian las pruebas. AUD-28 y AUD-29 verificadas por Codex (COD-20261101-023).
 
+## 2026-11-01 — AUD-30: el brillo del LED se lee de un dibujo nuevo
+
+Incidencia de tiempos en `test:simulador` (sección 3, T2): a veces el LED salía al 38 % en vez de 41,8 %. El núcleo da el brillo correcto desde los 48 ms; el problema era la prueba: leía `data-brillo` del dibujo, que se pinta en el cuadro de animación siguiente a cada foto, y con la ventana tapada o el PC ocupado ese cuadro se atrasa. Ahora trae la ventana al frente y espera dos cuadros nuevos (hasta 5 s); si no se dibujan, falla diciéndolo. Se conservan el valor esperado y el margen. Solo cambia la prueba.
+

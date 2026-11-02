@@ -165,8 +165,17 @@ const LIENZO = "document.querySelector('#lienzoCircuito .tecnocircuito').shadowR
     const util = m && m.pwm ? m.pwm.D9 || 0 : 0;
     const esperado = Math.floor(Math.min(1023, Math.round(posicion * 1024)) / 4) / 255;
     revisar(listo && Math.abs(util - esperado) < 0.01, `perilla al ${posicion * 100} %: el pin 9 queda con PWM al ${(util * 100).toFixed(1)} % (esperado ${(esperado * 100).toFixed(1)} %)`);
+    // AUD-30: el brillo se lee del dibujo del LED, que se pinta en el cuadro de animación que sigue a cada foto. Con la
+    // ventana tapada o el PC ocupado, Chromium atrasa esos cuadros y el dibujo puede ser de los primeros ms (cuando el
+    // brillo todavía subía). Se trae la ventana al frente y se espera a que se dibujen dos cuadros nuevos, hasta 5 s.
+    await win.bringToFront();
+    const dibujado = await win.evaluate(() => new Promise((listo) => {
+      const limite = setTimeout(() => listo(false), 5000);
+      requestAnimationFrame(() => requestAnimationFrame(() => { clearTimeout(limite); listo(true); }));
+    }));
     const brillo = await win.evaluate(`Number(${LIENZO}.querySelector('.tc-comp[data-tipo="led"] svg').dataset.brillo)`);
-    revisar(Math.abs(brillo - (0.0125 * esperado * 1000) / 15) < 0.03, `  y el LED brilla al ${(brillo * 100).toFixed(0)} %`);
+    revisar(dibujado && Math.abs(brillo - (0.0125 * esperado * 1000) / 15) < 0.03,
+      `  y el LED brilla al ${(brillo * 100).toFixed(0)} %${dibujado ? '' : ' (el lienzo no se volvió a dibujar en 5 s)'}`);
     if (posicion === 0.5) await win.screenshot({ path: path.join(SALIDA, 'sim_2_t2.png') });
   }
 
