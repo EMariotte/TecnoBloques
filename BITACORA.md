@@ -1511,3 +1511,12 @@ Viene de TecnoCircuito (SERVO-002, decisión de Efraín): cada servo del lienzo 
 Con el sí de Efraín (1 nov) a la versión y a su publicación. `package.json` sube a 0.5.0 y depende de `github:EMariotte/TecnoCircuito#v0.4.0` (resuelta a `f1d2617`; hizo falta `npm install` con la etiqueta, porque el lock seguía en la 0.3.1). Con el build normal (simulador de la etiqueta): `npm test` sin errores, `compilar` y `test:app` sin errores; además `test:simulador` 68, `test:registro-app` 136, `test:graficador` 28 y `test:historia` 228. Commit `b816e27`. Sigue el instalador y la verificación del candidato por Codex antes de publicar el Release.
 
 **1 nov, devolución de Codex del candidato 1 (F01 y F02) y publicación.** El NOTICE nombra TecnoCircuito y avr8js (MIT). El instalador ya no lleva el inventario de Arduino del PC donde se arma (id y secreto) ni sus cachés; `escritorio/revisar-paquete.js` revisa el contenido final y `empaquetar.js` no termina si falla; `npm run publicar` ya no publica. Candidato 2 (sha256 `d507f009…`, 176 MB) verificado por Codex (COD-20261101-019). **Release `v0.5.0` publicado** el 1 nov con los tres archivos verificados (tag en `841e1f2`); las apps instaladas se actualizan solas.
+
+## 2026-11-01 — AUD-28: la prueba AUD-19 espera el autoguardado
+
+Hallazgo de Codex. En `test/registro-app.js`, AUD-19 leía el autoguardado a los 900 ms fijos. Si llegaba tarde (PC ocupado), leía el del proyecto anterior y `.includes` sobre `null` cortaba toda la corrida después de 112 OK. Ahora, pasados los 900 ms (que dejan correr el temporizador viejo, lo que AUD-19 prueba), espera hasta 10 s a que el autoguardado sea el del último proyecto; si no llega, la comprobación falla con el motivo y la corrida sigue. Lo mismo en los dos rechazos (modo texto y bloques). Solo cambia la prueba.
+
+## 2026-11-01 — AUD-29: las pruebas de la app fallan si la app no compila
+
+Hallazgo de Codex en DIST-003. `test/app.js` y `test/app-empaquetada.js` solo salían distinto de 0 con errores de JavaScript: si la app no compilaba, salían con 0. Ahora comprueban cada paso (versión, compilación, «No se pudo abrir COM99», el error de C++ con «velocidad»; en la empaquetada, que es la empaquetada con el Arduino del paquete, el título y la compilación) y salen con 1 ante cualquier falla. Solo cambian las pruebas. AUD-28 y AUD-29 verificadas por Codex (COD-20261101-023).
+

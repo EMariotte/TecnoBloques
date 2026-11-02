@@ -24,4 +24,13 @@ const path = require('path');
   console.log(JSON.stringify(r));
   console.log('ERRORES:', errores);
   await app.close();
+  // AUD-29: salida distinta de 0 si la app empaquetada no abre como tal, no compila o tiene errores de página
+  const fallas = [];
+  const revisar = (condicion, texto) => { console.log((condicion ? 'OK    ' : 'FALLA ') + texto); if (!condicion) fallas.push(texto); };
+  revisar(r.info && r.info.empaquetada === true && r.info.arduino === 'paquete', `es la app empaquetada, con el Arduino del paquete (${JSON.stringify(r.info)})`);
+  revisar(r.titulo === `TecnoBloques ${r.info && r.info.version}`, `el título dice su versión («${r.titulo}»)`);
+  revisar(r.compila === true && !!r.memoria, `compila el ejemplo (${r.ms} ms)`);
+  revisar(!errores.length, 'sin errores de JavaScript en la página');
+  console.log(fallas.length ? `\n${fallas.length} FALLA(S)` : '\nTODO BIEN');
+  process.exit(fallas.length ? 1 : 0);
 })().catch((e) => { console.error(e); process.exit(1); });

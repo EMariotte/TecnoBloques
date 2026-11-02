@@ -9,6 +9,13 @@ const RAIZ = path.join(__dirname, '..');
 const SALIDA = path.join(__dirname, 'salida');
 fs.mkdirSync(SALIDA, { recursive: true });
 
+// AUD-29: cada paso se comprueba; una falla funcional (no compila, el error no es el esperado) da salida distinta de 0
+const fallas = [];
+function revisar(condicion, texto) {
+  console.log((condicion ? 'OK    ' : 'FALLA ') + texto);
+  if (!condicion) fallas.push(texto);
+}
+
 (async () => {
   // Si ELECTRON_RUN_AS_NODE está puesta (la pone VS Code en algunas terminales), Electron arranca como Node sin ventana
   const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'ELECTRON_RUN_AS_NODE'));
@@ -27,6 +34,8 @@ fs.mkdirSync(SALIDA, { recursive: true });
     opciones: [...document.querySelectorAll('#puerto option')].map(o => o.textContent)
   }));
   console.log('app:', JSON.stringify(info));
+  const version = require('../package.json').version;
+  revisar(info.puente && info.info && info.info.version === version, `la app abre con el puente del escritorio y la versión ${version} (${info.info && info.info.version})`);
   await win.screenshot({ path: path.join(SALIDA, 'app_1_inicio.png') });
 
   // Compilar el ejemplo del carro (sin subir)
@@ -37,6 +46,7 @@ fs.mkdirSync(SALIDA, { recursive: true });
     return { ok: r.ok, memoria: r.memoria, ms: Date.now() - t };
   });
   console.log('compilar carro:', JSON.stringify(comp));
+  revisar(comp.ok === true && !!comp.memoria, `compila el ejemplo del carro (${comp.ms} ms)`);
 
   // Subir a un puerto que no existe → mensaje claro
   await win.evaluate(() => {
@@ -48,7 +58,9 @@ fs.mkdirSync(SALIDA, { recursive: true });
   await win.waitForSelector('#modal:not([hidden]) .subir-barra');
   await win.screenshot({ path: path.join(SALIDA, 'app_2_subiendo.png') });
   await win.waitForFunction(() => !document.querySelector('#modal .subir-barra'), null, { timeout: 120000 });
-  console.log('puerto falso →', await win.textContent('#modalTitulo'));
+  const tituloPuerto = await win.textContent('#modalTitulo');
+  console.log('puerto falso →', tituloPuerto);
+  revisar(/No se pudo abrir/.test(tituloPuerto) && /COM99/.test(tituloPuerto), `subir a un puerto que no existe dice que no se pudo abrir COM99 («${tituloPuerto}»)`);
   await win.screenshot({ path: path.join(SALIDA, 'app_3_error_puerto.png') });
   await win.evaluate(() => cerrarModal(false));
 
@@ -60,10 +72,15 @@ fs.mkdirSync(SALIDA, { recursive: true });
     subirPlaca(true);
   });
   await win.waitForFunction(() => !document.querySelector('#modal .subir-barra') && !document.getElementById('modal').hidden, null, { timeout: 120000 });
-  console.log('error C++ →', await win.textContent('#modalTitulo'), '|', (await win.textContent('#modalCuerpo')).slice(0, 220));
+  const tituloCpp = await win.textContent('#modalTitulo');
+  const cuerpoCpp = await win.textContent('#modalCuerpo');
+  console.log('error C++ →', tituloCpp, '|', cuerpoCpp.slice(0, 220));
+  revisar(/tiene un error/.test(tituloCpp) && /"velocidad" no existe/.test(cuerpoCpp), `el C++ inválido dice que el programa tiene un error y que «velocidad» no existe («${tituloCpp}»)`);
   await win.screenshot({ path: path.join(SALIDA, 'app_4_error_cpp.png') });
 
   console.log('ERRORES:', errores);
+  revisar(!errores.length, 'sin errores de JavaScript en la página');
   await app.close();
-  process.exit(errores.length ? 1 : 0);
+  console.log(fallas.length ? `\n${fallas.length} FALLA(S)` : '\nTODO BIEN');
+  process.exit(fallas.length ? 1 : 0);
 })().catch((e) => { console.error(e); process.exit(1); });

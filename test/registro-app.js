@@ -827,8 +827,13 @@ const LED = {
   });
   const seguidos = (...textos) => win.evaluate(async (ts) => {
     const r = ts.map((texto, i) => cargarProyecto({ app: 'TecnoBloques', placa: 'uno', nivel: 3, nombre: 'P' + i, texto, bloques: { blocks: { languageVersion: 0, blocks: [] } } }, true));
-    await new Promise((fin) => setTimeout(fin, 900)); // pasan los 200 ms del temporizador de antes y el autoguardado
-    return r;
+    await new Promise((fin) => setTimeout(fin, 900)); // pasan los 200 ms del temporizador de antes
+    // AUD-28: el autoguardado (600 ms después del último cambio) puede tardar más en un PC ocupado. Se espera a que sea
+    // el del último proyecto, hasta 10 s, en vez de suponer que ya está; si no llega, la comprobación lo dice.
+    const ultimo = 'P' + (ts.length - 1);
+    const limite = Date.now() + 10000;
+    while ((leerLocal(CLAVE_AUTO) || {}).nombre !== ultimo && Date.now() < limite) await new Promise((fin) => setTimeout(fin, 100));
+    return { abiertos: r, autoguardado: (leerLocal(CLAVE_AUTO) || {}).nombre === ultimo };
   }, textos);
   const conMarca = (m) => `void setup() { int ${m} = 1; }\nvoid loop() {}\n`;
   for (const [nombre, textos, marca] of [
@@ -836,13 +841,15 @@ const LED = {
     ['A → B → C, solo C sin C++', [conMarca('SOLO_A'), conMarca('SOLO_B'), null], null],
     ['A con C++ → B con el suyo', [conMarca('SOLO_A'), conMarca('SOLO_B')], 'SOLO_B'],
   ]) {
-    const abiertos = await seguidos(...textos);
+    const { abiertos, autoguardado } = await seguidos(...textos);
     const v = await vistaProyecto();
     const ajenos = ['SOLO_A', 'SOLO_B'].filter((m) => m !== marca);
     const limpio = (s) => !s || ajenos.every((m) => !s.includes(m));
-    revisar(abiertos.every((r) => r === true) && v.nombre === 'P' + (textos.length - 1) && limpio(v.codigo) && limpio(v.texto) && limpio(v.auto) &&
-      (marca ? v.modoTexto && v.codigo.includes(marca) && v.texto.includes(marca) && v.auto.includes(marca) : !v.modoTexto && v.texto === null && v.auto === null),
-    `AUD-19, ${nombre}: queda el C++ del último proyecto, también en lo que compila y en el autoguardado (${v.nombre}, modo texto ${v.modoTexto})`);
+    const tiene = (s) => typeof s === 'string' && s.includes(marca);
+    revisar(autoguardado && abiertos.every((r) => r === true) && v.nombre === 'P' + (textos.length - 1) && limpio(v.codigo) && limpio(v.texto) && limpio(v.auto) &&
+      (marca ? v.modoTexto && tiene(v.codigo) && tiene(v.texto) && tiene(v.auto) : !v.modoTexto && v.texto === null && v.auto === null),
+    `AUD-19, ${nombre}: queda el C++ del último proyecto, también en lo que compila y en el autoguardado (${v.nombre}, modo texto ${v.modoTexto}` +
+      `${autoguardado ? '' : '; el autoguardado del último proyecto no llegó en 10 s'})`);
   }
   const malo = { app: 'TecnoBloques', placa: 'nano', nivel: 1, nombre: 'Malo', bloques: { blocks: { languageVersion: 0, blocks: [{ type: 'bloque_que_no_existe', x: 0, y: 0 }] } } };
   // Modo texto: el C++ escrito a mano, su base, la placa, el nivel y el circuito vuelven igual
@@ -851,22 +858,25 @@ const LED = {
     entrarModoTexto(`void setup() { int CONSERVAR = 42; }\nvoid loop() {}\n`);
   }, LED);
   await win.waitForTimeout(900);
+  // AUD-28: lo de antes se toma con el autoguardado ya escrito (el de «Mio» en modo texto), no a los 900 ms justos
+  const autoMio = await esperar(win, () => { const a = leerLocal(CLAVE_AUTO) || {}; return a.nombre === 'Mio' && typeof a.texto === 'string' && a.texto.includes('CONSERVAR'); }, 10000);
   const antesTexto = await vistaProyecto();
   const rechazoTexto = await win.evaluate((p) => cargarProyecto(p, true), malo);
   await win.waitForTimeout(900);
   const despuesTexto = await vistaProyecto();
   const iguales = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-  revisar(rechazoTexto !== true && antesTexto.modoTexto && antesTexto.codigo.includes('CONSERVAR') && iguales(antesTexto, despuesTexto),
-    `AUD-19, rechazo en modo texto: vuelve el proyecto entero, con el C++ a mano, su base y el autoguardado (${['nombre', 'placa', 'nivel', 'texto', 'base', 'codigo', 'circuito', 'auto'].filter((k) => antesTexto[k] !== despuesTexto[k]).join(', ') || 'todo igual'})`);
+  revisar(autoMio && rechazoTexto !== true && antesTexto.modoTexto && antesTexto.codigo.includes('CONSERVAR') && iguales(antesTexto, despuesTexto),
+    `AUD-19, rechazo en modo texto: vuelve el proyecto entero, con el C++ a mano, su base y el autoguardado (${['nombre', 'placa', 'nivel', 'texto', 'base', 'codigo', 'circuito', 'auto'].filter((k) => antesTexto[k] !== despuesTexto[k]).join(', ') || 'todo igual'}${autoMio ? '' : '; el autoguardado de «Mio» no llegó en 10 s'})`);
   // Modo bloques: los bloques y el circuito vuelven igual, sin C++ a mano
   await win.evaluate(() => salirModoTexto(true));
   await win.waitForTimeout(900);
+  const autoBloques = await esperar(win, () => { const a = leerLocal(CLAVE_AUTO) || {}; return a.nombre === 'Mio' && !a.texto; }, 10000); // AUD-28
   const antesBloques = await vistaProyecto();
   const rechazoBloques = await win.evaluate((p) => cargarProyecto(p, true), malo);
   await win.waitForTimeout(900);
   const despuesBloques = await vistaProyecto();
-  revisar(rechazoBloques !== true && !antesBloques.modoTexto && iguales(antesBloques, despuesBloques),
-    `AUD-19, rechazo en modo bloques: vuelve igual, con sus bloques y su circuito (${['nombre', 'placa', 'nivel', 'texto', 'codigo', 'bloques', 'circuito', 'auto'].filter((k) => antesBloques[k] !== despuesBloques[k]).join(', ') || 'todo igual'})`);
+  revisar(autoBloques && rechazoBloques !== true && !antesBloques.modoTexto && iguales(antesBloques, despuesBloques),
+    `AUD-19, rechazo en modo bloques: vuelve igual, con sus bloques y su circuito (${['nombre', 'placa', 'nivel', 'texto', 'codigo', 'bloques', 'circuito', 'auto'].filter((k) => antesBloques[k] !== despuesBloques[k]).join(', ') || 'todo igual'}${autoBloques ? '' : '; el autoguardado sin C++ no llegó en 10 s'})`);
   await win.evaluate(() => cargarProyecto({ app: 'TecnoBloques', placa: 'uno', nivel: 1, bloques: { blocks: { languageVersion: 0, blocks: [] } } }, true));
   await win.waitForTimeout(400);
 
