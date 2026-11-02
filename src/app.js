@@ -1596,6 +1596,7 @@ function abrirAcerca() {
         m ? marca(svgDeMarca(m.simbolo), 'Circuito', 'circuito', TecnoCircuito.VERSION) : null),
       el('p', { class: 'acerca-respaldo' }, 'TecnoAcademia Tolima · SENA'),
       el('p', null, 'Creado por Efraín Guillermo Mariotte Parra, Facilitador de Robótica de la TecnoAcademia Tolima (SENA, SENNOVA), Ibagué, 2026.'),
+      el('p', null, 'Realizado con el apoyo de Claude Opus 5.5 y auditado por Codex GPT-6.1 Sol.'),
       el('p', { class: 'muted' }, 'Software libre con licencia Apache 2.0. Usa Blockly, avr8js y Arduino CLI, cada uno con su licencia: el detalle está en los archivos NOTICE. Código en github.com/EMariotte.')
     ]
   });

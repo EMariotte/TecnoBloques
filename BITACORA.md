@@ -1524,3 +1524,7 @@ Hallazgo de Codex en DIST-003. `test/app.js` y `test/app-empaquetada.js` solo sa
 
 Incidencia de tiempos en `test:simulador` (sección 3, T2): a veces el LED salía al 38 % en vez de 41,8 %. El núcleo da el brillo correcto desde los 48 ms; el problema era la prueba: leía `data-brillo` del dibujo, que se pinta en el cuadro de animación siguiente a cada foto, y con la ventana tapada o el PC ocupado ese cuadro se atrasa. Ahora trae la ventana al frente y espera dos cuadros nuevos (hasta 5 s); si no se dibujan, falla diciéndolo. Se conservan el valor esperado y el margen. Solo cambia la prueba.
 
+
+## 2026-11-01 — MARCA-003: «Acerca de» nombra a los agentes
+
+Pedido de Efraín. Después de la línea del autor, «Acerca de» dice «Realizado con el apoyo de Claude Opus 5.5 y auditado por Codex GPT-6.1 Sol.», los modelos que usa con los dos agentes. `test:simulador` comprueba la frase. Llega a las aulas con la próxima versión publicada.

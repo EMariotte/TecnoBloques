@@ -87,6 +87,8 @@ const LIENZO = "document.querySelector('#lienzoCircuito .tecnocircuito').shadowR
   revisar(acerca.tamanos[0] === acerca.tamanos[1], `las dos marcas van del mismo tamaño (${acerca.tamanos.join(' y ')})`);
   revisar(['TecnoAcademia Tolima · SENA', 'Efraín Guillermo Mariotte Parra', 'Apache 2.0', 'NOTICE'].every((t) => acerca.texto.includes(t)),
     '«Acerca de» trae el respaldo, los créditos y las licencias');
+  revisar(acerca.texto.includes('Realizado con el apoyo de Claude Opus 5.5 y auditado por Codex GPT-6.1 Sol.'),
+    '«Acerca de» nombra a los agentes: Claude Opus 5.5 y Codex GPT-6.1 Sol (MARCA-003)');
   await win.screenshot({ path: path.join(SALIDA, 'sim_0_acerca.png') });
   await win.evaluate(() => { document.documentElement.dataset.theme = 'dark'; });
   await win.screenshot({ path: path.join(SALIDA, 'sim_0_acerca_oscuro.png') });
