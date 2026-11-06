@@ -110,6 +110,10 @@ ipcMain.handle('tb:registro-exportar', async (_e, { pin } = {}) => {
   if (r.canceled || !r.filePaths[0]) return { ok: false, motivo: 'cancelado' };
   try { return registroEventos.exportar({ pin, destino: r.filePaths[0] }); } catch (e) { return { ok: false, motivo: 'disco', mensaje: e.message }; }
 });
+// Estudio A/B (EST-002, I2): la variante y si hay clase y lista, sin PIN; un equipo entra con su código de clase y el
+// nombre de su grupo, que se comprueban aquí (la lista no sale hacia la página). Cambiarlo es 'estudio-*' del instructor.
+ipcMain.handle('tb:estudio', () => { try { return registroEventos.estudio(); } catch (e) { return { variante: 'C0', hayClase: false, hayLista: false, grupos: 0, danado: true }; } });
+ipcMain.handle('tb:estudio-entrar', (_e, datos) => { try { return registroEventos.entrarGrupo(datos || {}); } catch (e) { return { ok: false, motivo: 'disco', mensaje: e.message }; } });
 // Una línea por evento, en orden: send (no invoke) para que el último evento salga aunque la ventana se esté cerrando.
 // escribir() no lanza: si el disco falla, la línea espera y la página recibe tb:registro-falla; si la línea no se puede
 // guardar, queda su evento_descartado y la página recibe tb:registro-descartado (AUD-07).

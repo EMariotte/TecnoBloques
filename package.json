@@ -24,6 +24,8 @@
     "test:proyectos": "node build.js --simulador-local && node test/proyectos-app.js",
     "test:herramientas": "node build.js && node test/herramientas-app.js",
     "test:historia": "node test/historia-registro.js",
+    "test:servicios": "node test/servicios.js",
+    "test:estudio-app": "node build.js --simulador-local && node test/estudio-app.js",
     "historia": "node herramientas/historia-registro.js",
     "test:simulador": "node build.js --simulador-local && node test/simulador.js"
   },
@@ -52,6 +54,7 @@
       "escritorio/arduino.js",
       "escritorio/registro-disco.js",
       "src/registro.js",
+      "src/servicios.js",
       "escritorio/icono.png",
       "dist/TecnoBloques.html",
       "package.json",

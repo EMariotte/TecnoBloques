@@ -28,6 +28,15 @@ contextBridge.exposeInMainWorld('tbEscritorio', {
      */
     alDescarte: (fn) => { ipcRenderer.on('tb:registro-descartado', (_e, d) => fn(d)); },
   },
+  /**
+   * Estudio A/B (EST-002, I2). estado() → {variante: 'C0' | 'A' | 'B', hayClase, hayLista, grupos, danado}, sin PIN.
+   * entrar({clase, grupo}) → {ok, equipo} o {ok: false, motivo, mensaje}. Para cambiarlo, registro.instructor con
+   * accion 'estudio-ver' | 'estudio-variante' {variante} | 'estudio-lista' {lista} | 'estudio-clase' {codigo} | 'estudio-reiniciar'.
+   */
+  estudio: {
+    estado: () => ipcRenderer.invoke('tb:estudio'),
+    entrar: (datos) => ipcRenderer.invoke('tb:estudio-entrar', datos),
+  },
   alProgreso: (fn) => {
     const h = (_e, m) => fn(m);
     ipcRenderer.on('tb:progreso', h);

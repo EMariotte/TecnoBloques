@@ -49,7 +49,15 @@ function mostrarToast(msg) {
   clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, 3200);
 }
 let modalCancelar = null;
+// Cada vez que una pantalla se abre o se cierra cambia el turno (EST-002, r1 de I2, F02). Una acción que espera una
+// respuesta sigue solo si su pantalla sigue abierta (`vigente()`), y no cierra otra que se abrió entretanto. Mientras
+// espera, otro clic o Enter no la repite. Lo que abre al terminar va en `{ luego }`: se abre después de cerrar esta,
+// si entretanto no se abrió ni se cerró otra.
+let turnoModal = 0;
 function modal({ titulo, cuerpo, botones, cancelar, alAbrir }) {
+  const turno = ++turnoModal;
+  const vigente = () => turno === turnoModal;
+  let ocupado = false;
   $('modalTitulo').textContent = titulo;
   const c = $('modalCuerpo'); c.innerHTML = '';
   (Array.isArray(cuerpo) ? cuerpo : [cuerpo]).forEach(n => c.append(typeof n === 'string' ? el('p', null, n) : n));
@@ -58,7 +66,13 @@ function modal({ titulo, cuerpo, botones, cancelar, alAbrir }) {
   (botones || [{ texto: 'Cerrar', primario: true }]).forEach(b => {
     a.append(el('button', {
       type: 'button', class: 'btn' + (b.primario ? ' primario' : ''),
-      onclick: async () => { const r = b.accion ? await b.accion() : undefined; if (r !== false) cerrarModal(false); }
+      onclick: async () => {
+        if (!vigente() || ocupado) return;
+        ocupado = true;
+        let r;
+        try { r = b.accion ? await b.accion({ vigente }) : undefined; } finally { ocupado = false; }
+        if (r !== false && vigente()) cerrarModal(false, r && r.luego);
+      }
     }, b.texto));
   });
   $('modal').hidden = false;
@@ -68,10 +82,12 @@ function modal({ titulo, cuerpo, botones, cancelar, alAbrir }) {
     if (alAbrir) alAbrir();
   }, 20);
 }
-function cerrarModal(porCancelar) {
+function cerrarModal(porCancelar, luego) {
   $('modal').hidden = true;
+  const turno = ++turnoModal;
   const cb = modalCancelar; modalCancelar = null;
   if (porCancelar && cb) cb();
+  if (!porCancelar && typeof luego === 'function') setTimeout(() => { if (turno === turnoModal) luego(); }, 50);
 }
 $('modal').addEventListener('keydown', (e) => { if (e.key === 'Escape') cerrarModal(true); });
 $('modal').addEventListener('mousedown', (e) => { if (e.target === $('modal')) cerrarModal(true); });
@@ -676,6 +692,7 @@ function actualizar() {
     ultimo.avisos.push({ msg: `Este programa usa bloques del nivel ${necesario} (${NOMBRE_NIVEL[necesario]}). Funcionan igual; para verlos en la caja de bloques, cambia al nivel ${necesario}.`, id: null, tipo: 'info' });
   }
   pintarCodigo();
+  notarPrograma();
   pintarAvisos();
   sugerirBaudios();
   autoguardar();
@@ -779,7 +796,7 @@ $('editor').addEventListener('keydown', (e) => {
     t.selectionStart = t.selectionEnd = s + 2;
   }
 });
-$('editor').addEventListener('input', () => autoguardar());
+$('editor').addEventListener('input', () => { notarPrograma(); autoguardar(); });
 
 /* ---------- Vistas y pestañas ---------- */
 // Vistas: bloques · dividido (bloques y panel) · codigo (solo el panel) · circuito (solo el circuito, si hay simulador).
@@ -1538,6 +1555,21 @@ function traducirErrorCpp(m) {
   return m;
 }
 
+/* ---------- Servicios del prototipo A/B (EST-002, I2; src/servicios.js) ---------- */
+// El programa y el circuito son documentos con revisión, y la simulación pasa por una autoridad de ejecución: una
+// corrida por proyecto, con la revisión que ejecuta, y lo que llegue tarde de otra corrida no vale. En C0 no cambia lo
+// que se ve: el estado queda en atributos data- de #estadoSim (lo leen las pruebas; lo mostrarán A y B, I3 e I4).
+const docPrograma = crearDocumento('programa');
+const docCircuito = crearDocumento('circuito');
+const ejecucion = crearEjecucion();
+let codigoRevisado = null;
+/** Una revisión nueva del programa cada vez que cambia su C++ (de los bloques o escrito a mano), no en cada evento. */
+function notarPrograma() {
+  const c = codigoActual();
+  if (c !== codigoRevisado) { codigoRevisado = c; docPrograma.cambio(estado.texto ? 'cpp' : 'bloques'); }
+}
+function estadoEjecucion() { return ejecucion.estado({ revisionPrograma: docPrograma.revision(), revisionCircuito: docCircuito.revision() }); }
+
 /* ---------- Simulador TecnoCircuito (proyecto hermano; ver «Proyecto hermano» en CLAUDE.md) ---------- */
 // El paquete window.TecnoCircuito lo embebe build.js (copia local con --simulador-local, o una versión etiquetada).
 // Solo se ofrece en la app de escritorio, porque el .hex lo compila arduino-cli. El circuito se guarda en
@@ -1763,8 +1795,20 @@ function textoFallaRegistro(f) {
   return `No se guarda desde las ${hora} · ${MOTIVOS_DISCO[f.motivo] || `error del disco (${f.motivo})`} · ` +
     `${f.pendientes} ${f.pendientes === 1 ? 'evento esperando' : 'eventos esperando'}` + (f.perdidos ? ` · ${f.perdidos} perdidos` : '');
 }
-/** El equipo escribe su código y lo confirma («¿Son el equipo A7?»): así un PC compartido no mezcla registros. */
-function pedirEquipo(previo) {
+/**
+ * El equipo escribe su código y lo confirma («¿Son el equipo A7?»): así un PC compartido no mezcla registros. Con el
+ * estudio A/B configurado en este PC (código de clase y lista de grupos, EST-002), escribe en cambio el código de clase
+ * y el nombre de su grupo, y la app de escritorio los comprueba (pedirGrupo).
+ */
+let turnoPedirEquipo = 0;
+async function pedirEquipo(previo) {
+  // Mientras se consulta el estudio pueden pedir otra vez el código o abrir otra pantalla: entonces esta consulta ya
+  // no abre nada (r1 de I2, F02)
+  const pedido = ++turnoPedirEquipo, pantalla = turnoModal;
+  let est = null;
+  try { est = escritorio && escritorio.estudio ? await escritorio.estudio.estado() : null; } catch (e) { est = null; }
+  if (pedido !== turnoPedirEquipo || pantalla !== turnoModal) return;
+  if (est && est.hayClase && est.hayLista && !est.danado) { pedirGrupo(); return; }
   const campo = el('input', { class: 'entrada', id: 'codigoEquipo', autocomplete: 'off', maxlength: '40', placeholder: 'por ejemplo: A7', value: previo || '' });
   const error = el('p', { class: 'error' });
   modal({
@@ -1774,18 +1818,59 @@ function pedirEquipo(previo) {
     botones: [{ texto: 'Seguir', primario: true, accion: () => {
       const codigo = limpiarEquipo(campo.value);
       if (!codigo) { error.textContent = 'Escriban el código del equipo.'; return false; }
-      setTimeout(() => confirmarEquipo(codigo), 50);
+      return { luego: () => confirmarEquipo(codigo) };
     } }],
     cancelar: pintarAvisoRegistro
   });
   campo.addEventListener('keydown', (e) => { if (e.key === 'Enter') $('modalAcciones').querySelector('.primario').click(); });
 }
-function confirmarEquipo(codigo) {
+/**
+ * Un error de formulario que se anuncia (role="alert") y queda unido a sus campos con aria-describedby; `poner` marca
+ * aria-invalid solo en el campo del error (r1 de I2, F04; DISENO: W 4.1.3). El foco no se mueve. Si el texto se
+ * repite, se vacía y se vuelve a poner para que el lector de pantalla lo diga otra vez.
+ */
+function errorDeCampos(id, campos) {
+  const nodo = el('p', { class: 'error', id, role: 'alert' });
+  for (const c of campos) c.setAttribute('aria-describedby', id);
+  return {
+    nodo,
+    poner(texto, invalido) {
+      for (const c of campos) { if (c === invalido) c.setAttribute('aria-invalid', 'true'); else c.removeAttribute('aria-invalid'); }
+      if (texto && nodo.textContent === texto) { nodo.textContent = ''; setTimeout(() => { nodo.textContent = texto; }, 50); }
+      else nodo.textContent = texto || '';
+    },
+  };
+}
+/** Estudio A/B (EST-002, I2): el código de clase que dictó el instructor y el nombre del grupo, de su lista. */
+function pedirGrupo(previo = {}) {
+  const clase = el('input', { class: 'entrada', id: 'claseEstudio', autocomplete: 'off', maxlength: '8', placeholder: 'por ejemplo: K7Q2MX', value: previo.clase || '', autocapitalize: 'characters', spellcheck: 'false' });
+  const grupo = el('input', { class: 'entrada', id: 'grupoEstudio', autocomplete: 'off', maxlength: '33', placeholder: 'el nombre de su grupo', value: previo.grupo || '' });
+  const error = errorDeCampos('errorGrupo', [clase, grupo]);
+  const CAMPO_DEL_ERROR = { 'clase-distinta': clase, 'sin-grupo': grupo, 'grupo-desconocido': grupo, 'muy-largo': grupo };
+  modal({
+    titulo: 'Código de clase y grupo',
+    cuerpo: [el('p', null, 'Esta sesión se registra para mejorar TecnoBloques. Escriban el código de clase que dio el instructor y el nombre de su grupo (sin nombres de personas).'),
+      el('label', { for: 'claseEstudio' }, 'Código de clase', clase), el('label', { for: 'grupoEstudio' }, 'Nombre del grupo', grupo), error.nodo],
+    // La respuesta solo vale para este formulario: si lo cancelaron o se abrió otra pantalla mientras llegaba, no hace
+    // nada (r1 de I2, F02). modal() no deja enviarlo otra vez mientras espera.
+    botones: [{ texto: 'Seguir', primario: true, accion: async ({ vigente }) => {
+      const datos = { clase: clase.value, grupo: grupo.value };
+      let r;
+      try { r = await escritorio.estudio.entrar(datos); } catch (e) { r = { ok: false, mensaje: 'No se pudo comprobar. Vuelvan a intentarlo.' }; }
+      if (!vigente()) return false;
+      if (!r || !r.ok) { error.poner((r && r.mensaje) || 'No se pudo comprobar. Vuelvan a intentarlo.', r && CAMPO_DEL_ERROR[r.motivo]); return false; }
+      return { luego: () => confirmarEquipo(r.equipo, () => pedirGrupo(datos)) };
+    } }],
+    cancelar: pintarAvisoRegistro
+  });
+  for (const c of [clase, grupo]) c.addEventListener('keydown', (e) => { if (e.key === 'Enter') $('modalAcciones').querySelector('.primario').click(); });
+}
+function confirmarEquipo(codigo, corregir) {
   modal({
     titulo: `¿Son el equipo ${codigo}?`,
     cuerpo: 'Revisen que sea su código. Si no lo es, corríjanlo.',
     botones: [
-      { texto: 'Corregir', accion: () => { setTimeout(() => pedirEquipo(codigo), 50); } },
+      { texto: 'Corregir', accion: () => ({ luego: () => (corregir ? corregir() : pedirEquipo(codigo)) }) },
       { texto: 'Sí, somos ese equipo', primario: true, accion: async () => {
         // El mismo equipo sigue en su sesión, con su simulación (AUD-04). Un segundo clic mientras se cierra la
         // corrida del equipo anterior no abre otra sesión: cuando le toca, ya es su equipo. Si cuando le toca el
@@ -1814,7 +1899,7 @@ function cerrarTrabajoDelEquipo(opciones) {
   if (simulador.grafica && simulador.grafica.publicarPendiente) simulador.grafica.publicarPendiente();
   turnoEquipo++;
   if (tResumenBloques) escribirResumenBloques();
-  return detenerSimulacion(opciones).then(() => habiaSimulacion);
+  return detenerSimulacion({ ...opciones, motivo: 'equipo' }).then(() => habiaSimulacion);
 }
 /** Lo que pasa en el editor: si no hay equipo, registroEventos no escribe nada. */
 function registrarEditor(tipo, datos) { registroEventos.editor(tipo, datos); }
@@ -1987,6 +2072,7 @@ function panelInstructor(pin, estado) {
         else if (r.motivo !== 'cancelado') nota.textContent = r.motivo === 'sin-archivos' ? 'Todavía no hay registros en este computador.' : (MOTIVOS_PIN[r.motivo] || 'No se pudo copiar. Revisa la carpeta elegida y vuelve a exportar.');
         return false;
       } },
+      ...(escritorio.estudio ? [{ texto: 'Estudio A/B', accion: () => { setTimeout(() => panelEstudio(pin), 50); } }] : []),
       { texto: 'Cambiar el PIN', accion: () => { setTimeout(() => cambiarPin(pin), 50); } },
       { texto: 'Cerrar', primario: true }
     ]
@@ -2006,11 +2092,144 @@ function cambiarPin(pin) {
     } }]
   });
 }
+/* ---- Estudio A/B del instructor (EST-002, I2; ADR-002): variante, lista de grupos y código de clase ---- */
+const NOMBRE_VARIANTE = { C0: 'C0 · la interfaz de siempre', A: 'A · paneles libres', B: 'B · por actividad' };
+const MOTIVOS_ESTUDIO = {
+  'variante-invalida': 'Esa variante no existe.', 'clase-invalida': 'El código de clase tiene 6 caracteres, sin O, 0, I ni 1.',
+  'estudio-danado': 'La configuración del estudio está dañada: empieza de nuevo.', disco: 'No se pudo guardar en este computador.',
+};
+let varianteEstudio = 'C0';
+/** La variante elegida queda en <body data-variante>. En I2 todas se ven como C0; A y B llegan con I3 e I4. */
+function aplicarVariante(v) {
+  varianteEstudio = ['A', 'B'].includes(v) ? v : 'C0';
+  document.body.dataset.variante = varianteEstudio;
+}
+async function iniciarEstudio() {
+  if (!escritorio || !escritorio.estudio) { aplicarVariante('C0'); return; }
+  try { aplicarVariante((await escritorio.estudio.estado()).variante); } catch (e) { aplicarVariante('C0'); }
+}
+/**
+ * El panel «Estudio A/B». `aviso`: lo que se anuncia al abrir (por ejemplo, después de vaciar la lista). Los errores se
+ * anuncian con role="alert" y quedan unidos a su campo; los resultados, con role="status"; el foco no se mueve (r1 de
+ * I2, F04).
+ */
+async function panelEstudio(pin, { aviso } = {}) {
+  let r;
+  try { r = await escritorio.registro.instructor({ accion: 'estudio-ver', pin }); } catch (e) { r = { ok: false, motivo: 'disco' }; }
+  if (!r.ok) { mostrarToast(MOTIVOS_PIN[r.motivo] || MOTIVOS_ESTUDIO[r.motivo] || 'No se pudo abrir el estudio.'); return; }
+  const e = r.estudio;
+  const nota = el('p', { class: 'muted', id: 'notaEstudio', role: 'status' });
+  let error = errorDeCampos('errorEstudio', []);
+  let campoDe = {};
+  const pedir = async (peticion) => {
+    let x;
+    try { x = await escritorio.registro.instructor({ ...peticion, pin }); } catch (err) { x = { ok: false, motivo: 'disco' }; }
+    if (!x.ok) {
+      nota.textContent = '';
+      error.poner(x.motivo === 'lista-invalida' ? x.mensaje : (MOTIVOS_PIN[x.motivo] || MOTIVOS_ESTUDIO[x.motivo] || 'No se pudo guardar.'), campoDe[x.motivo]);
+    } else error.poner('');
+    return x;
+  };
+  if (e.danado) {
+    modal({
+      titulo: 'Estudio A/B: la configuración está dañada',
+      cuerpo: [el('p', null, 'No se puede leer la configuración del estudio de este computador. Mientras tanto, la app usa C0 y los equipos entran con su código, como siempre.'),
+        el('p', null, 'Empezar de nuevo guarda aparte el archivo dañado y deja C0, sin lista ni código de clase.'), error.nodo],
+      botones: [{ texto: 'Cancelar' }, { texto: 'Empezar de nuevo', primario: true, accion: async () => {
+        const x = await pedir({ accion: 'estudio-reiniciar' });
+        if (!x.ok) return false;
+        aplicarVariante('C0');
+        return { luego: () => panelEstudio(pin) };
+      } }]
+    });
+    return;
+  }
+  const variante = el('select', { class: 'entrada', id: 'varianteEstudio' }, ...VARIANTES_ESTUDIO.map((v) => el('option', { value: v }, NOMBRE_VARIANTE[v])));
+  variante.value = e.variante;
+  const lista = el('textarea', { class: 'entrada', id: 'listaEstudio', rows: '6', spellcheck: 'false', placeholder: 'Un grupo por renglón: G1, G2… o los nombres de los grupos' });
+  lista.value = (e.listaBlanca || []).join('\n');
+  const codigo = el('code', { id: 'codigoClase', class: 'codigo-clase' }, e.clase ? e.clase.codigo : 'sin código');
+  const otro = el('input', { class: 'entrada', id: 'otroCodigoClase', autocomplete: 'off', maxlength: '8', placeholder: 'el código de otro PC de la clase', spellcheck: 'false' });
+  const pintarClase = (c) => { codigo.textContent = c ? c.codigo : 'sin código'; };
+  // La lista se borra solo con este botón, que va junto a ella y pregunta antes (decisión de Efraín, 5 nov; DISENO:
+  // agrupar por cercanía [I layout]). Lo que no se guardó en el panel se pierde al vaciar: la confirmación lo dice.
+  const vaciar = el('button', { type: 'button', class: 'btn', id: 'vaciarLista', onclick: () => {
+    if (!e.listaBlanca || !e.listaBlanca.length) { error.poner(''); nota.textContent = 'La lista ya está vacía: los equipos entran con su código de siempre.'; return; }
+    cerrarModal(false, () => confirmarVaciarLista(pin, e.listaBlanca.length));
+  } }, 'Vaciar la lista');
+  error = errorDeCampos('errorEstudio', [variante, lista, otro]);
+  campoDe = { 'variante-invalida': variante, 'lista-invalida': lista, 'clase-invalida': otro };
+  const renglones = (t) => t.split(/\r?\n/).map((n) => n.trim()).filter(Boolean).join('\n');
+  modal({
+    titulo: 'Estudio A/B (instructor)',
+    cuerpo: [
+      el('p', null, 'Para la comparación de EST-002. Sin elegir nada, este computador queda en C0, la interfaz de siempre.'),
+      el('label', { for: 'varianteEstudio' }, 'Variante en este computador', variante),
+      el('label', { for: 'listaEstudio' }, 'Grupos de la clase (sin nombres de personas: «Los Rayos» sí, «Grupo de Ana» no)', lista),
+      el('div', null, vaciar),
+      el('p', null, 'Código de clase de esta sesión: ', codigo),
+      el('label', { for: 'otroCodigoClase' }, 'Si ya lo generaste en otro PC, escríbelo aquí', otro),
+      error.nodo, nota
+    ],
+    alAbrir: () => { if (aviso) nota.textContent = aviso; },
+    botones: [
+      { texto: 'Nuevo código de clase', accion: async () => {
+        const x = await pedir({ accion: 'estudio-clase' });
+        if (x.ok) { pintarClase(x.estudio.clase); nota.textContent = `Código nuevo: ${x.estudio.clase.codigo}. Escríbelo en los otros PC de la clase.`; }
+        return false;
+      } },
+      { texto: 'Usar este código', accion: async () => {
+        const x = await pedir({ accion: 'estudio-clase', codigo: otro.value || 'x' });
+        if (x.ok) { pintarClase(x.estudio.clase); otro.value = ''; nota.textContent = `Este PC usa el código ${x.estudio.clase.codigo}.`; }
+        return false;
+      } },
+      // Guardar es todo o nada (r1 de I2, F01): la variante y la lista van en una sola petición; si una no vale o el
+      // disco no deja, no cambia ninguna, ni en el archivo ni en la página.
+      { texto: 'Guardar', primario: true, accion: async () => {
+        const guardada = (e.listaBlanca || []).join('\n');
+        const escrita = renglones(lista.value);
+        if (!escrita && guardada) { nota.textContent = ''; error.poner('El cuadro de grupos está vacío. Para quitar la lista, usa «Vaciar la lista».', lista); return false; }
+        const cambiaLista = !!escrita && escrita !== guardada;
+        if (variante.value === e.variante && !cambiaLista) { error.poner(''); nota.textContent = `No hay cambios: sigue ${NOMBRE_VARIANTE[e.variante]}${e.listaBlanca ? ` · ${e.listaBlanca.length} grupos` : ''}.`; return false; }
+        const x = await pedir({ accion: 'estudio-guardar', variante: variante.value, ...(cambiaLista ? { lista: lista.value } : {}) });
+        if (!x.ok) return false;
+        e.variante = x.estudio.variante;
+        e.listaBlanca = x.estudio.listaBlanca;
+        aplicarVariante(e.variante); // ya quedó en el disco: la página lo sigue aunque se haya cerrado el panel
+        lista.value = (e.listaBlanca || []).join('\n');
+        nota.textContent = `Guardado: ${NOMBRE_VARIANTE[e.variante]}${e.listaBlanca ? ` · ${e.listaBlanca.length} grupos` : ''}.`;
+        return false;
+      } },
+      { texto: 'Cerrar' }
+    ]
+  });
+}
+/** Pregunta antes de vaciar la lista de grupos y vuelve al panel, con el resultado o sin cambios. */
+function confirmarVaciarLista(pin, grupos) {
+  const error = errorDeCampos('errorVaciar', []);
+  const volver = () => panelEstudio(pin);
+  modal({
+    titulo: '¿Vaciar la lista de grupos?',
+    cuerpo: [el('p', null, `Se borran los ${grupos} grupos de este computador. Sin lista, los equipos entran con su código de siempre, como en C0.`),
+      el('p', null, 'La variante y el código de clase no cambian. Lo que no guardaste en el panel se pierde.'), error.nodo],
+    // Sin botón principal: el foco empieza en «Cancelar», y Enter no vacía la lista por accidente
+    botones: [
+      { texto: 'Cancelar', accion: () => ({ luego: volver }) },
+      { texto: 'Vaciar la lista', accion: async () => {
+        let x;
+        try { x = await escritorio.registro.instructor({ accion: 'estudio-vaciar-lista', pin }); } catch (err) { x = { ok: false, motivo: 'disco' }; }
+        if (!x.ok) { error.poner(MOTIVOS_PIN[x.motivo] || MOTIVOS_ESTUDIO[x.motivo] || 'No se pudo vaciar la lista.'); return false; }
+        return { luego: () => panelEstudio(pin, { aviso: 'Lista vaciada: los equipos entran con su código de siempre.' }) };
+      } }
+    ],
+    cancelar: () => { const t = turnoModal; setTimeout(() => { if (t === turnoModal) volver(); }, 50); }
+  });
+}
 function notaCircuito(texto) { $('notaCircuito').textContent = texto || ''; $('notaCircuito').hidden = !texto; }
 /** Crea el lienzo con el circuito del proyecto actual (al abrir, al cambiar de proyecto o de placa). */
 function abrirLienzo() {
   if (!simulador.disponible) return;
-  detenerSimulacion();
+  detenerSimulacion({ motivo: 'lienzo' }); // también lo que se estaba preparando para el lienzo anterior (F03)
   try { if (simulador.lienzo) simulador.lienzo.destruir(); } catch (e) { /* ya no estaba */ }
   simulador.lienzo = null;
   $('lienzoCircuito').innerHTML = '';
@@ -2043,7 +2262,8 @@ function abrirLienzo() {
       || inicial.cables.length < (guardado.cables || []).length || enchufes(inicial) < enchufes(guardado));
     if (!recortado && (guardado || inicial.componentes.length || inicial.cables.length || inicial.protoboard))
       extrasProyecto.circuito = inicial;
-    simulador.lienzo.alCambiar((c) => { extrasProyecto.circuito = c; autoguardar(); });
+    docCircuito.cambio('abrir'); // otro circuito (proyecto, ejemplo o placa): otra revisión
+    simulador.lienzo.alCambiar((c) => { extrasProyecto.circuito = c; docCircuito.cambio('lienzo'); autoguardar(); });
   } catch (e) {
     notaCircuito('No se pudo abrir el circuito: ' + e.message);
   }
@@ -2056,12 +2276,16 @@ async function simular() {
   const cierreAnterior = detenerSimulacion();
   if (!estado.texto) actualizar(); // el código más reciente de los bloques
   const codigo = codigoActual();
+  notarPrograma();
+  // La corrida queda a cargo de la autoridad de ejecución (I2): con la revisión del programa y del circuito que se
+  // compilan. Si mientras se prepara empieza otra o se cancela (detener, otro proyecto, otra placa), esta ya no vale.
+  const corrida = ejecucion.empezar({ revisionPrograma: docPrograma.revision(), revisionCircuito: docCircuito.revision(), placa: placaActual, destino: 'simulacion' });
   const turno = turnoEquipo;
   // El .hex es de esta placa y para este lienzo: si mientras se prepara cambian la placa o abren otro proyecto o
   // ejemplo, no se simula en el lienzo nuevo (REG-005, TB-4)
   const placaCompilada = placaActual;
   const lienzo = simulador.lienzo;
-  const cambioLienzo = () => placaActual !== placaCompilada || simulador.lienzo !== lienzo;
+  const cambioLienzo = () => placaActual !== placaCompilada || simulador.lienzo !== lienzo || !ejecucion.vigente(corrida.turno);
   simulador.compilando = true;
   uiSimulador('Preparando tu programa…');
   await cierreAnterior; // el cierre de la corrida anterior queda antes que lo de esta (AUD-03)
@@ -2075,16 +2299,19 @@ async function simular() {
   simulador.compilando = false;
   if (turno !== turnoEquipo) {
     // El equipo cambió mientras se preparaba: la simulación no es del equipo nuevo (AUD-04).
+    if (ejecucion.vigente(corrida.turno)) ejecucion.cancelar('equipo');
     uiSimulador();
     mostrarToast('Cambió el equipo mientras se preparaba el programa. Pulsen «Simular» otra vez.');
     return;
   }
   if (cambioLienzo()) {
+    if (ejecucion.vigente(corrida.turno)) ejecucion.cancelar('lienzo');
     uiSimulador();
     mostrarToast('Cambiaste la placa o el proyecto mientras se preparaba el programa. Pulsa «Simular» otra vez.');
     return;
   }
   if (!r.ok || !r.hex) {
+    ejecucion.cancelar('compilacion');
     uiSimulador();
     const ex = explicarError(r, '');
     modal({ titulo: ex.titulo, cuerpo: ex.cuerpo.concat([el('details', { class: 'subir-detalle' }, el('summary', null, 'Ver el mensaje completo'), el('pre', null, r.salida || ''))]) });
@@ -2107,7 +2334,9 @@ async function simular() {
     if (simulador.grafica) simulador.grafica.conectar(sim); // la gráfica empieza de cero con cada simulación
     lineaEspecial('Simulación: aquí sale lo que imprime el programa simulado, y lo que envíes le llega a él.', 'sistema');
     sim.iniciar();
+    ejecucion.iniciada(corrida.turno);
   } catch (e) {
+    ejecucion.cancelar('error');
     modal({ titulo: 'No se pudo simular', cuerpo: [el('p', null, e.message)] });
   }
   uiSimulador();
@@ -2173,14 +2402,19 @@ function enviarSim(texto) {
  * Si Detener ya soltó la simulación y su cierre sigue esperando, quien llama después (cambiar de equipo, apagar el
  * registro, volver a simular, cerrar la ventana) espera ese mismo cierre: destruir() otra vez devuelve la misma promesa
  * y, con sinEsperar, lo termina ya (AUD-03-V2).
+ * { motivo } queda en la autoridad de ejecución ('lienzo', 'equipo'; si no, 'detenida'). Si el programa todavía se
+ * prepara (compila), esa corrida deja de ser vigente ya, sin esperar el resultado (EST-002, r1 de I2, F03): cuando
+ * llega, simular() la descarta como antes.
  */
-function detenerSimulacion(opciones) {
+function detenerSimulacion({ motivo = 'detenida', ...opciones } = {}) {
+  if (simulador.compilando && !simulador.sim) ejecucion.cancelar(motivo);
   const sim = simulador.sim || simulador.cerrando;
   if (!sim) return Promise.resolve();
   const soltar = sim === simulador.sim;
   if (soltar) {
     simulador.sim = null;
     simulador.cerrando = sim;
+    ejecucion.cancelar(motivo);
   }
   let fin;
   try { fin = sim.destruir ? sim.destruir(opciones) : sim._destruir ? sim._destruir(opciones) : sim.detener(); } catch (e) { /* ya estaba detenida */ }
@@ -2256,6 +2490,11 @@ function uiSimulador(texto) {
     }
   }
   $('estadoSim').textContent = t;
+  // El estado común (I2), sin cambiar lo que se ve en C0: destino, revisión que se ejecuta y si quedó atrás
+  const ej = estadoEjecucion(), d = $('estadoSim').dataset;
+  d.destino = ej.destino || '';
+  d.revision = ej.revisionEjecutada === null ? '' : String(ej.revisionEjecutada);
+  d.desactualizada = String(!!ej.desactualizada);
   if (corriendo) uiSerial();
   clearInterval(simulador.reloj);
   if (corriendo) simulador.reloj = setInterval(() => { if (simulador.sim) uiSimulador(); }, 500);
@@ -2486,6 +2725,7 @@ function iniciar() {
     if (registroEventos.activo()) cerrarTrabajoDelEquipo({ sinEsperar: true });
     registroEventos.terminar();
   });
+  iniciarEstudio();
   iniciarRegistro();
   window.addEventListener('resize', () => Blockly.svgResize(espacio));
 }

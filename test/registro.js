@@ -965,6 +965,85 @@ console.log('— Lote de la auditoría profunda: configuración, anotación, ses
   fs.rmSync(base, { recursive: true, force: true });
 }
 
+console.log('— Estudio A/B: variante, lista de grupos y código de clase (EST-002, I2)');
+{
+  const os = require('os');
+  const { crearRegistroDisco } = require('../escritorio/registro-disco.js');
+  const base = path.join(os.tmpdir(), 'tecnobloques-prueba-estudio');
+  if (path.dirname(path.resolve(base)) !== path.resolve(os.tmpdir())) throw new Error('Ruta temporal inesperada');
+  fs.rmSync(base, { recursive: true, force: true });
+  const carpeta = path.join(base, 'appdata');
+  const reloj8 = new Date(2026, 10, 6, 8, 0, 0).getTime();
+  const d = crearRegistroDisco({ carpeta, ahora: () => reloj8 });
+  const archivo = path.join(carpeta, 'estudio-config.json');
+  revisar(igual(d.estudio(), { variante: 'C0', hayClase: false, hayLista: false, grupos: 0, danado: false }), 'recién instalado: C0, sin clase ni lista y sin daño');
+  revisar(d.instructor({ accion: 'estudio-variante', pin: '1357', variante: 'A' }).motivo === 'sin-pin', 'sin PIN del instructor no se puede cambiar');
+  d.instructor({ accion: 'crear-pin', pin: '1357' });
+  const configRegistro = fs.readFileSync(path.join(carpeta, 'registro-config.json'), 'utf8');
+  revisar(d.instructor({ accion: 'estudio-variante', pin: '9999', variante: 'A' }).motivo === 'pin' && d.estudio().variante === 'C0', 'con un PIN equivocado no cambia');
+  let r = d.instructor({ accion: 'estudio-variante', pin: '1357', variante: 'B' });
+  revisar(r.ok && r.estudio.variante === 'B' && d.estudio().variante === 'B', 'con el PIN, la variante pasa a B');
+  revisar(d.instructor({ accion: 'estudio-variante', pin: '1357', variante: 'D' }).motivo === 'variante-invalida' && d.estudio().variante === 'B', 'una variante que no existe se rechaza y no cambia nada');
+  r = d.instructor({ accion: 'estudio-lista', pin: '1357', lista: 'G1\nG2\ng1' });
+  revisar(!r.ok && r.motivo === 'lista-invalida' && r.errores[0].motivo === 'repetido' && !d.estudio().hayLista, 'una lista con un repetido se rechaza entera, con el motivo');
+  r = d.instructor({ accion: 'estudio-lista', pin: '1357', lista: 'G1\nG2\nLos Rayos\n' });
+  revisar(r.ok && igual(r.estudio.listaBlanca, ['G1', 'G2', 'Los Rayos']) && d.estudio().grupos === 3, 'una lista válida se guarda limpia: 3 grupos');
+  revisar(!('listaBlanca' in d.estudio()) && !('clase' in d.estudio()), 'sin PIN, la página no ve la lista ni el código de clase');
+  revisar(d.entrarGrupo({ clase: 'K7Q2MX', grupo: 'G1' }).motivo === 'sin-clase', 'sin código de clase todavía, un equipo no entra');
+  r = d.instructor({ accion: 'estudio-clase', pin: '1357' });
+  const codigo = r.ok && r.estudio.clase.codigo;
+  revisar(r.ok && /^[A-HJ-NP-Z2-9]{6}$/.test(codigo) && r.estudio.clase.desde === new Date(reloj8).toISOString(), `«Nuevo código de clase»: ${codigo}, con la hora`);
+  revisar(d.instructor({ accion: 'estudio-clase', pin: '1357', codigo: 'k7q2mx' }).estudio.clase.codigo === 'K7Q2MX', 'el código de otro PC de la clase se escribe aquí igual, sin distinguir mayúsculas');
+  revisar(d.instructor({ accion: 'estudio-clase', pin: '1357', codigo: 'K7Q2M0' }).motivo === 'clase-invalida', 'un código con 0 (o con O, I, 1) se rechaza');
+  revisar(d.entrarGrupo({ clase: 'k7q2 mx', grupo: ' los rayos ' }).equipo === 'K7Q2MX-Los Rayos', 'un equipo entra con el código de hoy y su grupo: «K7Q2MX-Los Rayos»');
+  revisar(d.entrarGrupo({ clase: 'AAAAAA', grupo: 'G1' }).motivo === 'clase-distinta', 'con otro código de clase no entra');
+  revisar(d.entrarGrupo({ clase: 'K7Q2MX', grupo: 'G7' }).motivo === 'grupo-desconocido', 'un grupo fuera de la lista no entra');
+  revisar(d.entrarGrupo({}).motivo === 'clase-distinta' && d.entrarGrupo().ok === false, 'sin datos no entra y no lanza');
+  r = d.instructor({ accion: 'estudio-ver', pin: '1357' });
+  revisar(r.ok && r.estudio.variante === 'B' && r.estudio.listaBlanca.length === 3 && r.estudio.clase.codigo === 'K7Q2MX', 'con el PIN, el panel ve todo el estudio');
+  revisar(fs.readFileSync(path.join(carpeta, 'registro-config.json'), 'utf8') === configRegistro && d.estado().activo === false,
+    'nada de esto toca la configuración del registro ni lo enciende');
+  // Guardar del panel: la variante y la lista, las dos o ninguna (r1 de I2, F01)
+  const enDisco = () => JSON.parse(fs.readFileSync(archivo, 'utf8'));
+  const tal = () => `${enDisco().variante}/${(enDisco().listaBlanca || []).join('|')}`;
+  r = d.instructor({ accion: 'estudio-guardar', pin: '1357', variante: 'A', lista: 'G1\ng1' });
+  revisar(!r.ok && r.motivo === 'lista-invalida' && tal() === 'B/G1|G2|Los Rayos', `guardar A con una lista inválida no cambia ni la variante ni la lista (${tal()})`);
+  r = d.instructor({ accion: 'estudio-guardar', pin: '1357', variante: 'D', lista: 'G5' });
+  revisar(!r.ok && r.motivo === 'variante-invalida' && tal() === 'B/G1|G2|Los Rayos', 'guardar una variante que no existe no cambia la lista');
+  r = d.instructor({ accion: 'estudio-guardar', pin: '1357', variante: 'A', lista: 'G1\nG2\n' });
+  revisar(r.ok && tal() === 'A/G1|G2' && igual(r.estudio.listaBlanca, ['G1', 'G2']) && enDisco().clase.codigo === 'K7Q2MX', 'guardar un conjunto válido cambia las dos de una vez y conserva el código de clase');
+  r = d.instructor({ accion: 'estudio-guardar', pin: '1357', variante: 'B' });
+  revisar(r.ok && tal() === 'B/G1|G2', 'guardar sin lista cambia solo la variante');
+  fs.mkdirSync(archivo + '.tmp'); // el disco no deja escribir el temporal
+  r = d.instructor({ accion: 'estudio-guardar', pin: '1357', variante: 'A', lista: 'G5' });
+  revisar(!r.ok && r.motivo === 'disco' && tal() === 'B/G1|G2', 'con el disco fallando, guardar dice «disco» y no cambia nada');
+  fs.rmSync(archivo + '.tmp', { recursive: true, force: true });
+  revisar(d.instructor({ accion: 'estudio-guardar', pin: '9999', variante: 'A' }).motivo === 'pin' && tal() === 'B/G1|G2', 'guardar con un PIN equivocado no cambia nada');
+  // Vaciar la lista (decisión de Efraín, 5 nov): la variante y el código de clase siguen
+  revisar(d.instructor({ accion: 'estudio-vaciar-lista', pin: '9999' }).motivo === 'pin' && d.estudio().hayLista, 'vaciar con un PIN equivocado no vacía');
+  r = d.instructor({ accion: 'estudio-vaciar-lista', pin: '1357' });
+  revisar(r.ok && r.estudio.listaBlanca === null && enDisco().listaBlanca === null && enDisco().variante === 'B' && enDisco().clase.codigo === 'K7Q2MX' &&
+    igual(d.estudio(), { variante: 'B', hayClase: true, hayLista: false, grupos: 0, danado: false }), 'vaciar deja la lista en nada, con la variante y el código de clase');
+  revisar(!d.entrarGrupo({ clase: 'K7Q2MX', grupo: 'G1' }).ok, 'sin lista, ningún grupo entra por la lista');
+  revisar(d.instructor({ accion: 'estudio-vaciar-lista', pin: '1357' }).ok && enDisco().listaBlanca === null, 'vaciar una lista ya vacía no falla');
+  // Dañado: vale C0, nadie entra, el panel lo ve y solo se puede empezar de nuevo (la dañada queda aparte)
+  fs.writeFileSync(archivo, '{"formato":1,"variante":"A","listaBlanca":["G1","g1"]}');
+  revisar(igual(d.estudio(), { variante: 'C0', hayClase: false, hayLista: false, grupos: 0, danado: true }), 'con el archivo dañado (lista repetida a mano): C0 y danado');
+  revisar(d.entrarGrupo({ clase: 'K7Q2MX', grupo: 'G1' }).motivo === 'estudio-danado', 'con el archivo dañado, ningún equipo entra');
+  revisar(d.instructor({ accion: 'estudio-variante', pin: '1357', variante: 'A' }).motivo === 'estudio-danado', 'con el archivo dañado no se cambia la variante encima');
+  r = d.instructor({ accion: 'estudio-reiniciar', pin: '1357' });
+  const apartes = fs.readdirSync(carpeta).filter((f) => f.startsWith('estudio-config-danado-'));
+  revisar(r.ok && igual(d.estudio(), { variante: 'C0', hayClase: false, hayLista: false, grupos: 0, danado: false }) && apartes.length === 1 &&
+    fs.readFileSync(path.join(carpeta, apartes[0]), 'utf8').includes('"g1"'), 'empezar de nuevo: vuelve a C0 y la dañada queda aparte como evidencia');
+  fs.writeFileSync(archivo, 'no es json');
+  revisar(d.estudio().danado && d.estado().configIlegible === false, 'un estudio dañado no daña el registro');
+  fs.rmSync(archivo);
+  fs.mkdirSync(archivo); // una carpeta con el nombre del archivo
+  revisar(d.estudio().danado && d.estudio().variante === 'C0', 'una carpeta en lugar del archivo: dañado, C0');
+  revisar(d.instructor({ accion: 'estudio-reiniciar', pin: '1357' }).motivo === 'disco' && d.estudio().danado, 'y empezar de nuevo dice «disco» sin borrar nada');
+  fs.rmSync(base, { recursive: true, force: true });
+}
+
 Promise.all(esperas).then(() => {
   console.log('— Las líneas cumplen el esquema del contrato');
   const REVISOR = path.join(__dirname, '..', '..', 'TecnoCircuito', 'prototipo', 'pruebas', 'contrato_eventos.js');

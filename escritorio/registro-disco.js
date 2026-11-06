@@ -15,6 +15,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { codigoParaArchivo, fechaArchivo } = require('../src/registro.js');
+const { ESTUDIO_INICIAL, VARIANTES_ESTUDIO, configEstudioValida, validarListaBlanca, nuevoCodigoClase, codigoClaseValido, equipoDe } = require('../src/servicios.js');
 
 // Una línea con el circuito y el código completos cabe de sobra. Se cuenta en caracteres del JSON (unidades de texto de
 // JavaScript, como la cola), sin el salto de línea; en bytes UTF-8 puede ser hasta tres veces más.
@@ -137,6 +138,87 @@ function crearRegistroDisco({ carpeta, ahora = () => Date.now(), alCambiar = () 
     if (++fallidos >= INTENTOS) { fallidos = 0; bloqueadoHasta = ahora() + ESPERA_MS; }
     return { ok: false, motivo: 'pin' };
   }
+
+  // ---- Configuración del estudio A/B (EST-002, I2; TecnoSuite/EstrategíaTecno/DISENO-I2-SERVICIOS.md, S2)
+  // Va en su propio archivo, aparte de registro-config.json: así no cambia la validación de AUD-11 ni el PIN. Sin
+  // archivo o dañado, vale C0 (la interfaz de siempre); dañado, además, el panel del instructor lo avisa. Se cambia
+  // solo con el PIN del registro. La lista de grupos y el código de clase no salen hacia la página sin el PIN: la
+  // página manda el código y el nombre que escribió el equipo, y aquí se comprueban.
+  const archivoEstudio = path.join(carpeta, 'estudio-config.json');
+  function leerEstudio() {
+    try {
+      const c = JSON.parse(fs.readFileSync(archivoEstudio, 'utf8'));
+      if (!configEstudioValida(c)) throw new Error('configuración del estudio mal formada');
+      return { config: c, danado: false };
+    } catch (e) {
+      return { config: { ...ESTUDIO_INICIAL }, danado: e.code !== 'ENOENT' };
+    }
+  }
+  /** Entera o nada, como guardar(): un temporal y después en su lugar. Devuelve false si el disco no dejó. */
+  function guardarEstudio(c) {
+    const temporal = archivoEstudio + '.tmp';
+    try {
+      fs.mkdirSync(carpeta, { recursive: true });
+      fs.writeFileSync(temporal, JSON.stringify(c, null, 1));
+      fs.renameSync(temporal, archivoEstudio);
+      return true;
+    } catch (e) {
+      try { fs.rmSync(temporal, { force: true }); } catch (e2) { /* se sobrescribe la próxima vez */ }
+      return false;
+    }
+  }
+  /** Lo que la página puede saber sin PIN: la variante y si ya hay código de clase y lista (no cuáles). */
+  function resumenEstudio() {
+    const { config: c, danado } = leerEstudio();
+    return { variante: c.variante, hayClase: !!c.clase, hayLista: !!(c.listaBlanca && c.listaBlanca.length), grupos: c.listaBlanca ? c.listaBlanca.length : 0, danado };
+  }
+  /** Las acciones del estudio del panel del instructor (ya con el PIN comprobado). */
+  function accionEstudio({ accion, variante, lista, codigo }) {
+    const { config: actual, danado } = leerEstudio();
+    if (accion === 'estudio-ver') return { ok: true, estudio: { ...actual, danado } };
+    // Con el archivo dañado solo se puede empezar de nuevo: así no se mezcla una lista vieja con una nueva sin verla
+    if (danado && accion !== 'estudio-reiniciar') return { ok: false, motivo: 'estudio-danado' };
+    let nueva;
+    if (accion === 'estudio-reiniciar') {
+      if (danado) {
+        const d = new Date(ahora());
+        const sello = `${fechaArchivo(ahora())}_${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}${String(d.getSeconds()).padStart(2, '0')}`;
+        let aparte = path.join(carpeta, `estudio-config-danado-${sello}.json`);
+        for (let n = 2; fs.existsSync(aparte); n++) aparte = path.join(carpeta, `estudio-config-danado-${sello}-${n}.json`);
+        try { fs.copyFileSync(archivoEstudio, aparte); } catch (e) { return { ok: false, motivo: 'disco' }; } // una carpeta con ese nombre: el disco no deja
+      }
+      nueva = { ...ESTUDIO_INICIAL };
+    } else if (accion === 'estudio-variante') {
+      if (!VARIANTES_ESTUDIO.includes(variante)) return { ok: false, motivo: 'variante-invalida' };
+      nueva = { ...actual, variante };
+    } else if (accion === 'estudio-lista') {
+      const v = validarListaBlanca(lista);
+      if (!v.ok) return { ok: false, motivo: 'lista-invalida', errores: v.errores, mensaje: v.mensaje };
+      nueva = { ...actual, listaBlanca: v.lista };
+    } else if (accion === 'estudio-guardar') {
+      // Guardar del panel (r1 de I2, F01): la variante y la lista se comprueban juntas y se escriben de una vez. Si una
+      // no vale o el disco no deja, no cambia ninguna. Sin `lista`, la lista queda como estaba.
+      if (!VARIANTES_ESTUDIO.includes(variante)) return { ok: false, motivo: 'variante-invalida' };
+      nueva = { ...actual, variante };
+      if (lista !== undefined) {
+        const v = validarListaBlanca(lista);
+        if (!v.ok) return { ok: false, motivo: 'lista-invalida', errores: v.errores, mensaje: v.mensaje };
+        nueva.listaBlanca = v.lista;
+      }
+    } else if (accion === 'estudio-vaciar-lista') {
+      // Decisión de Efraín (5 nov): sin lista, los equipos vuelven a entrar con su código de siempre
+      nueva = { ...actual, listaBlanca: null };
+    } else if (accion === 'estudio-clase') {
+      // Sin código: uno nuevo al azar. Con código: el que el instructor generó en otro PC de la misma clase
+      const elegido = codigo === undefined || codigo === null || codigo === '' ? nuevoCodigoClase((() => { const b = crypto.randomBytes(LARGO_AZAR); let i = 0; return () => b[i++] / 256; })())
+        : String(codigo).trim().toUpperCase();
+      if (!codigoClaseValido(elegido)) return { ok: false, motivo: 'clase-invalida' };
+      nueva = { ...actual, clase: { codigo: elegido, desde: new Date(ahora()).toISOString() } };
+    } else return { ok: false, motivo: 'accion' };
+    if (!guardarEstudio(nueva)) return { ok: false, motivo: 'disco' };
+    return { ok: true, estudio: { ...nueva, danado: false } };
+  }
+  const LARGO_AZAR = 6;
 
   /* ---- La falla del disco: la cola, el aviso y la recuperación ---- */
   // Una hora que Date puede representar; si no, la del momento (el archivo nunca se llama «NaN-NaN-NaN»)
@@ -401,7 +483,7 @@ function crearRegistroDisco({ carpeta, ahora = () => Date.now(), alCambiar = () 
      * Con la configuración ilegible, 'crear-pin' pide además `reemplazarIlegible: true` (el instructor lo confirmó): la
      * dañada se guarda aparte, como evidencia, y el registro vuelve apagado (decisión de Efraín, 18 oct).
      */
-    instructor({ accion, pin, nuevoPin, activo, reemplazarIlegible } = {}) {
+    instructor({ accion, pin, nuevoPin, activo, reemplazarIlegible, variante, lista, codigo } = {}) {
       if (accion === 'crear-pin') {
         const c = leer();
         if (c.pin) return { ok: false, motivo: 'ya-hay-pin' };
@@ -437,6 +519,12 @@ function crearRegistroDisco({ carpeta, ahora = () => Date.now(), alCambiar = () 
       }
       const r = comprobar(pin);
       if (!r.ok) return r;
+      // El estudio A/B (EST-002, I2): 'estudio-ver', 'estudio-variante' ({variante}), 'estudio-lista' ({lista}),
+      // 'estudio-guardar' ({variante, lista}: las dos o ninguna), 'estudio-vaciar-lista', 'estudio-clase' ({codigo}, o
+      // sin él uno nuevo) y 'estudio-reiniciar'. No tocan la configuración del registro.
+      if (typeof accion === 'string' && accion.startsWith('estudio-')) {
+        try { return accionEstudio({ accion, variante, lista, codigo }); } catch (e) { return { ok: false, motivo: 'disco', mensaje: e.message }; }
+      }
       if (accion === 'activar') {
         if (!guardar({ ...r.config, activo: !!activo })) return { ok: false, motivo: 'disco' };
         if (!activo) { vaciar(); avisarSiCambio(); } // apagado: lo que esperaba se descarta y el aviso se quita
@@ -476,6 +564,23 @@ function crearRegistroDisco({ carpeta, ahora = () => Date.now(), alCambiar = () 
       avisarSiCambio();
       avisarDescartes();
       return true;
+    },
+    /** El estudio A/B sin PIN: { variante, hayClase, hayLista, grupos, danado }. Sin archivo o dañado, variante C0. */
+    estudio() {
+      try { return resumenEstudio(); } catch (e) { return { variante: 'C0', hayClase: false, hayLista: false, grupos: 0, danado: true }; }
+    },
+    /**
+     * Un equipo de la comparación entra con el código de clase de esta sesión y el nombre de su grupo: { ok, equipo }
+     * («K7Q2MX-G3») o { ok: false, motivo, mensaje }. El código se compara sin distinguir mayúsculas; el grupo, con la
+     * lista blanca (servicios.js, equipoDe).
+     */
+    entrarGrupo({ clase, grupo } = {}) {
+      const { config: c, danado } = leerEstudio();
+      if (danado) return { ok: false, motivo: 'estudio-danado', mensaje: 'La configuración del estudio está dañada: avísenle al instructor.' };
+      if (!c.clase) return { ok: false, motivo: 'sin-clase', mensaje: 'Todavía no hay código de clase en este computador: avísenle al instructor.' };
+      const escrito = typeof clase === 'string' ? clase.replace(/\s+/g, '').toUpperCase() : '';
+      if (escrito !== c.clase.codigo) return { ok: false, motivo: 'clase-distinta', mensaje: 'Ese no es el código de clase de hoy. Revísenlo con el instructor.' };
+      return equipoDe(c.clase.codigo, grupo, c.listaBlanca);
     },
     /** Intenta escribir ya lo que espera (el botón del instructor, y al cerrar la app). Devuelve la falla o null. */
     reintentar() {

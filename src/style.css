@@ -313,6 +313,8 @@ details.subir-detalle pre { max-height: 220px; overflow: auto; font-family: var(
 #modalCuerpo label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
 #modalCuerpo textarea { font-family: var(--mono); font-size: 12.5px; min-height: 190px; width: 100%; box-sizing: border-box; background: var(--code-bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px; color: var(--code-ink); }
 #modalCuerpo .entrada { width: 100%; box-sizing: border-box; }
+#modalCuerpo textarea.entrada { font-family: var(--mono); resize: vertical; }
+.codigo-clase { font-family: var(--mono); font-size: 1.25em; letter-spacing: 0.12em; font-weight: 600; }
 #modalCuerpo ul { margin: 0; padding-left: 18px; }
 #modalCuerpo .vista-imagen { display: block; max-width: 100%; max-height: 50vh; margin: 0 auto; background: #fff; border: 1px solid var(--line); border-radius: 6px; }
 #modalCuerpo code { font-family: var(--mono); font-size: 12.5px; background: var(--panel-2); padding: 1px 4px; border-radius: 4px; }

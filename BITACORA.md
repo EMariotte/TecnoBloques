@@ -1528,3 +1528,24 @@ Incidencia de tiempos en `test:simulador` (sección 3, T2): a veces el LED salí
 ## 2026-11-01 — MARCA-003: «Acerca de» nombra a los agentes
 
 Pedido de Efraín. Después de la línea del autor, «Acerca de» dice «Realizado con el apoyo de Claude Opus 5.5 y auditado por Codex GPT-6.1 Sol.», los modelos que usa con los dos agentes. `test:simulador` comprueba la frase. Llega a las aulas con la próxima versión publicada.
+
+## 2026-11-05 — EST-002, I2: servicios del prototipo A/B
+
+Con el sí de Efraín. Diseño en `TecnoSuite/EstrategíaTecno/DISENO-I2-SERVICIOS.md`; base de I1: este `main` (`8fd78ea`) con TecnoCircuito `v0.4.0`. **En C0 no cambia lo que ve un aprendiz.**
+
+- **`src/servicios.js`** (nuevo, sin DOM, `test:servicios`): el programa y el circuito tienen revisión, que sube una vez por cada cambio real. La autoridad de ejecución lleva una corrida a la vez, con su revisión, su placa y su destino: una respuesta tardía no vale, editar después de simular la marca como atrasada, y nunca cambia el destino por su cuenta. También están el código de clase (6 caracteres, sin O, 0, I ni 1), la lista de grupos (sin repetidos ni nombres de más de 33 caracteres) y el equipo `<clase>-<grupo>` de 40 como máximo.
+- **`escritorio/registro-disco.js`, `main.js` y `preload.js`**: `estudio-config.json` va aparte de la configuración del registro. Se cambia con el PIN (variante C0, A o B; lista; código de clase; empezar de nuevo). Sin archivo o dañado, vale C0. La lista y el código no salen hacia la página: el equipo escribe el código de clase y su grupo, como en Tinkercad, y el proceso principal los comprueba.
+- **`src/app.js`**: la simulación pasa por la autoridad de ejecución, y su estado queda en `data-` de `#estadoSim`. Con el estudio configurado, el equipo entra con el código y el grupo. El panel del instructor suma «Estudio A/B». La variante queda en `<body data-variante>`: A y B llegan en I3 e I4.
+- **S4, comprobado:** mover el lienzo de TecnoCircuito a otro contenedor no reinicia la simulación. `test/estudio-app.js` lo hace con el ejercicio X andando.
+- `package.json` empaqueta `src/servicios.js`, y `build.js` lo agrega antes de `app.js`.
+
+## 2026-11-05 — EST-002, I2 r1: lo que devolvió Codex y el botón para vaciar la lista
+
+Codex devolvió I2 (COD-20261105-006) por cuatro casos, que se reprodujeron antes de corregir. **En C0 sigue sin cambiar lo que ve un aprendiz.**
+
+- **F01, Guardar del panel «Estudio A/B»:** guardaba la variante aunque después rechazara la lista. Ahora la acción `estudio-guardar` de `registro-disco.js` comprueba las dos y las escribe juntas: si una no vale o el disco no deja, no cambia ninguna, ni en el archivo ni en la página. Sin cambios, lo dice.
+- **F02, respuestas tardías:** la confirmación del grupo volvía a abrir un diálogo cancelado o tapaba otro. `modal()` lleva ahora un turno: una acción que espera una respuesta solo sigue si su diálogo sigue abierto, no se repite con otro clic o Enter mientras espera y lo que abre después (`{ luego }`) no reemplaza otra pantalla. La consulta inicial de `pedirEquipo` tampoco abre nada si entretanto cambió la pantalla.
+- **F03, preparación de la simulación:** al cambiar de proyecto, de placa o de equipo mientras compilaba, la corrida seguía vigente hasta que llegaba el HEX. Ahora `detenerSimulacion` la cancela enseguida, con su motivo (`lienzo`, `equipo`); el HEX que llega después se descarta como antes.
+- **F04, avisos accesibles:** los errores del panel y del grupo son `role="alert"`, están unidos a sus campos con `aria-describedby` y marcan `aria-invalid` solo en el campo del error; los resultados son `role="status"`. El foco no se mueve.
+- **Vaciar la lista** (decisión de Efraín, 5 nov): un botón junto a la lista, que pregunta antes con el foco en «Cancelar». Sin lista, los equipos entran con su código de siempre; la variante y el código de clase siguen. Acción `estudio-vaciar-lista`, con el PIN.
+- `test/estudio-app.js` suma esos casos, con retrasos de la comunicación con la app de escritorio puestos solo en la prueba, y `test/registro.js` suma las dos acciones nuevas. Una lección de la prueba: el diálogo pone el foco 20 ms después de abrir, y si llega en medio de un `fill()` de Playwright el campo no se borra. La prueba espera ese foco antes de escribir.
