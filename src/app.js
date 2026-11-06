@@ -150,7 +150,7 @@ const TEMA_CLARO = Blockly.Theme.defineTheme('tecno_claro', {
   componentStyles: {
     workspaceBackgroundColour: '#f6f8f4', toolboxBackgroundColour: '#fbfcfa', toolboxForegroundColour: '#15211a',
     flyoutBackgroundColour: '#eef2ec', flyoutForegroundColour: '#56655c', flyoutOpacity: 0.97,
-    scrollbarColour: '#98a69d', insertionMarkerColour: '#2c8a1c', insertionMarkerOpacity: 0.35, cursorColour: '#2c8a1c'
+    scrollbarColour: '#98a69d', insertionMarkerColour: '#257a16', insertionMarkerOpacity: 0.35, cursorColour: '#257a16'
   }
 });
 const TEMA_OSCURO = Blockly.Theme.defineTheme('tecno_oscuro', {

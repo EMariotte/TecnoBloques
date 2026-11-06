@@ -1549,3 +1549,12 @@ Codex devolvió I2 (COD-20261105-006) por cuatro casos, que se reprodujeron ante
 - **F04, avisos accesibles:** los errores del panel y del grupo son `role="alert"`, están unidos a sus campos con `aria-describedby` y marcan `aria-invalid` solo en el campo del error; los resultados son `role="status"`. El foco no se mueve.
 - **Vaciar la lista** (decisión de Efraín, 5 nov): un botón junto a la lista, que pregunta antes con el foco en «Cancelar». Sin lista, los equipos entran con su código de siempre; la variante y el código de clase siguen. Acción `estudio-vaciar-lista`, con el PIN.
 - `test/estudio-app.js` suma esos casos, con retrasos de la comunicación con la app de escritorio puestos solo en la prueba, y `test/registro.js` suma las dos acciones nuevas. Una lección de la prueba: el diálogo pone el foco 20 ms después de abrir, y si llega en medio de un `fill()` de Playwright el campo no se borra. La prueba espera ese foco antes de escribir.
+
+## 2026-11-06 — UX-004: el verde de la interfaz alcanza el contraste AA
+
+Hallazgo de Codex en la revisión de EST-002 (I2 r1): el texto blanco de «Guardar» sobre el verde `#2c8a1c` daba 4,41:1, y el mínimo es 4,5:1. Al medir todos los usos del verde, en el tema claro también fallaban el estado serial «Conectado» (3,75), los mensajes enviados del monitor y del simulador (4,17) y el texto verde sobre el panel (4,29). Efraín eligió `#257a16` entre tres opciones vistas en la app (6 nov): es el más cercano al anterior que cumple en todos, con 5,42 en el botón y 4,61 en «Conectado».
+
+- `src/style.css`: `--accent` del tema claro pasa a `#257a16`. El tema oscuro no cambia (`#5cc94a`, de 6,4 a 8,8:1).
+- `src/app.js`: el marcador de inserción y el cursor de Blockly usan el mismo verde.
+- **`test/contraste.js`** (nuevo, `npm run test:contraste`, sin navegador): lee las variables de los dos temas y comprueba cada pareja donde entra `--accent`, con 4,5:1 para texto y 3:1 para foco y bordes. Con el verde anterior da 4 fallas; ahora, 15 OK.
+- `marca/MARCA.md` anota el verde nuevo y por qué el anterior no alcanzaba.

@@ -25,7 +25,7 @@ El robot es también la **mascota** de la herramienta.
 
 Los valores siguen la paleta institucional del SENA. Antes de imprimir material oficial, confírmalos con el manual de identidad del SENA.
 
-En la interfaz del editor, el verde de los botones es un poco más oscuro (`#2c8a1c` en tema claro) para que el texto blanco se lea bien (contraste AA). El de la marca se usa en el logo y en los íconos.
+En la interfaz del editor, el verde de los botones es más oscuro (`#257a16` en tema claro) para que el texto blanco se lea bien: 5,42:1 sobre el botón y 4,61:1 como texto sobre el verde claro (contraste AA, UX-004). El `#2c8a1c` anterior daba 4,41:1 y no alcanzaba. El de la marca se usa en el logo y en los íconos.
 
 ## Tipografía
 

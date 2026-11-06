@@ -466,7 +466,7 @@ Un solo archivo JSON lleva todo lo necesario para **abrir el proyecto en otro co
   - El favicon es `simbolo-cabeza.svg`, más el apple-touch-icon de 180 px y `theme-color` `#00304D`.
   - electron-builder usa `icono.ico` para la app, el instalador y el desinstalador.
   - La ventana de Electron usa `icono.ico` en Windows.
-- **En la interfaz**, "Tecno" usa `--ink` y "Bloques" usa `--accent`. Los botones siguen con `#2c8a1c` en tema claro, porque el verde SENA con texto blanco no alcanza el contraste AA.
+- **En la interfaz**, "Tecno" usa `--ink` y "Bloques" usa `--accent`. Los botones usan `#257a16` en tema claro (UX-004, 6 nov, elegido por Efraín): 5,42:1 con texto blanco y 4,61:1 como texto sobre `--accent-soft`. El verde SENA y el `#2c8a1c` anterior (4,41:1) no alcanzan AA.
 
 ### Receta: agregar un bloque
 
