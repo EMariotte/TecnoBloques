@@ -1558,3 +1558,31 @@ Hallazgo de Codex en la revisión de EST-002 (I2 r1): el texto blanco de «Guard
 - `src/app.js`: el marcador de inserción y el cursor de Blockly usan el mismo verde.
 - **`test/contraste.js`** (nuevo, `npm run test:contraste`, sin navegador): lee las variables de los dos temas y comprueba cada pareja donde entra `--accent`, con 4,5:1 para texto y 3:1 para foco y bordes. Con el verde anterior da 4 fallas; ahora, 15 OK.
 - `marca/MARCA.md` anota el verde nuevo y por qué el anterior no alcanzaba.
+
+## 2026-11-09 — EST-002, I3: la variante A, paneles libres
+
+Diseño aceptado por Efraín el 9 nov: `TecnoSuite/EstrategíaTecno/DISENO-I3-PANELES.md` (ejemplos E1–E12 y decisiones D1–D4). Con la variante A que elige el instructor, la ventana tiene dos espacios, y en cada uno una de las cuatro herramientas: Bloques, C++, Circuito o Monitor serial. C0 no cambia.
+
+- `src/app.js`, módulo `panelesA`: las herramientas son los mismos nodos de C0, que se mueven entre los dos espacios y un almacén oculto; nunca hay dos de una. Elegir en un espacio la herramienta del otro las cambia de lado (D1). «Intercambiar» y «Ampliar» / «Reducir» van en la cabeza de cada espacio (D3). El primer uso muestra los dos espacios vacíos con «¿Qué herramienta abres aquí?».
+- **En A nada se reacomoda solo:** `cambiarVista` no hace nada y `seleccionarPestana` solo atiende el clic en «Monitor serial» o «Simular», que traen su herramienta al espacio vacío o al derecho si no está en ninguno (D2). Cambiar de nivel, abrir un ejemplo o pasar a «Editar C++» no mueve los espacios.
+- **La simulación no se reinicia** al intercambiar, ampliar, reducir ni sustituir el circuito (comprobado con su tiempo y sin otro `simulacion_iniciada`). Con el circuito fuera de la vista, la barra suma «Detener».
+- El divisor de C0 sirve también en A, con su ancho aparte y su valor para el lector de pantalla (`aria-valuenow`, `aria-valuetext`, `aria-controls`). Cada espacio no baja de 320 px. Los cambios se anuncian en `#anuncioPaneles` (`aria-live`).
+- La disposición se guarda en `tecnobloques.preferencias.v1`, clave `disposicionA`, aparte de la vista y el ancho de C0; una guardada dañada se limpia. Volver a C0 devuelve cada nodo a su lugar, con sus roles de pestaña y su vista de antes.
+- Las mediciones se ven con el circuito ampliado, como en C0 (`circuitoAmpliado()`).
+- **`test/paneles-app.js`** (nuevo, `npm run test:paneles`, Electron): E1–E11, D2, el cambio de variante con la app abierta, la disposición dañada y C0 sin nada de A. Lección: a 125 %, Chromium dibuja el contorno de foco de 2 px como 2 píxeles de la pantalla y lo informa como 1,6 px; el foco se mide en píxeles de la pantalla.
+
+## 2026-11-09 — EST-002, I3 r1: lo que devolvió Codex
+
+Codex devolvió I3 por dos hallazgos (COD-20261109-001). Arreglos aceptados por Efraín el 9 nov:
+
+- **F01, la cabeza del espacio fuera de alcance:** con el divisor, un espacio puede quedar en 320 px, y la cabeza necesitaba unos 483. «Intercambiar» y «Ampliar» quedaban tapados por el otro espacio o fuera de la ventana. Ahora la cabeza se envuelve: el selector se angosta (`flex: 0 1 12em`, desde 7,5 em) y los dos botones, en `.acciones-lado`, pasan juntos al segundo renglón.
+- **F02, el aviso de programa anterior se iba con el circuito:** con el circuito fuera de la vista, la barra muestra `#estadoSimBarra` (`role="status"`) junto a «Detener»: «Simulando» o «Simulando un programa anterior». La simulación no se toca.
+- **Reglas de DISENO en los controles de A:** presión `scale(.97)`, hover solo con ratón y un `h1` para el lector de pantalla, solo en A.
+- `test/paneles-app.js` suma el recorrido del divisor hasta los dos extremos con el teclado y el ratón (en 1366 × 768, 1536 × 864 y con zoom al 200 %), el clic real en cada control, el foco con Tab, el estado en la barra (circuito sustituido, el otro espacio ampliado, edición de C++ y de bloques, volver a simular) y su contraste. Lecciones: con zoom, la captura de Playwright toma un recorte a otra escala (se captura con `webContents.capturePage`); y con `overflow: hidden` en el cuerpo, `scrollWidth` no muestra lo que se sale de la ventana: hay que medir cada control.
+
+## 2026-11-09 — EST-002, I3 r2: «reducir movimiento» sin escala
+
+Codex comprobó F01 y F02 corregidos y devolvió la r1 por F03 (COD-20261109-002): con «reducir movimiento», «Intercambiar» y «Ampliar» seguían en `scale(.97)` al presionarlos, porque `.cabeza-lado .btn:not([disabled]):active` (0,4,0) ganaba a la regla que ponía `transform: none` (0,3,0).
+
+- `src/style.css`: la escala se declara solo dentro de `@media (prefers-reduced-motion: no-preference)`, y se quita la regla que la anulaba. Así no depende de la especificidad.
+- `test/paneles-app.js`: presiona de verdad, 180 ms, «Intercambiar», «Ampliar», un botón del espacio vacío y «Detener» de la barra, con y sin «reducir movimiento», y lee su `transform`. Suelta fuera del botón, así no hace clic. Con la r1 daba una falla en la cabeza; ahora, ninguna.

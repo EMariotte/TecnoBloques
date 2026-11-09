@@ -803,6 +803,7 @@ $('editor').addEventListener('input', () => { notarPrograma(); autoguardar(); })
 // En las vistas de «solo panel», la pestaña y la vista van juntas: elegir la pestaña Circuito pasa a la vista Circuito.
 let pestanaActual = 'codigo';
 function cambiarVista(v) {
+  if (panelesA.activo()) return; // en A nada se reacomoda solo, y la vista de C0 queda guardada como estaba (I3)
   if (v === 'circuito' && !simulador.disponible) v = 'dividido';
   estado.vista = v;
   $('principal').dataset.vista = v;
@@ -825,6 +826,7 @@ function ponerPestanas(p) {
   $('pCircuito').hidden = p !== 'circuito';
 }
 function seleccionarPestana(p) {
+  if (panelesA.activo()) { panelesA.pedir(p); return; } // A: solo el clic en «Monitor serial» o «Simular» trae su herramienta (D2)
   ponerPestanas(p);
   if ((p === 'serial' || p === 'circuito') && estado.vista === 'bloques') cambiarVista('dividido');
   else if (estado.vista === 'circuito' && p !== 'circuito') cambiarVista('codigo');
@@ -847,7 +849,9 @@ function iniciarDivisor(guardado) {
   const d = $('divisor'), p = $('principal');
   let arrastre = null, cuadro = 0;
   const reacomodar = () => { cuadro = 0; if (espacio) Blockly.svgResize(espacio); };
-  const terminar = () => { reacomodar(); guardarPreferencias({ anchoPanel }); };
+  // En A el divisor reparte los dos espacios y su ancho se guarda con la disposición de A, no con el de C0 (I3)
+  const terminar = () => { reacomodar(); if (panelesA.activo()) panelesA.guardar(); else guardarPreferencias({ anchoPanel }); };
+  const ancho = (px) => (panelesA.activo() ? panelesA.anchoDerecho(px) : ponerAnchoPanel(px));
   if (guardado) ponerAnchoPanel(guardado);
   d.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return;
@@ -858,7 +862,7 @@ function iniciarDivisor(guardado) {
   });
   d.addEventListener('pointermove', (e) => {
     if (!arrastre) return;
-    ponerAnchoPanel(arrastre.derecha - e.clientX - ANCHO_DIVISOR / 2);
+    ancho(arrastre.derecha - e.clientX - ANCHO_DIVISOR / 2);
     if (!cuadro) cuadro = requestAnimationFrame(reacomodar);
   });
   const soltar = () => {
@@ -869,17 +873,224 @@ function iniciarDivisor(guardado) {
   };
   d.addEventListener('pointerup', soltar);
   d.addEventListener('pointercancel', soltar);
-  d.addEventListener('dblclick', () => { ponerAnchoPanel(null); terminar(); });
+  d.addEventListener('dblclick', () => { ancho(null); terminar(); });
   d.addEventListener('keydown', (e) => {
     const paso = e.key === 'ArrowLeft' ? 40 : e.key === 'ArrowRight' ? -40 : 0;
     if (!paso) return;
     e.preventDefault();
-    ponerAnchoPanel($('panel').getBoundingClientRect().width + paso);
+    ancho((panelesA.activo() ? $('ladoDer') : $('panel')).getBoundingClientRect().width + paso);
     terminar();
   });
-  // Si la ventana se achica, el panel no puede dejar los bloques sin espacio.
-  window.addEventListener('resize', () => { if (anchoPanel) ponerAnchoPanel(anchoPanel); });
+  // Si la ventana se achica, el panel no puede dejar los bloques sin espacio (en A, ninguno de los dos espacios).
+  window.addEventListener('resize', () => { if (panelesA.activo()) panelesA.reponerAncho(); else if (anchoPanel) ponerAnchoPanel(anchoPanel); });
 }
+
+/* ---------- Variante A del estudio: paneles libres (EST-002, I3; TecnoSuite/EstrategíaTecno/DISENO-I3-PANELES.md) ----------
+ * Dos espacios, y en cada uno una de las cuatro herramientas de siempre. Son los mismos nodos de C0, que se mueven: nunca
+ * hay dos de una. Elegir la que está en el otro espacio las cambia de lado (D1). Mover no compila, no reinicia la
+ * simulación (S4 de I2) ni sube nada. En A nada se reacomoda solo: cambiarVista y seleccionarPestana no tocan los
+ * espacios; solo el clic del aprendiz en «Monitor serial» o «Simular» trae esa herramienta si no está en ninguno (D2). La
+ * disposición es una preferencia de este PC (`disposicionA`), aparte de la vista y el ancho de C0. Volver a C0 deja
+ * cada nodo donde estaba y su vista de antes. */
+const panelesA = (() => {
+  const HERRAMIENTAS = {
+    bloques: { nombre: 'Bloques', desc: 'Arma el programa con bloques', nodo: 'zonaBloques' },
+    codigo: { nombre: 'C++', desc: 'El código del programa', nodo: 'pCodigo' },
+    circuito: { nombre: 'Circuito', desc: 'Arma el circuito y simúlalo', nodo: 'pCircuito' },
+    monitor: { nombre: 'Monitor serial', desc: 'Los mensajes de la placa real', nodo: 'pSerial' },
+  };
+  const ORDEN = Object.keys(HERRAMIENTAS);
+  const LADOS = { izq: { id: 'ladoIzq', sufijo: 'Izq', nombre: 'Espacio izquierdo', en: 'en el espacio izquierdo' },
+    der: { id: 'ladoDer', sufijo: 'Der', nombre: 'Espacio derecho', en: 'en el espacio derecho' } };
+  const MIN_LADO = 320;
+  let activo = false, d = null;
+  const otro = (l) => (l === 'izq' ? 'der' : 'izq');
+  const disponible = (h) => h !== 'circuito' || simulador.disponible;
+  const ladoDe = (h) => (d.izq === h ? 'izq' : d.der === h ? 'der' : null);
+
+  /** Lo guardado, sin confiar en él: herramientas que existen y sin repetir, proporción razonable y ampliado con algo. */
+  function limpia(g) {
+    const x = g && typeof g === 'object' ? g : {};
+    const vale = (h) => (ORDEN.includes(h) && disponible(h) ? h : null);
+    const izq = vale(x.izq);
+    const der = vale(x.der) === izq ? null : vale(x.der);
+    const proporcion = typeof x.proporcion === 'number' && x.proporcion >= 0.2 && x.proporcion <= 0.8 ? x.proporcion : 0.5;
+    const ampliado = (x.ampliado === 'izq' && izq) || (x.ampliado === 'der' && der) ? x.ampliado : null;
+    return { izq, der, proporcion, ampliado };
+  }
+
+  function construirLado(l) {
+    const L = LADOS[l];
+    const sel = el('select', { id: 'herr' + L.sufijo, onchange: () => poner(l, sel.value || null) },
+      el('option', { value: '' }, 'Ninguna'), ...ORDEN.map((h) => el('option', { value: h }, HERRAMIENTAS[h].nombre)));
+    const vacio = el('div', { class: 'lado-vacio' },
+      el('p', { class: 'pregunta-lado' }, '¿Qué herramienta abres aquí?'),
+      el('div', { class: 'opciones-lado' }, ...ORDEN.map((h) => el('button', {
+        type: 'button', class: 'btn', 'data-herr': h, onclick: () => { poner(l, h); $('herr' + L.sufijo).focus(); },
+      }, el('b', null, HERRAMIENTAS[h].nombre), el('small', null, HERRAMIENTAS[h].desc)))));
+    return el('section', { class: 'lado', id: L.id, 'aria-labelledby': 'titulo' + L.sufijo },
+      el('div', { class: 'cabeza-lado' },
+        el('h2', { class: 'solo-lector', id: 'titulo' + L.sufijo }, L.nombre),
+        el('label', { class: 'campo-lado', for: 'herr' + L.sufijo }, 'Herramienta', sel),
+        // Los dos botones van juntos: si no caben al lado del selector, pasan juntos al segundo renglón (r1, F01)
+        el('div', { class: 'acciones-lado' },
+          el('button', { type: 'button', class: 'btn chico', id: 'intercambiar' + L.sufijo, onclick: intercambiar,
+            title: 'Pasar esta herramienta al otro espacio, y la del otro a este' }, 'Intercambiar'),
+          el('button', { type: 'button', class: 'btn chico', id: 'ampliar' + L.sufijo, onclick: () => ampliar(l) }, 'Ampliar'))),
+      el('div', { class: 'cuerpo-lado' }, vacio));
+  }
+
+  function montar() {
+    activo = true;
+    const p = $('principal'), div = $('divisor');
+    delete p.dataset.vista; // las reglas de C0 por vista no alcanzan a A; estado.vista la conserva para volver
+    p.classList.add('modo-a');
+    document.body.classList.add('modo-a');
+    // Un h1 para el lector de pantalla, solo en A: los espacios llevan h2 (DISENO, r1; C0 no lo tiene y no cambia)
+    p.prepend(el('h1', { class: 'solo-lector', id: 'tituloA' }, 'TecnoBloques: paneles libres'));
+    p.insertBefore(construirLado('izq'), div);
+    p.insertBefore(construirLado('der'), div.nextSibling);
+    p.append(el('div', { id: 'almacenA', hidden: '' }));
+    for (const id of ['pCodigo', 'pSerial', 'pCircuito']) $(id).removeAttribute('role'); // ya no son pestañas: van en su espacio
+    div.setAttribute('aria-label', 'Tamaño de los espacios');
+    div.setAttribute('aria-controls', 'ladoIzq');
+    d = limpia((leerLocal(CLAVE_PREF) || {}).disposicionA);
+    pintar();
+  }
+  function desmontar() {
+    activo = false;
+    const p = $('principal'), div = $('divisor');
+    p.insertBefore($('zonaBloques'), div);
+    $('panel').append($('pCodigo'), $('pSerial'), $('pCircuito'));
+    for (const id of ['pCodigo', 'pSerial', 'pCircuito']) $(id).setAttribute('role', 'tabpanel');
+    for (const id of ['ladoIzq', 'ladoDer', 'almacenA', 'tituloA']) $(id).remove();
+    p.classList.remove('modo-a', 'con-ampliado');
+    document.body.classList.remove('modo-a');
+    p.style.removeProperty('--ancho-der');
+    div.setAttribute('aria-label', 'Tamaño del panel');
+    for (const a of ['aria-controls', 'aria-valuenow', 'aria-valuemin', 'aria-valuemax', 'aria-valuetext']) div.removeAttribute(a);
+    ponerPestanas(pestanaActual);
+    cambiarVista(estado.vista);
+    uiSimulador();
+  }
+
+  /** Pone cada herramienta en su espacio (o fuera de la vista) y deja la cabeza de cada espacio al día. */
+  function pintar() {
+    const almacen = $('almacenA');
+    for (const l of ['izq', 'der']) {
+      const L = LADOS[l], lado = $(L.id), h = d[l], cuerpo = lado.querySelector('.cuerpo-lado');
+      if (h) {
+        const n = $(HERRAMIENTAS[h].nodo);
+        if (n.parentNode !== cuerpo) cuerpo.append(n);
+        n.hidden = false;
+      }
+      cuerpo.querySelector('.lado-vacio').hidden = !!h;
+      lado.hidden = d.ampliado === otro(l);
+      lado.classList.toggle('ampliado', d.ampliado === l);
+      const sel = $('herr' + L.sufijo);
+      sel.value = h || '';
+      for (const o of sel.options) {
+        if (!o.value) continue;
+        const nombre = HERRAMIENTAS[o.value].nombre;
+        o.disabled = !disponible(o.value);
+        o.textContent = o.disabled ? `${nombre} (no está en esta instalación)` : d[otro(l)] === o.value ? `${nombre} (en el otro espacio)` : nombre;
+      }
+      $('titulo' + L.sufijo).textContent = `${L.nombre}: ${h ? HERRAMIENTAS[h].nombre : 'vacío'}`;
+      $('intercambiar' + L.sufijo).disabled = !!d.ampliado || (!d.izq && !d.der);
+      const amp = $('ampliar' + L.sufijo);
+      amp.disabled = !h;
+      amp.textContent = d.ampliado === l ? 'Reducir' : 'Ampliar';
+      amp.title = d.ampliado === l ? 'Volver a ver los dos espacios' : 'Ver solo esta herramienta, en toda la ventana';
+    }
+    for (const h of ORDEN) {
+      const n = $(HERRAMIENTAS[h].nodo);
+      if (!ladoDe(h) && n.parentNode !== almacen) almacen.append(n);
+    }
+    $('principal').classList.toggle('con-ampliado', !!d.ampliado);
+    reponerAncho();
+    setTimeout(() => { if (espacio) Blockly.svgResize(espacio); }, 30);
+    actualizarGrafica();
+    uiSimulador(); // «Detener» de la barra depende de si el circuito se ve
+  }
+  /** Un cambio pedido por el aprendiz: se pinta, se guarda y se anuncia al lector de pantalla. */
+  function cambio() {
+    pintar();
+    guardar();
+    const dice = (l) => (d[l] ? `${HERRAMIENTAS[d[l]].nombre} ${LADOS[l].en}` : `${LADOS[l].nombre} vacío`);
+    $('anuncioPaneles').textContent = `${dice('izq')}; ${dice('der')}.` + (d.ampliado ? ` ${HERRAMIENTAS[d[d.ampliado]].nombre} ampliado.` : '');
+  }
+  function guardar() { if (activo) guardarPreferencias({ disposicionA: { ...d } }); }
+
+  function poner(l, h) {
+    if (d[l] === h) return;
+    if (h && d[otro(l)] === h) d[otro(l)] = d[l]; // D1: la del otro espacio viene, y la de aquí se va allá
+    d[l] = h;
+    if (d.ampliado && !d[d.ampliado]) d.ampliado = null;
+    cambio();
+  }
+  function intercambiar() {
+    if (d.ampliado) return;
+    [d.izq, d.der] = [d.der, d.izq];
+    cambio();
+  }
+  function ampliar(l) {
+    if (!d[l]) return;
+    d.ampliado = d.ampliado === l ? null : l;
+    cambio();
+  }
+  /** El clic en «Monitor serial» o «Simular» (seleccionarPestana): si su herramienta no está en un espacio, va al
+   *  vacío o, si no hay, al derecho (D2). El monitor, además, se deja ver si quedó detrás del espacio ampliado. Cualquier
+   *  otro pedido (por ejemplo, pasar a «Editar C++») no mueve nada. */
+  function pedir(p) {
+    const h = p === 'serial' ? 'monitor' : p === 'circuito' ? 'circuito' : null;
+    if (!h || !disponible(h)) return;
+    const l = ladoDe(h);
+    if (l) {
+      if (h === 'monitor' && d.ampliado === otro(l)) { d.ampliado = null; cambio(); }
+      return;
+    }
+    const destino = !d.der ? 'der' : !d.izq ? 'izq' : 'der';
+    d[destino] = h;
+    if (d.ampliado && d.ampliado !== destino) d.ampliado = null;
+    cambio();
+  }
+
+  /** El ancho de cada espacio sale de la proporción guardada; ninguno baja de MIN_LADO. */
+  function medidas() {
+    const total = $('principal').clientWidth - ANCHO_DIVISOR;
+    const min = Math.min(MIN_LADO, Math.floor(total / 2));
+    return { total, min };
+  }
+  function reponerAncho() {
+    if (!activo) return;
+    const p = $('principal'), div = $('divisor'), { total, min } = medidas();
+    if (total <= 0) return;
+    const der = Math.round(Math.max(min, Math.min(total - min, total * (1 - d.proporcion))));
+    p.style.setProperty('--ancho-der', der + 'px');
+    const izq = Math.round(((total - der) / total) * 100);
+    div.setAttribute('aria-valuenow', String(izq));
+    div.setAttribute('aria-valuemin', String(Math.round((min / total) * 100)));
+    div.setAttribute('aria-valuemax', String(Math.round(((total - min) / total) * 100)));
+    div.setAttribute('aria-valuetext', `Espacio izquierdo ${izq} %`);
+  }
+  /** El divisor de A: `px` es el ancho que pide para el espacio derecho (null: mitad y mitad). */
+  function anchoDerecho(px) {
+    const { total, min } = medidas();
+    if (total <= 0) return;
+    d.proporcion = px === null ? 0.5 : 1 - Math.max(min, Math.min(total - min, px)) / total;
+    reponerAncho();
+  }
+
+  return {
+    activo: () => activo,
+    /** Con la variante A del instructor, A; con cualquier otra, la interfaz de siempre. */
+    aplicar(enA) { if (enA && !activo) montar(); else if (!enA && activo) desmontar(); },
+    disposicion: () => (activo ? { ...d } : null),
+    circuitoAmpliado: () => activo && !!d.ampliado && d[d.ampliado] === 'circuito',
+    circuitoVisible: () => activo && !!ladoDe('circuito') && d.ampliado !== otro(ladoDe('circuito')),
+    pedir, guardar, reponerAncho, anchoDerecho,
+  };
+})();
 
 /* ---------- Proyectos ---------- */
 // Formato del archivo .tbq.json (ver "Proyecto" en CLAUDE.md). Sube solo si cambia el significado de un campo.
@@ -2099,10 +2310,11 @@ const MOTIVOS_ESTUDIO = {
   'estudio-danado': 'La configuración del estudio está dañada: empieza de nuevo.', disco: 'No se pudo guardar en este computador.',
 };
 let varianteEstudio = 'C0';
-/** La variante elegida queda en <body data-variante>. En I2 todas se ven como C0; A y B llegan con I3 e I4. */
+/** La variante elegida queda en <body data-variante>. A pone los paneles libres (I3); B se ve como C0 hasta I4. */
 function aplicarVariante(v) {
   varianteEstudio = ['A', 'B'].includes(v) ? v : 'C0';
   document.body.dataset.variante = varianteEstudio;
+  panelesA.aplicar(varianteEstudio === 'A');
 }
 async function iniciarEstudio() {
   if (!escritorio || !escritorio.estudio) { aplicarVariante('C0'); return; }
@@ -2384,9 +2596,13 @@ function verPestanaMediciones(p) {
   $('graficaMediciones').hidden = !esGrafica;
   actualizarGrafica();
 }
+/** Las mediciones se ven con el circuito ampliado: en C0, la vista Circuito; en A, el espacio del circuito ampliado. */
+function circuitoAmpliado() {
+  return panelesA.activo() ? panelesA.circuitoAmpliado() : estado.vista === 'circuito';
+}
 function actualizarGrafica() {
   if (!simulador.grafica) return;
-  simulador.grafica.mostrar(estado.vista === 'circuito' && !$('cuerpoMediciones').hidden && pestanaMediciones === 'grafica');
+  simulador.grafica.mostrar(circuitoAmpliado() && !$('cuerpoMediciones').hidden && pestanaMediciones === 'grafica');
 }
 function enviarSim(texto) {
   if (!simulador.sim) { mostrarToast('Pulsa «Simular» primero.'); return; }
@@ -2456,7 +2672,7 @@ function guardarNetlistCircuito() {
 /** Panel de mediciones (vista Circuito ampliada): la tabla que arma TecnoCircuito.filasDeMediciones con
  *  sim.mediciones() (contrato 1). Cada fila: pieza, voltaje y corriente, y debajo el detalle (PWM, brillo, ángulo…). */
 function pintarMediciones() {
-  if (estado.vista !== 'circuito' || $('cuerpoMediciones').hidden) return;
+  if (!circuitoAmpliado() || $('cuerpoMediciones').hidden) return;
   const sim = simulador.sim;
   const leer = sim && (sim.mediciones || sim._mediciones);
   const filas = leer && typeof TecnoCircuito.filasDeMediciones === 'function' ? TecnoCircuito.filasDeMediciones(leer.call(sim)) : [];
@@ -2479,6 +2695,18 @@ function uiSimulador(texto) {
   $('btnImagenCircuito').disabled = !simulador.lienzo;
   $('btnKicadCircuito').disabled = !simulador.lienzo;
   $('puntoCircuito').classList.toggle('on', corriendo);
+  // En A el circuito puede no verse mientras simula (otro espacio ampliado o fuera de los dos): entonces la barra lleva
+  // «Detener» y el estado de la simulación, también si corre un programa anterior al que se ve (r1, F02). Con el
+  // circuito a la vista, basta lo suyo. El texto cambia solo cuando cambia el estado: es un aviso para el lector.
+  const enBarra = panelesA.activo() && corriendo && !panelesA.circuitoVisible();
+  const anterior = enBarra && codigoActual() !== simulador.codigo;
+  $('btnDetenerBarra').hidden = !enBarra;
+  const eb = $('estadoSimBarra');
+  eb.hidden = !enBarra;
+  const textoBarra = !enBarra ? '' : anterior ? 'Simulando un programa anterior' : 'Simulando';
+  if (eb.textContent !== textoBarra) eb.textContent = textoBarra;
+  eb.classList.toggle('anterior', anterior);
+  eb.title = anterior ? 'Cambiaste el programa después de simular: pulsa «Simular» para probar el nuevo' : '';
   let t = texto;
   if (!t) {
     if (!simulador.lienzo) t = 'Sin simulador para esta placa';
@@ -2579,6 +2807,7 @@ function iniciar() {
     $('btnSimular').addEventListener('click', simular);
     $('btnSimularBarra').addEventListener('click', simular);
     $('btnDetenerSim').addEventListener('click', () => detenerSimulacion());
+    $('btnDetenerBarra').addEventListener('click', () => detenerSimulacion());
     $('btnImagenCircuito').addEventListener('click', guardarImagenCircuito);
     $('btnKicadCircuito').addEventListener('click', guardarNetlistCircuito);
     setInterval(pintarMediciones, 250); // la tabla se pinta solo con el circuito ampliado
