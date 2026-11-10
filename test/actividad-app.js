@@ -1,8 +1,10 @@
 // Prueba de punta a punta de la variante B, por actividad (EST-002, I4; diseño y ejemplos E1–E11 en
 // TecnoSuite/EstrategíaTecno/DISENO-I4-ACTIVIDAD.md). B usa los espacios de A (I3, test:paneles) con un punto de partida:
 // al abrir una tarea del estudio, «Programar y probar» (Bloques | Circuito). Comprueba la franja de la actividad y
-// «Volver a…», que nada se reacomoda solo, que la disposición se recuerda aparte de A, las tareas X y Y (solo con A o B)
-// y que X se comporta igual en A, B y C0 (TEC-14). Necesita arduino-cli (como test:simulador).
+// «Volver a…», que nada se reacomoda solo, que la disposición se recuerda aparte de A, las tareas del estudio (solo con A
+// o B) y que X1 se comporta igual en A, B y C0 (TEC-14). Las tareas son las de I5 (DISENO-I5-MATERIAL.md): X1/Y1 y X2/Y2
+// medidas y dos cierres; cada una abre en su nivel, su programa de partida hace lo que dice la hoja y su solución
+// también (E2–E5 de I5). Necesita arduino-cli (como test:simulador).
 // Uso: npm run test:actividad   (arma con --simulador-local)
 'use strict';
 const { _electron: electron } = require('playwright-core');
@@ -68,7 +70,8 @@ const esActividad = (d) => d && d.izq === ACTIVIDAD.izq && d.der === ACTIVIDAD.d
   }
   const enMenu = (win) => win.evaluate(() => [...$('listaEjemplos').querySelectorAll('button')].filter((b) => getComputedStyle(b).display !== 'none').map((b) => b.querySelector('b').textContent));
   // TEC-14: con el circuito a la vista, pulsar el pulsador con el ratón enciende el LED; soltarlo, lo apaga
-  async function ledConPulsador(win, boton = 'btn1') {
+  // `invertido`: el reto del cierre 1, donde el LED se apaga mientras se pulsa (se reintenta hasta que se apague)
+  async function ledConPulsador(win, boton = 'btn1', invertido = false) {
     const brillo = () => win.evaluate(() => { const m = simulador.sim && simulador.sim.mediciones(); const l = m && (m.leds || [])[0]; return l ? l.brillo : null; });
     const suelto = await brillo();
     // El lienzo se reacomoda al aparecer en su espacio: se espera a que el pulsador quede quieto antes de pulsarlo
@@ -83,7 +86,7 @@ const esActividad = (d) => d && d.izq === ACTIVIDAD.izq && d.der === ACTIVIDAD.d
     // Con alguien usando el PC, el ratón real puede cruzarse con el de la prueba y la pulsación no llega: se reintenta hasta
     // 3 veces. Un reintento no aprueba un programa roto (el LED no se enciende en ninguno) y se anota cuántos hubo.
     let pulsado = null, otraVez = null, intentos = 0;
-    while (intentos < 3 && !(pulsado > 0.5)) {
+    while (intentos < 3 && !(invertido ? pulsado !== null && pulsado < 0.01 : pulsado > 0.5)) {
       intentos++;
       await win.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
       await win.mouse.down();
@@ -95,6 +98,38 @@ const esActividad = (d) => d && d.izq === ACTIVIDAD.izq && d.der === ACTIVIDAD.d
     }
     return { apagado: suelto !== null && suelto < 0.01, encendido: pulsado !== null && pulsado > 0.5, vuelve: otraVez !== null && otraVez < 0.01, suelto, pulsado, otraVez, intentos };
   }
+  // Las tareas de I5, por su nombre en el menú
+  const X1 = 'X1 · Luces en secuencia', Y1 = 'Y1 · Semáforo', X2 = 'X2 · Brillo con potenciómetro', Y2 = 'Y2 · Servo con potenciómetro';
+  const C1 = 'Cierre 1 · Botón con «si»', C2 = 'Cierre 2 · Motor con la shield L293D';
+  const TAREAS = [X1, Y1, C1, X2, Y2, C2];
+  // Qué LED está encendido a lo largo del tiempo simulado: una marca { on, ms } cada vez que cambia, durante `dur` ms
+  const encendidos = (win, dur) => win.evaluate((d) => new Promise((listo) => {
+    const s = simulador.sim, ini = s.medidas().msSimulados, marcas = [];
+    const t = setInterval(() => {
+      const ms = s.medidas().msSimulados, on = s.mediciones().leds.filter((l) => l.brillo > 0.5).map((l) => l.id).join('+') || '-';
+      if (!marcas.length || marcas[marcas.length - 1].on !== on) marcas.push({ on, ms });
+      if (ms - ini > d) { clearInterval(t); listo(marcas); }
+    }, 40);
+  }), dur);
+  /** ¿Los LED siguen `patron` ([id, ms], en ciclo)? Se quitan los cambios de menos de 100 ms (el paso de un LED al otro),
+   *  el primer tramo (puede estar cortado) y el último (sigue abierto). Cada tramo, con ±150 ms. */
+  function sigue(marcas, patron) {
+    let t = marcas.slice(0, -1).map((m, i) => ({ on: m.on, dura: marcas[i + 1].ms - m.ms })).filter((x) => x.dura >= 100);
+    t = t.reduce((a, x) => { if (a.length && a[a.length - 1].on === x.on) a[a.length - 1].dura += x.dura; else a.push({ ...x }); return a; }, []).slice(1);
+    const cuadra = (j) => t.every((x, i) => { const [id, ms] = patron[(j + i) % patron.length]; return x.on === id && Math.abs(x.dura - ms) <= 150; });
+    const ok = t.length >= patron.length + 1 && patron.some((_, j) => cuadra(j));
+    return { ok, texto: t.map((x) => `${x.on} ${(x.dura / 1000).toFixed(2)} s`).join(' → ') };
+  }
+  /** Simula y comprueba que los LED siguen `patron` durante dos ciclos y medio. */
+  async function lucesSiguen(win, patron) {
+    if (!(await win.evaluate(() => !!simulador.sim && simulador.sim.medidas().msSimulados > 0))) await win.locator('#btnSimularBarra').click();
+    await esperar(win, () => simulador.sim && simulador.sim.medidas().msSimulados > 300);
+    const ciclo = patron.reduce((a, [, ms]) => a + ms, 0);
+    return sigue(await encendidos(win, ciclo * 2.5), patron);
+  }
+  // X1: 1 s cada LED, del 11 al 13; Y1: verde 2 s, amarillo 1 s, rojo 2 s (led1, led2 y led3 están en D11, D12 y D13)
+  const PATRON_X1 = [['led1', 1000], ['led2', 1000], ['led3', 1000]];
+  const PATRON_Y1 = [['led1', 2000], ['led2', 1000], ['led3', 2000]];
 
   // ---- E1. Primer uso en B: «Programar y probar» sin configurar nada
   ponerVariante('B');
@@ -107,18 +142,20 @@ const esActividad = (d) => d && d.izq === ACTIVIDAD.izq && d.der === ACTIVIDAD.d
   revisar(f.ve && f.nombre === 'Programar y probar' && !f.volver, `E1: la franja dice «${f.nombre}» y no ofrece «Volver a…»`);
   revisar(await win.evaluate(() => $('vistas').offsetParent === null && [...document.querySelectorAll('h1')].map((h) => h.textContent).join() === 'TecnoBloques: por actividad'),
     'E1: sin la barra de vistas de C0, con un h1 propio de B');
-  revisar(JSON.stringify(await enMenu(win)).includes('Tarea X') && JSON.stringify(await enMenu(win)).includes('Tarea Y'), `E1: el menú Ejemplos ofrece las tareas X y Y del estudio (${(await enMenu(win)).filter((n) => /Tarea/.test(n)).join(', ')})`);
+  const menuB = (await enMenu(win)).filter((n) => TAREAS.includes(n));
+  revisar(JSON.stringify(menuB) === JSON.stringify(TAREAS), `E1 (I5, E1): el menú Ejemplos ofrece las seis tareas del estudio, en el orden de las sesiones (${menuB.join(', ')})`);
   await win.screenshot({ path: path.join(SALIDA, 'actividad_1_inicio.png') });
 
-  // ---- E2. Abrir «Tarea X»: programa y circuito listos en «Programar y probar»; Simular funciona
-  await abrirTarea(win, 'Tarea X');
+  // ---- E2. Abrir X1: programa y circuito listos en «Programar y probar»; Simular funciona
+  await abrirTarea(win, X1);
   const x = await win.evaluate(() => ({ codigo: codigoActual(), piezas: simulador.lienzo.circuito().componentes.map((c) => c.tipo).sort().join(), cables: simulador.lienzo.circuito().cables.map((c) => c.de + '>' + c.a).sort() }));
-  revisar(/pinMode\(2, INPUT_PULLUP\)/.test(x.codigo) && /digitalWrite\(13, HIGH\)/.test(x.codigo) && x.piezas === 'led,pulsador,resistencia', `E2: X trae su programa (pulsador en D2 con pull-up, LED en D13) y su circuito (${x.piezas})`);
+  revisar([11, 12, 13].every((p) => new RegExp(`digitalWrite\\(${p}, HIGH\\)`).test(x.codigo)) && x.piezas === 'led,led,led,resistencia,resistencia,resistencia',
+    `E2: X1 trae su programa (LED en D11, D12 y D13) y su circuito (${x.piezas})`);
   revisar(esActividad(await disp(win)) && !(await franja(win)).volver, 'E2: queda en «Programar y probar», sin «Volver a…»');
   await win.locator('#btnSimularBarra').click();
-  revisar(await esperar(win, () => simulador.sim && simulador.sim.medidas().msSimulados > 500), 'E2: «Simular» compila y simula X');
-  const ledB = await ledConPulsador(win);
-  revisar(ledB.apagado && ledB.encendido && ledB.vuelve, `E2: en B, el LED se enciende solo mientras se pulsa (${[ledB.suelto, ledB.pulsado, ledB.otraVez].map((v) => Math.round(v * 100) / 100).join(' → ')}; intentos: ${ledB.intentos})`);
+  revisar(await esperar(win, () => simulador.sim && simulador.sim.medidas().msSimulados > 500), 'E2: «Simular» compila y simula X1');
+  const lucesB = await lucesSiguen(win, PATRON_X1);
+  revisar(lucesB.ok, `E2: en B, los LED se encienden del 11 al 13, 1 s cada uno (${lucesB.texto})`);
   const codigoX = x.codigo;
   await win.screenshot({ path: path.join(SALIDA, 'actividad_2_tarea_x.png') });
 
@@ -163,24 +200,24 @@ const esActividad = (d) => d && d.izq === ACTIVIDAD.izq && d.der === ACTIVIDAD.d
   revisar(await win.evaluate(() => /Programar y probar/.test($('anuncioPaneles').textContent)), 'E5: el cambio se anuncia para el lector de pantalla');
   await win.evaluate(() => detenerSimulacion());
 
-  // ---- E7. Con la disposición cambiada, abrir «Tarea Y» pone «Programar y probar» (D2)
+  // ---- E7. Con la disposición cambiada, abrir Y1 pone «Programar y probar» (D2)
   await win.locator('#intercambiarIzq').click();
   await win.locator('#ampliarIzq').click();
   await pausa(win, 300);
-  revisar((await franja(win)).volver, 'E7: antes de abrir Y, la disposición está cambiada');
-  await abrirTarea(win, 'Tarea Y');
-  const y = await win.evaluate(() => ({ codigo: codigoActual(), cables: simulador.lienzo.circuito().cables.map((c) => c.de + '>' + c.a) }));
-  revisar(esActividad(await disp(win)) && !(await franja(win)).volver, 'E7: abrir Y pone «Programar y probar» (D2)');
-  revisar(/pinMode\(3, INPUT_PULLUP\)/.test(y.codigo) && /digitalWrite\(12, HIGH\)/.test(y.codigo) && y.cables.some((c) => /placa\.D3/.test(c)) && y.cables.some((c) => /placa\.D12/.test(c)),
-    'E7: Y es el mismo montaje con otros pines (pulsador en D3, LED en D12)');
+  revisar((await franja(win)).volver, 'E7: antes de abrir Y1, la disposición está cambiada');
+  await abrirTarea(win, Y1);
+  const y = await win.evaluate(() => ({ codigo: codigoActual(), colores: simulador.lienzo.circuito().componentes.filter((c) => c.tipo === 'led').map((c) => c.props.color).join() }));
+  revisar(esActividad(await disp(win)) && !(await franja(win)).volver, 'E7: abrir Y1 pone «Programar y probar» (D2)');
+  revisar(y.colores === 'verde,amarillo,rojo' && [11, 12, 13].every((p) => new RegExp(`digitalWrite\\(${p}, HIGH\\)`).test(y.codigo)),
+    `E7: Y1 es el mismo montaje con un semáforo (${y.colores}, en D11, D12 y D13)`);
   await win.locator('#btnSimularBarra').click();
-  revisar(await esperar(win, () => simulador.sim && simulador.sim.medidas().msSimulados > 500), 'E7: Y compila y simula');
-  const ledY = await ledConPulsador(win);
-  revisar(ledY.apagado && ledY.encendido && ledY.vuelve, `E7: en Y, el LED se enciende solo mientras se pulsa (intentos: ${ledY.intentos})`);
+  revisar(await esperar(win, () => simulador.sim && simulador.sim.medidas().msSimulados > 500), 'E7: Y1 compila y simula');
+  const lucesY = await lucesSiguen(win, PATRON_Y1);
+  revisar(lucesY.ok, `E7: en Y1, verde 2 s, amarillo 1 s y rojo 2 s (${lucesY.texto})`);
   await win.evaluate(() => detenerSimulacion());
 
   // ---- E6. Cambiar, guardar, cerrar y abrir: vuelven el trabajo y la disposición cambiada (TEC-18)
-  await abrirTarea(win, 'Tarea X');
+  await abrirTarea(win, X1);
   await win.locator('#herrDer').selectOption('monitor');
   await win.evaluate(() => $('divisor').focus());
   await win.keyboard.press('ArrowRight');
@@ -194,7 +231,7 @@ const esActividad = (d) => d && d.izq === ACTIVIDAD.izq && d.der === ACTIVIDAD.d
   const otra = await disp(win);
   revisar(otra.izq === guardada.izq && otra.der === guardada.der && Math.abs(otra.proporcion - guardada.proporcion) < 0.005 && (await franja(win)).volver,
     `E6: al abrir otra vez vuelve la disposición cambiada (${otra.izq} | ${otra.der}, ${Math.round(otra.proporcion * 100)} %) con «Volver a…»`);
-  revisar(await win.evaluate(() => codigoActual()) === codigoX && await win.evaluate(() => simulador.lienzo.circuito().componentes.length) === 3, 'E6: vuelven el programa y el circuito de X');
+  revisar(await win.evaluate(() => codigoActual()) === codigoX && await win.evaluate(() => simulador.lienzo.circuito().componentes.length) === 6, 'E6: vuelven el programa y el circuito de X1');
 
   // ---- E9. De B a A y de vuelta, con la app abierta: cada una conserva su disposición
   const enB = await disp(win);
@@ -203,16 +240,17 @@ const esActividad = (d) => d && d.izq === ACTIVIDAD.izq && d.der === ACTIVIDAD.d
   const enA = await disp(win);
   revisar(enA.izq === null && enA.der === null && !(await franja(win)).ve && await win.evaluate(() => [...document.querySelectorAll('h1')].map((h) => h.textContent).join()) === 'TecnoBloques: paneles libres',
     `E9: en A, sin franja, con los espacios vacíos del primer uso de A (${JSON.stringify(enA)})`);
-  // ---- E8 (A). En A, X está en el menú; abrirla no mueve los espacios; el LED responde igual
-  revisar(JSON.stringify(await enMenu(win)).includes('Tarea X'), 'E8: en A, X está en el menú Ejemplos');
-  await abrirTarea(win, 'Tarea X');
-  revisar(JSON.stringify(await disp(win)) === JSON.stringify(enA), 'E8: en A, abrir X no mueve los espacios');
+  // ---- E8 (A). En A, las tareas están en el menú; abrir X1 no mueve los espacios; los LED responden igual
+  const menuA = (await enMenu(win)).filter((n) => TAREAS.includes(n));
+  revisar(JSON.stringify(menuA) === JSON.stringify(TAREAS), 'E8: en A, las seis tareas están en el menú Ejemplos');
+  await abrirTarea(win, X1);
+  revisar(JSON.stringify(await disp(win)) === JSON.stringify(enA), 'E8: en A, abrir X1 no mueve los espacios');
   await win.locator('#btnSimularBarra').click(); // D2 de A: trae el circuito al espacio vacío
   await esperar(win, () => simulador.sim && simulador.sim.medidas().msSimulados > 500);
   await pausa(win, 400);
-  const ledA = await ledConPulsador(win);
+  const lucesA = await lucesSiguen(win, PATRON_X1);
   const codigoA = await win.evaluate(() => simulador.codigo);
-  revisar(ledA.apagado && ledA.encendido && ledA.vuelve && codigoA === codigoX, `E8: en A, el mismo programa y el LED se enciende solo mientras se pulsa (TEC-14; ${[ledA.suelto, ledA.pulsado, ledA.otraVez].map((v) => v === null ? 'sin medida' : Math.round(v * 100) / 100).join(' → ')}; intentos: ${ledA.intentos})`);
+  revisar(lucesA.ok && codigoA === codigoX, `E8: en A, el mismo programa y los LED del 11 al 13, 1 s cada uno (TEC-14; ${lucesA.texto})`);
   await win.evaluate(() => detenerSimulacion());
   await win.evaluate(() => aplicarVariante('B'));
   await pausa(win, 500);
@@ -354,6 +392,90 @@ const esActividad = (d) => d && d.izq === ACTIVIDAD.izq && d.der === ACTIVIDAD.d
     revisar(!fallo && coherente(alCambiar, espera) && docCambiar, `F01 de A a B, ${nombre}: ${fallo ? fallo + '; ' : ''}${resumen(alCambiar)}; ${docCambiar ? 'el trabajo sigue igual' : 'EL TRABAJO CAMBIÓ'}`);
   }
   await win.evaluate(() => guardarPreferencias({ disposicionB: null }));
+
+  // ---- I5 (DISENO-I5-MATERIAL.md, E2–E5). Cada tarea abre por el menú en su nivel, con su montaje y en «Programar y
+  // probar»; su programa de partida hace lo que dice la hoja y su solución (`solucion`, que la app no muestra) lo que se pide
+  const NIVEL = { [X1]: 1, [Y1]: 1, [C1]: 1, [X2]: 2, [Y2]: 2, [C2]: 2 };
+  const LUCES = 'led,led,led,resistencia,resistencia,resistencia';
+  const PIEZAS = { [X1]: LUCES, [Y1]: LUCES, [C1]: 'led,pulsador,resistencia,resistencia', [X2]: 'led,potenciometro,resistencia',
+    [Y2]: 'potenciometro,servo', [C2]: 'bateria_lipo,motor_tt,potenciometro,shield_l293d' };
+  await win.evaluate(() => ponerNivel(3)); // desde Inventor: cada tarea tiene que bajar a su nivel
+  for (const t of TAREAS) {
+    await abrirTarea(win, t);
+    const np = await win.evaluate(() => ({ nivel: nivelActual, piezas: simulador.lienzo.circuito().componentes.map((c) => c.tipo).sort().join() }));
+    revisar(np.nivel === NIVEL[t] && np.piezas === PIEZAS[t] && esActividad(await disp(win)), `I5 E2: «${t}» abre en el nivel ${np.nivel} con su montaje (${np.piezas}), en «Programar y probar»`);
+  }
+  const simular = async () => { await win.locator('#btnSimularBarra').click(); await esperar(win, () => simulador.sim && simulador.sim.medidas().msSimulados > 300); };
+  const conSolucion = (id) => win.evaluate((i) => { detenerSimulacion(); cargarXML(EJEMPLOS.find((e) => e.id === i).solucion); actualizar(); }, id);
+  // X1 y Y1: los programas de partida ya se midieron en E2 y E7; las soluciones copian el grupo del D12 al final
+  for (const [t, id, patron, texto] of [[X1, 'estudio_x1', PATRON_X1, '11, 12, 13, 12, 1 s cada uno'], [Y1, 'estudio_y1', PATRON_Y1, 'verde 2 s, amarillo 1 s, rojo 2 s, amarillo 1 s']]) {
+    await abrirTarea(win, t);
+    await conSolucion(id);
+    await simular();
+    const r = await lucesSiguen(win, [...patron, ['led2', 1000]]);
+    revisar(r.ok, `I5 E4: la solución de ${t.split(' ')[0]} da ${texto} (${r.texto})`);
+  }
+  // X2, Y2 y cierre 2: la perilla en una posición y lo que manda el programa: el PWM del D9 (con 255, el pin queda en alto
+  // fijo: cuenta como 1, porque su voltaje baja con el LED), el pulso del servo (Servo.h: 544 µs a 0°, 1472 a 90° y 2400 a
+  // 180°) y las RPM del motor. El ángulo del servo no se usa: el simulado tiene su propia desviación, ±5° (SERVO-002)
+  async function conPerilla(posicion) {
+    await win.evaluate((p) => {
+      detenerSimulacion();
+      const c = simulador.lienzo.circuito();
+      c.componentes.find((x) => x.id === 'pot1').props.posicion = p;
+      const pr = proyectoActual();
+      pr.circuito = c;
+      cargarProyecto(pr, true);
+    }, posicion);
+    await pausa(win, 500);
+    await win.locator('#btnSimularBarra').click();
+    await esperar(win, () => simulador.sim && simulador.sim.medidas().msSimulados > 1500);
+    return win.evaluate(() => {
+      const m = simulador.sim.mediciones(), d9 = m.pines.find((p) => p.pin === 'D9');
+      return { pwm: m.pwm && m.pwm.D9 !== undefined ? m.pwm.D9 : (d9 ? (d9.v > 2.5 ? 1 : 0) : null),
+        pulso: m.servos && m.servos[0] ? m.servos[0].pulso : null, rpm: m.motores && m.motores[0] ? m.motores[0].rpm : null };
+    });
+  }
+  const PERILLA = [
+    [X2, 'estudio_x2', 'pwm', 0.02, [[0, 0], [0.5, 0.5], [1, 1]], [[0, 1], [1, 0]]],
+    [Y2, 'estudio_y2', 'pulso', 12, [[0, 544], [0.5, 1472], [1, 2400]], [[0, 2400], [1, 544]]],
+  ];
+  for (const [t, id, mide, tol, partida, solucion] of PERILLA) {
+    await abrirTarea(win, t);
+    for (const [nombre, casos] of [['programa de partida', partida], ['solución', solucion]]) {
+      if (nombre === 'solución') await conSolucion(id);
+      const vistos = [];
+      for (const [p] of casos) vistos.push((await conPerilla(p))[mide]);
+      const ok = casos.every(([, v], i) => vistos[i] !== null && Math.abs(vistos[i] - v) <= tol);
+      revisar(ok, `I5 ${nombre === 'solución' ? 'E4' : 'E3'}: ${t.split(' ')[0]}, ${nombre}: perilla ${casos.map(([p, v], i) => `${p} → ${mide} ${v} (medido ${vistos[i] === null ? 'nada' : Math.round(vistos[i] * 1000) / 1000})`).join('; ')}`);
+    }
+  }
+  await abrirTarea(win, C2);
+  const motor = [await conPerilla(1), await conPerilla(0)];
+  revisar(motor[0].rpm > 50 && Math.abs(motor[1].rpm) < 1, `I5 E3: cierre 2, la perilla al máximo mueve el motor y al mínimo lo para (${motor.map((m) => Math.round(m.rpm)).join(' y ')} RPM)`);
+  await conSolucion('estudio_cierre2');
+  const atras = await conPerilla(1);
+  revisar(atras.rpm < -50, `I5 E4: cierre 2, el reto gira hacia el otro lado (${Math.round(atras.rpm)} RPM)`);
+  await win.evaluate(() => detenerSimulacion());
+  // Cierre 1: el montaje T1 (pull-down) enciende el LED mientras se pulsa; el reto, al revés
+  await abrirTarea(win, C1);
+  await simular();
+  const boton = await ledConPulsador(win);
+  revisar(boton.apagado && boton.encendido && boton.vuelve, `I5 E3: cierre 1, el LED se enciende solo mientras se pulsa (intentos: ${boton.intentos})`);
+  await conSolucion('estudio_cierre1');
+  await simular();
+  const reto = await ledConPulsador(win, 'btn1', true);
+  revisar(reto.suelto > 0.5 && reto.pulsado !== null && reto.pulsado < 0.01 && reto.otraVez > 0.5, `I5 E4: cierre 1, el reto apaga el LED mientras se pulsa (intentos: ${reto.intentos})`);
+  await win.evaluate(() => detenerSimulacion());
+  // E5: en cada par, X y Y tienen los mismos bloques de partida y de solución, y la solución cambia lo mismo
+  const cuenta = await win.evaluate(() => Object.fromEntries(EJEMPLOS.filter((e) => e.grupo === 'estudio').map((e) => {
+    const n = (x) => (x.match(/<block /g) || []).length, nums = (x) => x.match(/<field name="NUM">[^<]*/g) || [];
+    const a = nums(e.xml), b = nums(e.solucion);
+    return [e.id, { partida: n(e.xml), solucion: n(e.solucion), numerosCambiados: a.length === b.length ? a.filter((v, i) => v !== b[i]).length : 'otros' }];
+  })));
+  const igual = (p, q) => JSON.stringify(cuenta[p]) === JSON.stringify(cuenta[q]);
+  revisar(igual('estudio_x1', 'estudio_y1') && igual('estudio_x2', 'estudio_y2'),
+    `I5 E5: en cada par, los mismos bloques de partida y de solución (X1 ${JSON.stringify(cuenta.estudio_x1)}, Y1 ${JSON.stringify(cuenta.estudio_y1)}, X2 ${JSON.stringify(cuenta.estudio_x2)}, Y2 ${JSON.stringify(cuenta.estudio_y2)})`);
   await app.close();
   await new Promise((r) => setTimeout(r, 400));
 
@@ -362,17 +484,17 @@ const esActividad = (d) => d && d.izq === ACTIVIDAD.izq && d.der === ACTIVIDAD.d
   ({ app, win } = await abrir());
   const enC0 = await win.evaluate(() => ({ activo: panelesA.activo(), franja: !!$('franjaActividad'), vista: $('principal').dataset.vista, h1: document.querySelectorAll('h1').length }));
   revisar(!enC0.activo && !enC0.franja && enC0.h1 === 0 && enC0.vista === vistaC0Antes, `E8: en C0 no hay espacios, franja ni h1, y vuelve la vista «${enC0.vista}»`);
-  revisar(!JSON.stringify(await enMenu(win)).includes('Tarea'), 'E8: en C0, las tareas X y Y no están en el menú Ejemplos');
+  revisar(!(await enMenu(win)).some((n) => TAREAS.includes(n)), 'E8: en C0, las tareas del estudio no están en el menú Ejemplos');
   revisar(await win.evaluate(() => !document.querySelector('.de-estudio') && $('listaEjemplos').querySelectorAll('.menu-titulo').length === 1), 'E8: en C0, el menú Ejemplos es el de siempre también en el DOM: sin nodos del estudio y con un solo encabezado');
-  await win.evaluate(() => cargarEjemplo(EJEMPLOS.find((e) => e.id === 'tarea_x')));
+  await win.evaluate(() => cargarEjemplo(EJEMPLOS.find((e) => e.id === 'estudio_x1')));
   await pausa(win, 600);
   await win.locator('#vDividido').click();
   await win.locator('#tCircuito').click();
   await pausa(win, 300);
   await win.locator('#btnSimularBarra').click();
   await esperar(win, () => simulador.sim && simulador.sim.medidas().msSimulados > 500);
-  const ledC0 = await ledConPulsador(win);
-  revisar(ledC0.apagado && ledC0.encendido && ledC0.vuelve && await win.evaluate(() => simulador.codigo) === codigoX, `E8: en C0, el mismo programa y el LED se enciende solo mientras se pulsa (TEC-14; intentos: ${ledC0.intentos})`);
+  const lucesC0 = await lucesSiguen(win, PATRON_X1);
+  revisar(lucesC0.ok && await win.evaluate(() => simulador.codigo) === codigoX, `E8: en C0, el mismo programa y los LED del 11 al 13, 1 s cada uno (TEC-14; ${lucesC0.texto})`);
   await win.evaluate(() => detenerSimulacion());
   await app.close();
 

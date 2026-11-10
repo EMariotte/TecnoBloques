@@ -1312,37 +1312,124 @@ function encuadrar() {
 /* ---------- Ejemplos ---------- */
 const LLAMADA = (f) => `<mutation firma='${JSON.stringify(f)}'></mutation>`;
 const N = (v) => `<shadow type="math_number"><field name="NUM">${v}</field></shadow>`;
-/** Una tarea del estudio A/B (ADR-002): pulsador en `boton` con pull-up (al otro lado, GND) y LED con 220 Ω en `led`.
- *  El LED se enciende mientras se presiona. Mismas piezas y posiciones en X y Y; solo cambian los pines. */
-function tareaEstudio(id, nombre, desc, boton, led) {
-  return {
-    id, nombre, desc, placa: 'uno', grupo: 'estudio', actividad: 'programar-probar',
-    xml: `<xml xmlns="https://developers.google.com/blockly/xml">
+/* Las tareas del estudio A/B (EST-002, I5): TecnoSuite/EstrategíaTecno/DISENO-I5-MATERIAL.md y la enmienda 1 del ADR-002.
+ * Un par medido por sesión (X1/Y1 en Explorador, X2/Y2 en Constructor) y un cierre por sesión que no se mide, con los
+ * montajes de TecnoCircuito (T1, T2, T3 y el carro). Cada tarea empieza con un programa que funciona. `solucion`: el
+ * programa que pide la hoja (o el reto del cierre), para la guía del facilitador y las pruebas; la app no lo muestra.
+ * Todo queda dentro de esta función: build.js junta los src en un solo script y un nombre global repetido lo rompe. */
+const TAREAS_ESTUDIO = (() => {
+  const programa = (loop) => `<xml xmlns="https://developers.google.com/blockly/xml">
 <block type="programa" x="40" y="40">
- <statement name="SETUP">
-  <block type="pin_modo"><field name="PIN">${boton}</field><field name="MODO">INPUT_PULLUP</field></block>
- </statement>
- <statement name="LOOP">
-  <block type="controls_if"><mutation else="1"></mutation>
-   <value name="IF0"><block type="logic_negate"><value name="BOOL"><block type="leer_digital"><field name="PIN">${boton}</field></block></value></block></value>
-   <statement name="DO0"><block type="escribir_digital"><field name="PIN">${led}</field><field name="EST">HIGH</field></block></statement>
-   <statement name="ELSE"><block type="escribir_digital"><field name="PIN">${led}</field><field name="EST">LOW</field></block></statement>
-  </block>
- </statement>
+ <statement name="LOOP">${loop}</statement>
 </block>
-</xml>`,
-    circuito: {
-      formato: 1, placa: 'uno', protoboard: null,
-      componentes: [
-        { id: 'r1', tipo: 'resistencia', x: 330, y: -160, rot: 0, props: { ohmios: 220 } },
-        { id: 'led1', tipo: 'led', x: 420, y: -100, rot: 0, props: { color: 'rojo' } },
-        { id: 'btn1', tipo: 'pulsador', x: 330, y: 40, rot: 0, props: { color: 'rojo' } }],
-      cables: [
-        { de: `placa.D${led}`, a: 'r1.1' }, { de: 'r1.2', a: 'led1.anodo' }, { de: 'led1.catodo', a: 'placa.GND1' },
-        { de: `placa.D${boton}`, a: 'btn1.1i' }, { de: 'placa.GND3', a: 'btn1.2i' }],
-    },
+</xml>`;
+  const siguiente = (sig) => (sig ? `<next>${sig}</next>` : '');
+  const pin = (p, est) => (sig) => `<block type="escribir_digital"><field name="PIN">${p}</field><field name="EST">${est}</field>${siguiente(sig)}</block>`;
+  const esperar = (s) => (sig) => `<block type="esperar_seg"><value name="S">${N(s)}</value>${siguiente(sig)}</block>`;
+  /** Luces una tras otra: cada paso [pin, segundos] enciende, espera y apaga (3 bloques). */
+  const luces = (pasos) => pasos.flatMap(([p, s]) => [pin(p, 'HIGH'), esperar(s), pin(p, 'LOW')]).reduceRight((sig, b) => b(sig), '');
+  /** La perilla de A0 (0–1023) llevada a otro rango. Con sus entradas en columna: en línea, no cabe en medio espacio. */
+  const perilla = (desde, hasta) => `<block type="mapear" inline="false"><value name="V"><block type="leer_analogo"><field name="PIN">A0</field></block></value>` +
+    `<value name="A">${N(0)}</value><value name="B">${N(1023)}</value><value name="C">${N(desde)}</value><value name="D">${N(hasta)}</value></block>`;
+  const brillo = (desde, hasta) => `<block type="escribir_pwm"><field name="PIN">9</field><value name="V">${perilla(desde, hasta)}</value></block>`;
+  const servo = (desde, hasta) => `<block type="servo_mover"><field name="PIN">9</field><value name="A">${perilla(desde, hasta)}</value></block>`;
+  const motor = (dir) => `<block type="motor_dc"><field name="M">1</field><field name="DIR">${dir}</field><value name="VEL">${perilla(0, 255)}</value></block>`;
+  const boton = (si, sino) => `<block type="controls_if"><mutation else="1"></mutation>` +
+    `<value name="IF0"><block type="leer_digital"><field name="PIN">2</field></block></value>` +
+    `<statement name="DO0">${pin(13, si)()}</statement><statement name="ELSE">${pin(13, sino)()}</statement></block>`;
+
+  /* Los montajes van en la media protoboard de TecnoCircuito, con cables en esquina y sin cruces (Efraín, 10 nov: es
+   * parte de lo que se enseña). GND y 5V llegan de la placa a los rieles de abajo (i− e i+) y cada pieza toma de ahí con
+   * un puente corto. Las señales van por encima de la placa: el pin de más a la izquierda sube más alto y llega más lejos,
+   * así las rutas quedan una dentro de otra. Medidas en px del lienzo (0,1" = 9,6 px), como protoboard.js y la vista del Uno. */
+  const PB = { tipo: 'media', x: 300, y: 30 };
+  const FILA = { a: 39.8, c: 59, e: 78.2, f: 107, h: 126.2, j: 145.4, 'i-': 164.6, 'i+': 174.2 };
+  const hx = (c) => PB.x + 14.4 + (c - 1) * 9.6;
+  const hy = (f) => PB.y + FILA[f];
+  const hueco = (f, c) => `protoboard.${f}${c}`;
+  const X = { D13: 124.6, D12: 134.2, D11: 143.8, D9: 163, D2: 236.1, '5V': 159, GND2: 168.6, A0: 206.5 }; // pines del Uno
+  /** De un pin de abajo de la placa a un hueco: baja hasta `nivel`, va a la columna y sube. */
+  const porAbajo = (de, f, c, nivel, color) => ({ de: `placa.${de}`, a: hueco(f, c), color, puntos: [[X[de], nivel], [hx(c), nivel]] });
+  /** De un pin de arriba de la placa a la fila a: sube hasta `nivel`, va a la columna y baja. */
+  const porArriba = (de, c, nivel, color) => ({ de: `placa.${de}`, a: hueco('a', c), color, puntos: [[X[de], nivel], [hx(c), nivel]] });
+  const tierra = (c) => porAbajo('GND2', 'i-', c, 230, 'negro'); // GND al riel − de abajo
+  const cinco = (c) => porAbajo('5V', 'i+', c, 240, 'rojo'); // 5V al riel + de abajo
+  /** Un LED con su resistencia de 220 Ω desde la columna `k`: cátodo en a(k), ánodo en a(k+1), resistencia de c(k+1) a
+   *  c(k+5), la señal de `de` entra por a(k+5) y un puente lleva el cátodo al riel −. Ocupa seis columnas. */
+  const led = (n, k, de, color, nivel) => ({
+    componentes: [
+      { id: `led${n}`, tipo: 'led', x: hx(k) - 9.6, y: hy('a') - 43.2, rot: 0, props: { color }, en: { catodo: hueco('a', k), anodo: hueco('a', k + 1) } },
+      { id: `r${n}`, tipo: 'resistencia', x: hx(k + 1) - 4.8, y: hy('c') - 9.6, rot: 0, props: { ohmios: 220, vatios: 0.25 },
+        en: { 1: hueco('c', k + 1), 2: hueco('c', k + 5) } }],
+    cables: [porArriba(de, k + 5, nivel, 'naranja'), { de: hueco('e', k), a: hueco('i-', k), color: 'negro' }],
+  });
+  /** El potenciómetro de 10 kΩ de T2 (perilla en la mitad) con las patas en f4, f6 y f8: GND y VCC a los rieles, A0 al centro. */
+  const pot = {
+    componentes: [{ id: 'pot1', tipo: 'potenciometro', x: hx(4) - 14.4, y: hy('f') - 91.2, rot: 0, props: { ohmios: 10000, posicion: 0.5, modelo: '16mm' },
+      en: { GND: hueco('f', 4), SIG: hueco('f', 6), VCC: hueco('f', 8) } }],
+    cables: [{ de: hueco('j', 4), a: hueco('i-', 4), color: 'negro' }, { de: hueco('j', 8), a: hueco('i+', 8), color: 'rojo' },
+      porAbajo('A0', 'j', 6, 220, 'verde')],
   };
-}
+  const montaje = (...partes) => ({
+    formato: 1, placa: 'uno', protoboard: { ...PB },
+    componentes: partes.flatMap((x) => x.componentes || []), cables: partes.flatMap((x) => x.cables || []),
+  });
+  const tarea = (id, nombre, desc, xml, circuito, solucion) => ({
+    id, nombre, desc, placa: 'uno', grupo: 'estudio', actividad: 'programar-probar', xml: programa(xml), circuito, solucion: programa(solucion),
+  });
+
+  // X1 y Y1, el mismo montaje: LED en D11, D12 y D13 de izquierda a derecha (D13, el de más a la izquierda en la placa,
+  // sube más alto y llega al LED de más a la derecha)
+  const tresLeds = (colores) => montaje(led(1, 3, 'D11', colores[0], -8), led(2, 10, 'D12', colores[1], -16), led(3, 17, 'D13', colores[2], -24),
+    { cables: [tierra(2)] });
+  return [
+    // Sesión 1 · Explorador. El cambio de X1 y Y1 es el mismo: copiar el grupo del medio (D12) al final
+    tarea('estudio_x1', 'X1 · Luces en secuencia', 'Tres LED se encienden uno tras otro. Predice el orden y el tiempo, simula y cambia el recorrido.',
+      luces([[11, 1], [12, 1], [13, 1]]), tresLeds(['rojo', 'rojo', 'rojo']), luces([[11, 1], [12, 1], [13, 1], [12, 1]])),
+    tarea('estudio_y1', 'Y1 · Semáforo', 'Un semáforo con LED verde, amarillo y rojo. Predice el orden y el tiempo, simula y cambia el ciclo.',
+      luces([[11, 2], [12, 1], [13, 2]]), tresLeds(['verde', 'amarillo', 'rojo']), luces([[11, 2], [12, 1], [13, 2], [12, 1]])),
+    // Cierre 1 (sin medir): el montaje T1, con pull-down de 10 kΩ en D2, ya validado con la placa. El botón cruza el canal
+    // en las columnas 4 y 6 (1i y 1d están unidos por dentro, igual que 2i y 2d): 5V entra por la 4 y D2 sale por la 6
+    tarea('estudio_cierre1', 'Cierre 1 · Botón con «si»', 'El LED se enciende mientras presionas el botón. Reto: que se apague al presionar.',
+      boton('HIGH', 'LOW'), montaje({
+        componentes: [
+          { id: 'btn1', tipo: 'pulsador', x: hx(4) - 9.6, y: hy('e'), rot: 90, props: { color: 'rojo', modelo: '6x6' },
+            en: { '2i': hueco('e', 4), '1i': hueco('e', 6), '2d': hueco('f', 4), '1d': hueco('f', 6) } },
+          { id: 'r9', tipo: 'resistencia', x: hx(6) - 4.8, y: hy('h') - 9.6, rot: 0, props: { ohmios: 10000, vatios: 0.25 },
+            en: { 1: hueco('h', 6), 2: hueco('h', 10) } }],
+        cables: [porArriba('D2', 6, -8, 'amarillo'), porAbajo('5V', 'j', 4, 240, 'rojo'), { de: hueco('j', 10), a: hueco('i-', 10), color: 'negro' }, tierra(2)],
+      }, led(1, 14, 'D13', 'rojo', -24)), boton('LOW', 'HIGH')),
+    // Sesión 2 · Constructor. El cambio de X2 y Y2 es el mismo: invertir el rango de salida de «mapear». El potenciómetro
+    // y los rieles son iguales en las dos
+    tarea('estudio_x2', 'X2 · Brillo con potenciómetro', 'El potenciómetro cambia el brillo del LED. Predice el valor, simula y cambia el sentido.',
+      brillo(0, 255), montaje(pot, led(1, 14, 'D9', 'rojo', -8), { cables: [tierra(10), cinco(11)] }), brillo(255, 0)),
+    // El servo, debajo de la protoboard: GND y VCC suben a los rieles, y la señal da la vuelta por la derecha hasta D9
+    tarea('estudio_y2', 'Y2 · Servo con potenciómetro', 'El potenciómetro mueve el servo. Predice el ángulo, simula y cambia el sentido.',
+      servo(0, 180), montaje(pot, {
+        componentes: [{ id: 'servo1', tipo: 'servo', x: 340, y: 300, rot: 0, props: { modelo: 'sg90' } }],
+        cables: [
+          { de: 'servo1.GND', a: hueco('i-', 24), color: 'negro', puntos: [[hx(24), 348]] },
+          { de: 'servo1.VCC', a: hueco('i+', 26), color: 'rojo', puntos: [[hx(26), 357.6]] },
+          { de: 'servo1.SIG', a: 'placa.D9', color: 'naranja', puntos: [[640, 367.2], [640, -40], [X.D9, -40]] },
+          tierra(10), cinco(11)],
+      }), servo(180, 0)),
+    // Cierre 2 (sin medir): el carro de TecnoCircuito con un solo motor, y el potenciómetro en el header A0 de la shield
+    tarea('estudio_cierre2', 'Cierre 2 · Motor con la shield L293D', 'El potenciómetro cambia la velocidad del motor. Reto: que gire hacia atrás.',
+      motor('FORWARD'), {
+        formato: 1, placa: 'uno', protoboard: null,
+        componentes: [
+          { id: 'shield1', tipo: 'shield_l293d', x: 0, y: 0, rot: 0, props: { puentePWR: true } },
+          { id: 'motor1', tipo: 'motor_tt', x: -388, y: -62, rot: 0, props: { vista: 'rueda', lado: 'izquierdo' } },
+          { id: 'bateria1', tipo: 'bateria_lipo', x: -260, y: 280, rot: 0, props: { carga: 'llena' } },
+          { id: 'pot1', tipo: 'potenciometro', x: 260, y: 260, rot: 0, props: { ohmios: 10000, posicion: 0.5, modelo: '16mm' } }],
+        cables: [
+          { de: 'motor1.A', a: 'shield1.M1A', color: 'rojo' }, { de: 'motor1.B', a: 'shield1.M1B', color: 'negro' },
+          { de: 'bateria1.POS', a: 'shield1.EXT_POS', color: 'rojo' }, { de: 'bateria1.NEG', a: 'shield1.EXT_GND', color: 'negro' },
+          { de: 'shield1.A0_G', a: 'pot1.GND', color: 'negro' }, { de: 'shield1.A0_S', a: 'pot1.SIG', color: 'verde' },
+          { de: 'shield1.A0_V', a: 'pot1.VCC', color: 'rojo' }],
+      }, motor('BACKWARD')),
+  ];
+})();
 const EJEMPLOS = [
   {
     id: 'carro', nombre: 'Carro Bluetooth', placa: 'uno',
@@ -1477,11 +1564,9 @@ const EJEMPLOS = [
 </block>
 </xml>`
   },
-  // Tareas X y Y del estudio A/B (grupo «estudio», EST-002, I4; ADR-002): el mismo montaje con otros pines. Solo se ven
-  // con la variante A o B del instructor (ponerEjemplosEstudio); en C0 no están ni en el DOM. `actividad` es el punto de partida de B. BORRADOR
-  // PARA I5: el programa de partida, los nombres y las descripciones los define el material de I5 con Efraín.
-  tareaEstudio('tarea_x', 'Tarea X · Pulsador y LED', 'El LED se enciende mientras presionas el pulsador. Predice, simula y cambia la condición.', 2, 13),
-  tareaEstudio('tarea_y', 'Tarea Y · Pulsador y LED en otros pines', 'El mismo montaje con el pulsador en D3 y el LED en D12. Predice, simula y cambia la condición.', 3, 12),
+  // Tareas del estudio A/B (grupo «estudio», EST-002, I5). Solo se ven con la variante A o B del instructor
+  // (ponerEjemplosEstudio); en C0 no están ni en el DOM. `actividad` es el punto de partida de B.
+  ...TAREAS_ESTUDIO,
   // Validación con la placa real (grupo «validacion», para el instructor): el mismo C++ que se probó en TecnoCircuito
   // (prototipo/programas/) y su circuito. Se simulan y se suben a la placa con el mismo código, para comparar.
   {"id":"val_adc","nombre":"Validar: ruido de analogRead()","desc":"T2 · potenciómetro en A0, perilla quieta: menor, mayor, promedio y desviación de 200 lecturas.","texto":"// Validación del ruido de analogRead() (tarea T2). Con el potenciómetro quieto en A0, toma 200 lecturas\n// y escribe la menor, la mayor, el promedio y la desviación estándar. Se compara con el simulador.\n// Las sumas se hacen con enteros, respecto de la primera lectura: así la desviación sale exacta (con float de\n// 32 bits y sumas del orden del millón se perdía precisión y salía nan).\nvoid setup() {\n  Serial.begin(9600);\n}\n\nvoid loop() {\n  int primera = analogRead(A0);\n  long suma = 0;       // suma de (v - primera)\n  long cuadrados = 0;  // suma de (v - primera)²\n  int menor = 1023;\n  int mayor = 0;\n  for (int i = 0; i < 200; i++) {\n    int v = analogRead(A0);\n    long d = v - primera;\n    suma += d;\n    cuadrados += d * d;\n    if (v < menor) menor = v;\n    if (v > mayor) mayor = v;\n    delay(2);\n  }\n  float media = suma / 200.0;\n  float varianza = cuadrados / 200.0 - media * media;\n  float promedio = primera + media;\n  float desviacion = sqrt(varianza > 0 ? varianza : 0);\n  Serial.print(\"min \");\n  Serial.print(menor);\n  Serial.print(\" max \");\n  Serial.print(mayor);\n  Serial.print(\" promedio \");\n  Serial.print(promedio, 2);\n  Serial.print(\" desviacion \");\n  Serial.println(desviacion, 2);\n  delay(1000);\n}\n","circuito":{"formato":1,"placa":"uno","componentes":[{"id":"pot1","tipo":"potenciometro","x":245,"y":205,"rot":0,"props":{"ohmios":10000,"posicion":0.5,"modelo":"16mm"}}],"cables":[{"de":"placa.GND3","a":"pot1.GND","color":"negro","puntos":[[179,310],[259.4,310]]},{"de":"placa.A0","a":"pot1.SIG","color":"verde","puntos":[[208,300],[278.6,300]]},{"de":"placa.5V","a":"pot1.VCC","color":"rojo","puntos":[[160,320],[297.8,320]]}],"protoboard":null},"placa":"uno","grupo":"validacion"},
