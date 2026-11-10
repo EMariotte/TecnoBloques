@@ -1586,3 +1586,24 @@ Codex comprobó F01 y F02 corregidos y devolvió la r1 por F03 (COD-20261109-002
 
 - `src/style.css`: la escala se declara solo dentro de `@media (prefers-reduced-motion: no-preference)`, y se quita la regla que la anulaba. Así no depende de la especificidad.
 - `test/paneles-app.js`: presiona de verdad, 180 ms, «Intercambiar», «Ampliar», un botón del espacio vacío y «Detener» de la barra, con y sin «reducir movimiento», y lee su `transform`. Suelta fuera del botón, así no hace clic. Con la r1 daba una falla en la cabeza; ahora, ninguna.
+
+## 2026-11-09 — EST-002, I4: la variante B, por actividad
+
+Diseño aceptado por Efraín el 9 nov: `TecnoSuite/EstrategíaTecno/DISENO-I4-ACTIVIDAD.md` (ejemplos E1–E11 y decisiones D1–D4). B usa los espacios de A con un punto de partida: la disposición de su actividad. C0 no cambia.
+
+- `src/app.js`, módulo de los espacios (`panelesA`), ahora con la variante como parámetro (`aplicar('A' | 'B' | otra)`):
+  - B empieza en «Programar y probar» (Bloques | Circuito, mitad y mitad), sin configurar nada; es la única actividad del estudio (D1).
+  - Una franja entre la barra y los espacios dice la actividad y, si la disposición ya no es la suya, ofrece «Volver a «Programar y probar»», que la pone sin reiniciar la simulación y deja el foco en el selector izquierdo (D3).
+  - Abrir una tarea del estudio en B pone su disposición, aunque se haya cambiado (D2); en A no mueve nada.
+  - B guarda su disposición aparte de A (`disposicionB`, con su actividad). Cambiar entre A y B desmonta y vuelve a montar.
+  - Un `h1` propio de B: «TecnoBloques: por actividad».
+- **Las tareas X y Y del estudio** (`tareaEstudio`): pulsador con pull-up y LED con 220 Ω (X en D2 y D13; Y en D3 y D12), con `actividad: 'programar-probar'`. Solo están en el menú con la variante A o B, bajo «Estudio A/B» (D4): `ponerEjemplosEstudio` los agrega al aplicar la variante y los quita con C0, así que el menú de C0 es el de siempre, también en el DOM. **Borrador para I5:** su programa de partida usa «configurar pin», de nivel 3, así que abren en «Inventor»; los textos y el nivel los define I5 con Efraín.
+- `src/style.css`: la franja (`body.modo-b #app` gana una fila), y «Volver a…» con la presión y el hover de los botones de A.
+- **`test/actividad-app.js`** (nuevo, `npm run test:actividad`, Electron): E1–E10, presión con y sin «reducir movimiento», y TEC-14: X simulada en A, B y C0 da el mismo programa y el LED se enciende solo mientras se pulsa el pulsador con el ratón.
+
+## 2026-11-10 — EST-002, I4 r1: lo guardado de B no se cree
+
+Codex devolvió I4 por un hallazgo (COD-20261109-004): con `actividad: 'constructor'` (o `toString`, `__proto__`) en `disposicionB`, la app quedaba en C0 aunque el instructor tuviera B. `ACTIVIDADES[g.actividad]` encontraba esos nombres en el prototipo de todo objeto; `personalizada()` leía `.izq` de algo sin disposición y el `catch` de `iniciarEstudio` ponía C0. Al pasar de A a B con la app abierta, el mismo `TypeError` dejaba los espacios a medio montar.
+
+- `src/app.js`: `esActividad(a)` acepta solo una cadena que sea clave propia del catálogo (`Object.hasOwn`). Lo demás vuelve a «Programar y probar» con la disposición guardada saneada, como ya pasaba con una actividad desconocida. Lo usan `inicial()` y `alAbrirEjemplo()`. Además, una `disposicionB` que no es un objeto (nula, una cadena, un arreglo) cuenta como el primer uso; antes dejaba los dos espacios vacíos. También una actividad en un arreglo (`['programar-probar']`) se guardaba tal cual, porque se convertía a texto al buscarla.
+- `test/actividad-app.js`: catorce casos de lo guardado, al abrir la app y al pasar de A a B: actividad conocida, desconocida, cuatro nombres heredados, nula, ausente, número, arreglo y objeto, y disposición nula, cadena y arreglo. Comprueba la configuración B, la interfaz B, la disposición y la franja, y que el programa y el circuito no cambian. Con el código de I4, 14 fallas; ahora, ninguna.

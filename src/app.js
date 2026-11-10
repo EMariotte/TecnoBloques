@@ -891,7 +891,11 @@ function iniciarDivisor(guardado) {
  * simulación (S4 de I2) ni sube nada. En A nada se reacomoda solo: cambiarVista y seleccionarPestana no tocan los
  * espacios; solo el clic del aprendiz en «Monitor serial» o «Simular» trae esa herramienta si no está en ninguno (D2). La
  * disposición es una preferencia de este PC (`disposicionA`), aparte de la vista y el ancho de C0. Volver a C0 deja
- * cada nodo donde estaba y su vista de antes. */
+ * cada nodo donde estaba y su vista de antes.
+ * La variante B (I4; TecnoSuite/EstrategíaTecno/DISENO-I4-ACTIVIDAD.md) usa estos mismos espacios con un punto de
+ * partida: la disposición de su actividad («Programar y probar»: Bloques | Circuito). Una franja sobre los espacios dice
+ * la actividad y, si el aprendiz la cambió, ofrece «Volver a…». Abrir una tarea del estudio pone su disposición (D2).
+ * B guarda la suya aparte (`disposicionB`). Las clases `modo-a` sirven a las dos variantes; `modo-b`, solo a B. */
 const panelesA = (() => {
   const HERRAMIENTAS = {
     bloques: { nombre: 'Bloques', desc: 'Arma el programa con bloques', nodo: 'zonaBloques' },
@@ -903,7 +907,15 @@ const panelesA = (() => {
   const LADOS = { izq: { id: 'ladoIzq', sufijo: 'Izq', nombre: 'Espacio izquierdo', en: 'en el espacio izquierdo' },
     der: { id: 'ladoDer', sufijo: 'Der', nombre: 'Espacio derecho', en: 'en el espacio derecho' } };
   const MIN_LADO = 320;
-  let activo = false, d = null;
+  // Las actividades de B (D1: solo «Programar y probar» en el estudio) y la disposición que ponen
+  const ACTIVIDADES = {
+    'programar-probar': { nombre: 'Programar y probar', disposicion: { izq: 'bloques', der: 'circuito', proporcion: 0.5, ampliado: null } },
+  };
+  const ACTIVIDAD_INICIAL = 'programar-probar';
+  /** Una actividad del catálogo: solo una cadena que sea clave propia. `ACTIVIDADES[x]` a secas también aceptaría nombres
+   *  heredados del prototipo («constructor», «toString», «__proto__»…) y otros tipos convertidos a texto (r1 de I4, F01). */
+  const esActividad = (a) => typeof a === 'string' && Object.hasOwn(ACTIVIDADES, a);
+  let activo = false, modo = null, d = null;
   const otro = (l) => (l === 'izq' ? 'der' : 'izq');
   const disponible = (h) => h !== 'circuito' || simulador.disponible;
   const ladoDe = (h) => (d.izq === h ? 'izq' : d.der === h ? 'der' : null);
@@ -917,6 +929,30 @@ const panelesA = (() => {
     const proporcion = typeof x.proporcion === 'number' && x.proporcion >= 0.2 && x.proporcion <= 0.8 ? x.proporcion : 0.5;
     const ampliado = (x.ampliado === 'izq' && izq) || (x.ampliado === 'der' && der) ? x.ampliado : null;
     return { izq, der, proporcion, ampliado };
+  }
+  const clave = () => (modo === 'B' ? 'disposicionB' : 'disposicionA');
+  /** Lo que se ve al montar: en A, lo guardado (o los dos espacios vacíos); en B, lo guardado o, la primera vez, la
+   *  disposición de la actividad, sin configurar nada (E1). En B, una actividad que no es del catálogo vuelve a la
+   *  inicial con la disposición guardada, y algo guardado que no es un objeto cuenta como el primer uso (r1 de I4, F01). */
+  function inicial() {
+    const g = (leerLocal(CLAVE_PREF) || {})[clave()];
+    if (modo !== 'B') return limpia(g);
+    const guardada = g && typeof g === 'object' && !Array.isArray(g) ? g : null;
+    const actividad = guardada && esActividad(guardada.actividad) ? guardada.actividad : ACTIVIDAD_INICIAL;
+    return { ...limpia(guardada || ACTIVIDADES[actividad].disposicion), actividad };
+  }
+  /** En B, si la disposición ya no es la de su actividad (otra herramienta, intercambio, ampliado o divisor movido). */
+  function personalizada() {
+    if (modo !== 'B') return false;
+    const a = ACTIVIDADES[d.actividad].disposicion;
+    return d.izq !== a.izq || d.der !== a.der || d.ampliado !== a.ampliado || Math.abs(d.proporcion - a.proporcion) > 0.005;
+  }
+  function pintarFranja() {
+    if (modo !== 'B') return;
+    const nombre = ACTIVIDADES[d.actividad].nombre, volver = $('volverActividad');
+    $('nombreActividad').textContent = nombre;
+    volver.textContent = `Volver a «${nombre}»`;
+    volver.hidden = !personalizada();
   }
 
   function construirLado(l) {
@@ -940,25 +976,37 @@ const panelesA = (() => {
       el('div', { class: 'cuerpo-lado' }, vacio));
   }
 
-  function montar() {
+  function montar(m) {
     activo = true;
+    modo = m;
     const p = $('principal'), div = $('divisor');
     delete p.dataset.vista; // las reglas de C0 por vista no alcanzan a A; estado.vista la conserva para volver
     p.classList.add('modo-a');
     document.body.classList.add('modo-a');
-    // Un h1 para el lector de pantalla, solo en A: los espacios llevan h2 (DISENO, r1; C0 no lo tiene y no cambia)
-    p.prepend(el('h1', { class: 'solo-lector', id: 'tituloA' }, 'TecnoBloques: paneles libres'));
+    document.body.classList.toggle('modo-b', m === 'B');
+    // Un h1 para el lector de pantalla, solo en A y B: los espacios llevan h2 (DISENO, r1; C0 no lo tiene y no cambia)
+    p.prepend(el('h1', { class: 'solo-lector', id: 'tituloA' }, m === 'B' ? 'TecnoBloques: por actividad' : 'TecnoBloques: paneles libres'));
+    if (m === 'B') {
+      // La franja de la actividad, entre la barra y los espacios (D3)
+      $('app').insertBefore(el('div', { class: 'franja-actividad', id: 'franjaActividad', role: 'group', 'aria-label': 'Actividad' },
+        el('span', { class: 'rotulo-actividad' }, 'Actividad'),
+        el('b', { id: 'nombreActividad' }),
+        el('button', { type: 'button', class: 'btn chico', id: 'volverActividad', hidden: '', onclick: volverActividad })), p);
+    }
     p.insertBefore(construirLado('izq'), div);
     p.insertBefore(construirLado('der'), div.nextSibling);
     p.append(el('div', { id: 'almacenA', hidden: '' }));
     for (const id of ['pCodigo', 'pSerial', 'pCircuito']) $(id).removeAttribute('role'); // ya no son pestañas: van en su espacio
     div.setAttribute('aria-label', 'Tamaño de los espacios');
     div.setAttribute('aria-controls', 'ladoIzq');
-    d = limpia((leerLocal(CLAVE_PREF) || {}).disposicionA);
+    d = inicial();
     pintar();
   }
   function desmontar() {
     activo = false;
+    modo = null;
+    if ($('franjaActividad')) $('franjaActividad').remove();
+    document.body.classList.remove('modo-b');
     const p = $('principal'), div = $('divisor');
     p.insertBefore($('zonaBloques'), div);
     $('panel').append($('pCodigo'), $('pSerial'), $('pCircuito'));
@@ -1011,15 +1059,34 @@ const panelesA = (() => {
     setTimeout(() => { if (espacio) Blockly.svgResize(espacio); }, 30);
     actualizarGrafica();
     uiSimulador(); // «Detener» de la barra depende de si el circuito se ve
+    pintarFranja();
   }
-  /** Un cambio pedido por el aprendiz: se pinta, se guarda y se anuncia al lector de pantalla. */
-  function cambio() {
+  /** Un cambio pedido por el aprendiz: se pinta, se guarda y se anuncia al lector de pantalla. `antes`: lo que se dice
+   *  primero (en B, que se puso la disposición de la actividad). */
+  function cambio(antes) {
     pintar();
     guardar();
     const dice = (l) => (d[l] ? `${HERRAMIENTAS[d[l]].nombre} ${LADOS[l].en}` : `${LADOS[l].nombre} vacío`);
-    $('anuncioPaneles').textContent = `${dice('izq')}; ${dice('der')}.` + (d.ampliado ? ` ${HERRAMIENTAS[d[d.ampliado]].nombre} ampliado.` : '');
+    $('anuncioPaneles').textContent = (antes ? antes + ' ' : '') + `${dice('izq')}; ${dice('der')}.` + (d.ampliado ? ` ${HERRAMIENTAS[d[d.ampliado]].nombre} ampliado.` : '');
   }
-  function guardar() { if (activo) guardarPreferencias({ disposicionA: { ...d } }); }
+  // Cada variante guarda su disposición aparte (E9); en B, con su actividad. El divisor llega aquí al soltarlo.
+  function guardar() { if (activo) { guardarPreferencias({ [clave()]: { ...d } }); pintarFranja(); } }
+  /** «Volver a…» de la franja (B): la disposición de la actividad, sin tocar documentos ni la simulación. El botón se
+   *  va, así que el foco pasa al selector del espacio izquierdo (E5). */
+  function volverActividad() {
+    if (modo !== 'B') return;
+    Object.assign(d, ACTIVIDADES[d.actividad].disposicion);
+    cambio(`Disposición de «${ACTIVIDADES[d.actividad].nombre}».`);
+    $('herrIzq').focus();
+  }
+  /** Al abrir un ejemplo (cargarEjemplo): en B, una tarea con actividad pone su disposición, aunque el aprendiz haya
+   *  cambiado la anterior (D2). En A y con otros ejemplos, nada se mueve. */
+  function alAbrirEjemplo(ej) {
+    if (!activo || modo !== 'B' || !ej || !esActividad(ej.actividad)) return;
+    d.actividad = ej.actividad;
+    Object.assign(d, ACTIVIDADES[ej.actividad].disposicion);
+    cambio(`Disposición de «${ACTIVIDADES[ej.actividad].nombre}».`);
+  }
 
   function poner(l, h) {
     if (d[l] === h) return;
@@ -1083,8 +1150,16 @@ const panelesA = (() => {
 
   return {
     activo: () => activo,
-    /** Con la variante A del instructor, A; con cualquier otra, la interfaz de siempre. */
-    aplicar(enA) { if (enA && !activo) montar(); else if (!enA && activo) desmontar(); },
+    modo: () => modo,
+    /** La variante del instructor: 'A' o 'B' ponen los espacios (B, con su actividad); cualquier otra, la interfaz de
+     *  siempre. Cambiar entre A y B desmonta y vuelve a montar: cada una toma su disposición guardada (E9). */
+    aplicar(v) {
+      const m = v === 'A' || v === 'B' ? v : null;
+      if (m === modo) return;
+      if (activo) desmontar();
+      if (m) montar(m);
+    },
+    alAbrirEjemplo,
     disposicion: () => (activo ? { ...d } : null),
     circuitoAmpliado: () => activo && !!d.ampliado && d[d.ampliado] === 'circuito',
     circuitoVisible: () => activo && !!ladoDe('circuito') && d.ampliado !== otro(ladoDe('circuito')),
@@ -1237,6 +1312,37 @@ function encuadrar() {
 /* ---------- Ejemplos ---------- */
 const LLAMADA = (f) => `<mutation firma='${JSON.stringify(f)}'></mutation>`;
 const N = (v) => `<shadow type="math_number"><field name="NUM">${v}</field></shadow>`;
+/** Una tarea del estudio A/B (ADR-002): pulsador en `boton` con pull-up (al otro lado, GND) y LED con 220 Ω en `led`.
+ *  El LED se enciende mientras se presiona. Mismas piezas y posiciones en X y Y; solo cambian los pines. */
+function tareaEstudio(id, nombre, desc, boton, led) {
+  return {
+    id, nombre, desc, placa: 'uno', grupo: 'estudio', actividad: 'programar-probar',
+    xml: `<xml xmlns="https://developers.google.com/blockly/xml">
+<block type="programa" x="40" y="40">
+ <statement name="SETUP">
+  <block type="pin_modo"><field name="PIN">${boton}</field><field name="MODO">INPUT_PULLUP</field></block>
+ </statement>
+ <statement name="LOOP">
+  <block type="controls_if"><mutation else="1"></mutation>
+   <value name="IF0"><block type="logic_negate"><value name="BOOL"><block type="leer_digital"><field name="PIN">${boton}</field></block></value></block></value>
+   <statement name="DO0"><block type="escribir_digital"><field name="PIN">${led}</field><field name="EST">HIGH</field></block></statement>
+   <statement name="ELSE"><block type="escribir_digital"><field name="PIN">${led}</field><field name="EST">LOW</field></block></statement>
+  </block>
+ </statement>
+</block>
+</xml>`,
+    circuito: {
+      formato: 1, placa: 'uno', protoboard: null,
+      componentes: [
+        { id: 'r1', tipo: 'resistencia', x: 330, y: -160, rot: 0, props: { ohmios: 220 } },
+        { id: 'led1', tipo: 'led', x: 420, y: -100, rot: 0, props: { color: 'rojo' } },
+        { id: 'btn1', tipo: 'pulsador', x: 330, y: 40, rot: 0, props: { color: 'rojo' } }],
+      cables: [
+        { de: `placa.D${led}`, a: 'r1.1' }, { de: 'r1.2', a: 'led1.anodo' }, { de: 'led1.catodo', a: 'placa.GND1' },
+        { de: `placa.D${boton}`, a: 'btn1.1i' }, { de: 'placa.GND3', a: 'btn1.2i' }],
+    },
+  };
+}
 const EJEMPLOS = [
   {
     id: 'carro', nombre: 'Carro Bluetooth', placa: 'uno',
@@ -1371,6 +1477,11 @@ const EJEMPLOS = [
 </block>
 </xml>`
   },
+  // Tareas X y Y del estudio A/B (grupo «estudio», EST-002, I4; ADR-002): el mismo montaje con otros pines. Solo se ven
+  // con la variante A o B del instructor (ponerEjemplosEstudio); en C0 no están ni en el DOM. `actividad` es el punto de partida de B. BORRADOR
+  // PARA I5: el programa de partida, los nombres y las descripciones los define el material de I5 con Efraín.
+  tareaEstudio('tarea_x', 'Tarea X · Pulsador y LED', 'El LED se enciende mientras presionas el pulsador. Predice, simula y cambia la condición.', 2, 13),
+  tareaEstudio('tarea_y', 'Tarea Y · Pulsador y LED en otros pines', 'El mismo montaje con el pulsador en D3 y el LED en D12. Predice, simula y cambia la condición.', 3, 12),
   // Validación con la placa real (grupo «validacion», para el instructor): el mismo C++ que se probó en TecnoCircuito
   // (prototipo/programas/) y su circuito. Se simulan y se suben a la placa con el mismo código, para comparar.
   {"id":"val_adc","nombre":"Validar: ruido de analogRead()","desc":"T2 · potenciómetro en A0, perilla quieta: menor, mayor, promedio y desviación de 200 lecturas.","texto":"// Validación del ruido de analogRead() (tarea T2). Con el potenciómetro quieto en A0, toma 200 lecturas\n// y escribe la menor, la mayor, el promedio y la desviación estándar. Se compara con el simulador.\n// Las sumas se hacen con enteros, respecto de la primera lectura: así la desviación sale exacta (con float de\n// 32 bits y sumas del orden del millón se perdía precisión y salía nan).\nvoid setup() {\n  Serial.begin(9600);\n}\n\nvoid loop() {\n  int primera = analogRead(A0);\n  long suma = 0;       // suma de (v - primera)\n  long cuadrados = 0;  // suma de (v - primera)²\n  int menor = 1023;\n  int mayor = 0;\n  for (int i = 0; i < 200; i++) {\n    int v = analogRead(A0);\n    long d = v - primera;\n    suma += d;\n    cuadrados += d * d;\n    if (v < menor) menor = v;\n    if (v > mayor) mayor = v;\n    delay(2);\n  }\n  float media = suma / 200.0;\n  float varianza = cuadrados / 200.0 - media * media;\n  float promedio = primera + media;\n  float desviacion = sqrt(varianza > 0 ? varianza : 0);\n  Serial.print(\"min \");\n  Serial.print(menor);\n  Serial.print(\" max \");\n  Serial.print(mayor);\n  Serial.print(\" promedio \");\n  Serial.print(promedio, 2);\n  Serial.print(\" desviacion \");\n  Serial.println(desviacion, 2);\n  delay(1000);\n}\n","circuito":{"formato":1,"placa":"uno","componentes":[{"id":"pot1","tipo":"potenciometro","x":245,"y":205,"rot":0,"props":{"ohmios":10000,"posicion":0.5,"modelo":"16mm"}}],"cables":[{"de":"placa.GND3","a":"pot1.GND","color":"negro","puntos":[[179,310],[259.4,310]]},{"de":"placa.A0","a":"pot1.SIG","color":"verde","puntos":[[208,300],[278.6,300]]},{"de":"placa.5V","a":"pot1.VCC","color":"rojo","puntos":[[160,320],[297.8,320]]}],"protoboard":null},"placa":"uno","grupo":"validacion"},
@@ -1396,7 +1507,30 @@ function cargarEjemplo(ej) {
   abrirLienzo();
   programarActualizacion();
   if (ej.texto) entrarModoTexto(ej.texto, ''); // ejemplo escrito en C++ (los de validación)
+  panelesA.alAbrirEjemplo(ej); // en B, una tarea del estudio pone la disposición de su actividad (I4, D2)
   registrarEditor('ejemplo_cargado', { id: ej.id });
+}
+/** Un botón del menú Ejemplos: pregunta antes de reemplazar el programa. */
+function botonEjemplo(ej) {
+  const lista = $('listaEjemplos');
+  return el('button', {
+    type: 'button', onclick: () => {
+      lista.hidden = true; $('btnEjemplos').setAttribute('aria-expanded', 'false');
+      modal({ titulo: `Abrir "${ej.nombre}"`, cuerpo: 'Se reemplaza el programa actual.', botones: [{ texto: 'Cancelar' }, { texto: 'Abrir ejemplo', primario: true, accion: () => cargarEjemplo(ej) }] });
+    }
+  }, el('b', null, ej.nombre), el('small', null, `${PLACAS[ej.placa].nombre} · ${ej.desc}`));
+}
+/** Las tareas del estudio (grupo «estudio») están en el menú solo con la variante A o B, bajo «Estudio A/B» y antes de
+ *  las de validación. Con C0 se quitan: su menú es el de siempre, también en el DOM (I4, D4). */
+function ponerEjemplosEstudio(mostrar) {
+  const lista = $('listaEjemplos');
+  if (!lista) return;
+  lista.querySelectorAll('.de-estudio').forEach((n) => n.remove());
+  if (!mostrar) return;
+  const validacion = lista.querySelector('.menu-titulo');
+  [el('div', { class: 'menu-titulo de-estudio' }, 'Estudio A/B'),
+    ...EJEMPLOS.filter((e) => e.grupo === 'estudio').map((e) => { const b = botonEjemplo(e); b.classList.add('de-estudio'); return b; })]
+    .forEach((n) => lista.insertBefore(n, validacion));
 }
 
 /* ---------- Placa ---------- */
@@ -2310,11 +2444,13 @@ const MOTIVOS_ESTUDIO = {
   'estudio-danado': 'La configuración del estudio está dañada: empieza de nuevo.', disco: 'No se pudo guardar en este computador.',
 };
 let varianteEstudio = 'C0';
-/** La variante elegida queda en <body data-variante>. A pone los paneles libres (I3); B se ve como C0 hasta I4. */
+/** La variante elegida queda en <body data-variante>. A pone los paneles libres (I3); B, los mismos espacios con su
+ *  actividad (I4). Las tareas del estudio solo están en el menú con A o B (ponerEjemplosEstudio). */
 function aplicarVariante(v) {
   varianteEstudio = ['A', 'B'].includes(v) ? v : 'C0';
   document.body.dataset.variante = varianteEstudio;
-  panelesA.aplicar(varianteEstudio === 'A');
+  ponerEjemplosEstudio(varianteEstudio !== 'C0');
+  panelesA.aplicar(varianteEstudio);
 }
 async function iniciarEstudio() {
   if (!escritorio || !escritorio.estudio) { aplicarVariante('C0'); return; }
@@ -2887,13 +3023,9 @@ function iniciar() {
   }));
   const lista = $('listaEjemplos');
   EJEMPLOS.forEach((ej, i) => {
+    if (ej.grupo === 'estudio') return; // las tareas del estudio entran solo con la variante A o B (ponerEjemplosEstudio)
     if (ej.grupo === 'validacion' && (EJEMPLOS[i - 1] || {}).grupo !== 'validacion') lista.append(el('div', { class: 'menu-titulo' }, 'Validación con la placa real (instructor)'));
-    lista.append(el('button', {
-    type: 'button', onclick: () => {
-      lista.hidden = true; $('btnEjemplos').setAttribute('aria-expanded', 'false');
-      modal({ titulo: `Abrir "${ej.nombre}"`, cuerpo: 'Se reemplaza el programa actual.', botones: [{ texto: 'Cancelar' }, { texto: 'Abrir ejemplo', primario: true, accion: () => cargarEjemplo(ej) }] });
-    }
-  }, el('b', null, ej.nombre), el('small', null, `${PLACAS[ej.placa].nombre} · ${ej.desc}`)));
+    lista.append(botonEjemplo(ej));
   });
   $('btnEjemplos').addEventListener('click', (e) => {
     e.stopPropagation();

@@ -405,15 +405,22 @@ details.subir-detalle pre { max-height: 220px; overflow: auto; font-family: var(
 .campo-lado select { flex: 0 1 12em; min-width: 7.5em; }
 .acciones-lado { display: flex; gap: 8px; margin-left: auto; }
 /* Los botones nuevos de A responden al presionarlos; su hover, solo con ratón (DISENO [E], r1) */
-.cabeza-lado .btn, .opciones-lado .btn, #btnDetenerBarra { transition: transform 120ms cubic-bezier(0.23, 1, 0.32, 1); }
+.cabeza-lado .btn, .opciones-lado .btn, #btnDetenerBarra, #volverActividad { transition: transform 120ms cubic-bezier(0.23, 1, 0.32, 1); }
 /* La escala existe solo si no se pidió reducir el movimiento: así ninguna regla tiene que anularla (r2, F03: una regla
    de anulación perdía por especificidad frente a la de `:not([disabled])`). */
 @media (prefers-reduced-motion: no-preference) {
-  .cabeza-lado .btn:not([disabled]):active, .opciones-lado .btn:active, #btnDetenerBarra:active { transform: scale(.97); }
+  .cabeza-lado .btn:not([disabled]):active, .opciones-lado .btn:active, #btnDetenerBarra:active, #volverActividad:active { transform: scale(.97); }
 }
 @media not ((hover: hover) and (pointer: fine)) {
-  .cabeza-lado .btn:hover, .opciones-lado .btn:hover, #btnDetenerBarra:hover { border-color: var(--line); }
+  .cabeza-lado .btn:hover, .opciones-lado .btn:hover, #btnDetenerBarra:hover, #volverActividad:hover { border-color: var(--line); }
 }
+/* Variante B (I4): la franja de la actividad, entre la barra y los espacios (D3). #app gana una fila. */
+body.modo-b #app { grid-template-rows: auto auto 1fr; }
+.franja-actividad { display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 4px 12px; background: var(--panel-2); border-bottom: 1px solid var(--line); }
+.rotulo-actividad { color: var(--muted); font-size: 13px; }
+.franja-actividad b { color: var(--ink); font-size: 14px; }
+#volverActividad { margin-left: auto; }
+#volverActividad[hidden] { display: none; }
 /* El estado de la simulación en la barra, cuando el circuito no se ve (r1, F02). Un programa anterior se dice con
    palabras y, además, con el color de aviso. */
 .estado-sim-barra { font-size: 13px; padding: 3px 10px; border-radius: 99px; border: 1px solid var(--line); background: var(--panel-2); color: var(--muted); white-space: nowrap; }
