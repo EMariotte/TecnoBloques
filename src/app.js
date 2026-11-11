@@ -32,6 +32,21 @@ function escribirLibreria(lib) {
 function guardarLocal(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* sin almacenamiento */ } }
 function leerLocal(k) { try { const t = localStorage.getItem(k); return t ? JSON.parse(t) : null; } catch (e) { return null; } }
 
+/* ---------- Tema claro u oscuro (UX-005) ---------- */
+// Sigue al tema de Windows hasta que el equipo toca el interruptor de la barra; entonces la elección («claro» u
+// «oscuro») se guarda en las preferencias y gana al sistema. Lo guardado que no es una de las dos se ignora y la app
+// vuelve a seguir a Windows (E6). Se aplica aquí, antes de crear los bloques y el lienzo, para que abran con su tema.
+function temaGuardado() {
+  const p = leerLocal(CLAVE_PREF);
+  const t = p && typeof p === 'object' ? p.tema : null;
+  return t === 'claro' || t === 'oscuro' ? t : null;
+}
+function ponerTemaElegido(t) {
+  if (t) document.documentElement.setAttribute('data-theme', t === 'oscuro' ? 'dark' : 'light');
+  else document.documentElement.removeAttribute('data-theme');
+}
+ponerTemaElegido(temaGuardado());
+
 /* ---------- Utilidades de interfaz ---------- */
 function el(tag, props, ...hijos) {
   const e = document.createElement(tag);
@@ -167,7 +182,10 @@ function esOscuro() {
   if (t === 'light') return false;
   return window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches;
 }
+/** El interruptor de la barra dice el tema que se ve, también cuando lo cambia Windows (UX-005). */
+function pintarInterruptorTema() { const b = $('btnTema'); if (b) b.setAttribute('aria-checked', String(esOscuro())); }
 function aplicarTema() {
+  pintarInterruptorTema();
   if (espacio) espacio.setTheme(esOscuro() ? TEMA_OSCURO : TEMA_CLARO);
   if (typeof simulador !== 'undefined' && simulador.lienzo) simulador.lienzo.ponerTema(esOscuro() ? 'oscuro' : 'claro');
 }
@@ -3364,6 +3382,13 @@ function iniciar() {
 
   window.matchMedia && matchMedia('(prefers-color-scheme: dark)').addEventListener('change', aplicarTema);
   new MutationObserver(aplicarTema).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  // Tocar el interruptor fija el tema contrario al que se ve y lo guarda; el observador de arriba cambia el resto (UX-005)
+  pintarInterruptorTema();
+  $('btnTema').addEventListener('click', () => {
+    const t = esOscuro() ? 'claro' : 'oscuro';
+    guardarPreferencias({ tema: t });
+    ponerTemaElegido(t);
+  });
 
   // Estado inicial: el autoguardado o, la primera vez, un proyecto vacío en el nivel del aprendiz (1 por defecto)
   const auto = leerLocal(CLAVE_AUTO);

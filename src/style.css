@@ -163,6 +163,18 @@ details.subir-detalle pre { max-height: 220px; overflow: auto; font-family: var(
 .btn:hover { border-color: var(--accent); }
 .btn.primario { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 700; }
 .btn.chico { padding: 3px 8px; font-size: 13px; }
+/* Interruptor de tema (UX-005, la forma «A neutra» que eligió Efraín): ☀ ( ● ) ☾ al final de la barra. Sin verde, para
+   no competir con «Subir a la placa»: el estado lo dicen la perilla y el ícono resaltado. */
+.tema { display: inline-flex; align-items: center; gap: 6px; margin-left: 4px; padding: 4px; border: 0; border-radius: 999px; background: none; color: var(--muted); font: inherit; cursor: pointer; }
+.tema:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tema svg { flex: none; }
+.tema-pista { position: relative; display: inline-block; width: 36px; height: 20px; box-sizing: border-box; border: 1px solid var(--muted); border-radius: 999px; background: var(--panel-2); }
+.tema-perilla { position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: var(--ink); }
+.tema[aria-checked="true"] .tema-perilla { transform: translateX(16px); }
+.tema[aria-checked="false"] .tema-sol, .tema[aria-checked="true"] .tema-luna { color: var(--ink); }
+@media (hover: hover) and (pointer: fine) { .tema:hover .tema-pista { border-color: var(--ink); } }
+/* La perilla se desliza solo sin «reducir movimiento» (la regla vive dentro de la preferencia contraria) */
+@media (prefers-reduced-motion: no-preference) { .tema-perilla { transition: transform 160ms cubic-bezier(0.23, 1, 0.32, 1); } }
 .btn[disabled] { opacity: .5; cursor: not-allowed; }
 .menu { position: relative; }
 .menu-lista {

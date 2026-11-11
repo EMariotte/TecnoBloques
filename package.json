@@ -30,6 +30,7 @@
     "test:paneles": "node build.js --simulador-local && node test/paneles-app.js",
     "test:actividad": "node build.js --simulador-local && node test/actividad-app.js",
     "test:misiones": "node build.js --simulador-local && node test/misiones-app.js",
+    "test:tema": "node build.js --simulador-local && node test/tema-app.js",
     "historia": "node herramientas/historia-registro.js",
     "test:simulador": "node build.js --simulador-local && node test/simulador.js"
   },

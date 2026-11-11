@@ -1678,3 +1678,12 @@ Codex devolvió la entrega por F01 y F02 (medias) y F03 (baja). Pruebas antes de
 - **F03:** con el panel y el aviso del equipo visibles, a 760 px o menos (1366 px con zoom al 200 %), `.misiones` deja 72 px al final y `html` un `scroll-padding-bottom` igual: el final del panel y lo enfocado quedan por encima del aviso. C0 no cambia (solo con `body.con-misiones`).
 - `test/misiones-app.js`: cada respuesta y paso contra su evento del registro, misión retomada tras reabrir y tras alternar equipos, descargar dos veces, lo guardado sin sesión, simular después de terminar (también tras reabrirla, con un error de compilación y con otra misión abierta), y el botón libre en 1366/1536 px, 100/200 %, ambos temas, con y sin registro. Después: 91/0 en dos corridas.
 - Lección: la ventana de prueba puede quedar minimizada o sin cambiar de tamaño; la prueba ahora comprueba el ancho real antes de medir y restaura la ventana si hace falta. Con la escala de Windows al 125 %, 1366 px quedan en 1368.
+
+## 2026-11-11 — UX-005: interruptor de tema claro/oscuro
+
+Pedido de Efraín. Sus decisiones: sigue a Windows hasta que se toca; en la barra, igual en A, B y C0; la forma «A neutra» (☀ ( ● ) ☾, pista gris, sin el verde de la acción), elegida entre opciones capturadas en la app.
+- `src/body.html`: `#btnTema` al final de `.acciones`, `role="switch"`, `aria-checked`, nombre y título «Tema oscuro»; íconos de línea con `aria-hidden`.
+- `src/style.css`: `.tema`, `.tema-pista`, `.tema-perilla`; el ícono del tema activo en `--ink` y el otro en `--muted`; hover solo con puntero fino; la perilla se desliza (160 ms, ease-out) solo dentro de `prefers-reduced-motion: no-preference`.
+- `src/app.js`: `temaGuardado()` y `ponerTemaElegido()` al cargar, antes de crear bloques y lienzo; `pintarInterruptorTema()` dentro de `aplicarTema`; el clic guarda `tema` en las preferencias. Lo guardado que no es «claro» u «oscuro» se ignora.
+- `test/tema-app.js` (`npm run test:tema`), E1–E6 escritos antes del código: antes 2/20, después 22/0 en dos corridas. Contraste medido en el DOM (pista, perilla e íconos, ≥ 3:1 en los dos temas). El renglón de acciones se corre 98 px a la izquierda para dejarle lugar, sin cambiar de renglón.
+- Lección: Playwright fija `prefers-color-scheme: light` por defecto y tapa a `nativeTheme.themeSource`; el tema de Windows se simula con `colorScheme` al lanzar y `emulateMedia` después.
