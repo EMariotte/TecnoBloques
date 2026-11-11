@@ -1659,3 +1659,22 @@ Codex dio por bueno el montaje del cierre 2 y devolvió la medida nueva por F01 
 
 - `test/actividad-app.js`: cada tramo lleva como `extremo` las puntas del cable que caen en él (el primero, la inicial; el último, la final; un cable de un solo tramo, las dos). `controlesTrazado()` revisa la medida contra doce dibujos de geometría conocida: el pin común en los cuatro sentidos posibles y con dobleces (no son cruces), y la diagonal, el cruce, la T en los dos sentidos, la punta sobre el doblez de otro y el solape (sí lo son). Corren al empezar la suite, o solos con `node test/actividad-app.js --trazado`. Antes: 8 OK y 4 falsos positivos; después, 12/12.
 - El montaje (`src/app.js`) no cambia.
+
+## 2026-11-11 — EST-004: descargar las respuestas de la misión
+
+Diseño aceptado por Efraín el 11 nov: `TecnoSuite/EstrategíaTecno/DISENO-RESPUESTAS-JSON.md` (E1–E8, D1–D5). Al terminar una misión, el panel muestra «Descargar respuestas» y el equipo guarda un JSON con lo que respondió: es su entrega, y más adelante se podrá subir a TecnoRuta. El formato es el de TecnoCircuito (`contrato/respuestas.schema.json`, CONTRATO 6.2).
+
+- `src/app.js`, módulo `misiones`:
+  - Desde ahora guarda, junto a cada respuesta, su hora y su «tras simular» (`marcas`), la hora de cada paso (`pasosT`) y cuándo se abrió y se terminó la misión. Al leerlas se limpian como lo demás; lo guardado antes queda en `null`.
+  - Con la misión terminada, el botón «Descargar respuestas» (estilo de «Seguir», no principal). `archivoRespuestas()` arma el archivo: el equipo y la sesión del registro (o `null` sin registro, D2), la tarea, las horas y los pasos con sus respuestas (los mismos nombres de pregunta que en el registro; `unidad` en los números y `rotulo` en las opciones). Sin la variante (D5).
+  - `descargarRespuestas()` usa la misma `descargar()` de «Descargar .ino», que en el escritorio abre el cuadro de guardar (D3). Nombre: `respuestas-<equipo>-<tarea>-<AAAAMMDD-HHMM>.json`, con el código limpio como en el registro (`codigoParaArchivo`), o `sin-equipo`. El aviso dice «Elijan dónde guardar sus respuestas.»: la app no sabe si se guardó o se canceló.
+- `test/misiones-app.js`: E1–E8 de EST-004, escritos antes del código (antes: 9 fallas). La descarga se reemplaza en la prueba por una que anota nombre y contenido; el archivo se revisa con `contrato_respuestas.js` de TecnoCircuito y se cruza con las líneas `mision_respuesta` del registro (valor, «tras simular» y hora). Lección: el registro se lee archivo por archivo en orden alfabético; para cruzar un equipo nuevo hay que filtrar por equipo, no cortar por cantidad de líneas.
+
+## 2026-11-11 — EST-004, r1: sesiones, misión cerrada y aviso al 200 % (COD-20261111-006)
+
+Codex devolvió la entrega por F01 y F02 (medias) y F03 (baja). Pruebas antes del código: `test:misiones` antes 70/15.
+- **F01:** el archivo llevaba la sesión del momento de descargar; al retomar una misión en otra sesión ya no era la de las respuestas. Decisión de Efraín (11 nov): `misiones` guarda la sesión del registro de cada respuesta (`marcas[q].ses`), de cada paso (`pasosS`) y de la apertura (`abiertaS`); `archivoRespuestas()` las pone en cada paso y respuesta y arma `sesiones`, sin repetir y en orden. Lo guardado antes queda en `null`.
+- **F02:** `alSimular()` no marca una misión terminada: su archivo dice lo que pasó durante la misión.
+- **F03:** con el panel y el aviso del equipo visibles, a 760 px o menos (1366 px con zoom al 200 %), `.misiones` deja 72 px al final y `html` un `scroll-padding-bottom` igual: el final del panel y lo enfocado quedan por encima del aviso. C0 no cambia (solo con `body.con-misiones`).
+- `test/misiones-app.js`: cada respuesta y paso contra su evento del registro, misión retomada tras reabrir y tras alternar equipos, descargar dos veces, lo guardado sin sesión, simular después de terminar (también tras reabrirla, con un error de compilación y con otra misión abierta), y el botón libre en 1366/1536 px, 100/200 %, ambos temas, con y sin registro. Después: 91/0 en dos corridas.
+- Lección: la ventana de prueba puede quedar minimizada o sin cambiar de tamaño; la prueba ahora comprueba el ancho real antes de medir y restaura la ventana si hace falta. Con la escala de Windows al 125 %, 1366 px quedan en 1368.

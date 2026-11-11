@@ -2192,6 +2192,10 @@ const misiones = (() => {
   const equipo = () => 'e:' + ((registroEventos.activo() && registroEventos.equipo()) || '');
   const objeto = (x) => !!x && typeof x === 'object' && !Array.isArray(x);
   const propio = (o, k) => objeto(o) && Object.hasOwn(o, k);
+  const hora = (x) => (Number.isInteger(x) && x >= 0 ? x : null); // ms desde 1970, o null si no está o no sirve
+  const deSesion = (x) => (typeof x === 'string' && x.length > 0 ? x : null); // la sesión del registro, o null si no se sabe
+  /** La sesión del registro en este momento (r1 de EST-004, F01): con ella cada respuesta se cruza con su evento. */
+  const sesionAhora = () => (registroEventos.activo() ? registroEventos.sesion() : null);
   function valida(q, v) {
     if (q.tipo === 'numero') return typeof v === 'number' && Number.isFinite(v);
     if (q.tipo === 'opcion') return q.opciones.some(([valor]) => valor === v);
@@ -2209,7 +2213,16 @@ const misiones = (() => {
       const respuestas = {};
       for (const q of preguntas(ej)) if (propio(m.respuestas, q.id) && valida(q, m.respuestas[q.id])) respuestas[q.id] = m.respuestas[q.id];
       const paso = Number.isInteger(m.paso) && m.paso >= 0 && m.paso <= ej.mision.length ? m.paso : 0;
-      r.misiones[ej.id] = { paso, respuestas, simulo: m.simulo === true };
+      // Las horas, «tras simular» y la sesión de cada respuesta y paso (EST-004 y su r1). Lo guardado antes no las tiene:
+      // quedan en null, sin inventarlas
+      const marcas = {};
+      for (const q of Object.keys(respuestas)) {
+        const d = propio(m.marcas, q) && objeto(m.marcas[q]) ? m.marcas[q] : {};
+        marcas[q] = { t: hora(d.t), tras: typeof d.tras === 'boolean' ? d.tras : null, ses: deSesion(d.ses) };
+      }
+      const pasosT = ej.mision.map((_, k) => (Array.isArray(m.pasosT) ? hora(m.pasosT[k]) : null));
+      const pasosS = ej.mision.map((_, k) => (Array.isArray(m.pasosS) ? deSesion(m.pasosS[k]) : null));
+      r.misiones[ej.id] = { paso, respuestas, simulo: m.simulo === true, marcas, pasosT, pasosS, abierta: hora(m.abierta), abiertaS: deSesion(m.abiertaS), terminada: hora(m.terminada) };
     }
     if (typeof e.actual === 'string' && Object.hasOwn(r.misiones, e.actual)) r.actual = e.actual;
     return r;
@@ -2287,7 +2300,10 @@ const misiones = (() => {
       })));
     }
     if (m.paso >= total) {
-      cuerpo.append(el('p', { class: 'mision-texto', role: 'status' }, 'Terminaron la misión. Avisen al facilitador.'));
+      // La entrega del equipo (EST-004, D1): solo con la misión terminada
+      const boton = el('button', { type: 'button', class: 'btn mision-accion', id: 'misionDescargar' }, 'Descargar respuestas');
+      boton.addEventListener('click', () => descargarRespuestas(ej.id));
+      cuerpo.append(el('p', { class: 'mision-texto', role: 'status' }, 'Terminaron la misión. Descarguen sus respuestas y entréguenlas como diga el facilitador.'), boton);
       if (enfocar) { $('misionTitulo').setAttribute('tabindex', '-1'); $('misionTitulo').focus(); }
       return;
     }
@@ -2318,17 +2334,54 @@ const misiones = (() => {
       if (msg) { faltan++; primero = primero || c; }
     });
     if (faltan) { aviso.textContent = faltan === 1 ? 'Falta una respuesta.' : `Faltan ${faltan} respuestas.`; primero.enfocar(); return; }
-    const paso = i + 1;
+    const paso = i + 1, ahora = Date.now(), ses = sesionAhora();
     campos.forEach((c, k) => {
       if (leidas[k].vacio) return;
       m.respuestas[c.q.id] = leidas[k].valor;
+      m.marcas[c.q.id] = { t: ahora, tras: m.simulo, ses }; // para el archivo de respuestas (EST-004), igual que en el registro
       registrarEditor('mision_respuesta', { id, paso, pregunta: c.q.id, valor: leidas[k].valor, tras_simular: m.simulo });
     });
     registrarEditor('mision_paso', { id, paso });
     m.paso = paso;
-    if (paso === ej.mision.length) registrarEditor('mision_terminada', { id });
+    m.pasosT[i] = ahora;
+    m.pasosS[i] = ses;
+    if (paso === ej.mision.length) { m.terminada = ahora; registrarEditor('mision_terminada', { id }); }
     guardar(e);
     pintar(true);
+  }
+
+  /** El archivo de respuestas de una misión terminada (EST-004; contrato/respuestas.schema.json de TecnoCircuito,
+   *  CONTRATO 6.2): los mismos nombres de pregunta que el registro, sin nombres ni la variante (D5). Sin registro, el
+   *  equipo va en null (D2). Cada paso y cada respuesta llevan la sesión del registro en que se respondieron, y
+   *  `sesiones` las lista en orden, empezando por la de abrir (r1, F01): así cada respuesta se cruza con su
+   *  mision_respuesta aunque la misión se haya retomado en otra sesión, y descargar otra vez da el mismo archivo. */
+  function archivoRespuestas(ej, m) {
+    const pasos = ej.mision.map((p, k) => ({
+      paso: k + 1, titulo: p.titulo, t: m.pasosT[k], sesion: m.pasosS[k],
+      respuestas: (p.preguntas || []).filter((q) => Object.hasOwn(m.respuestas, q.id)).map((q) => {
+        const v = m.respuestas[q.id], d = m.marcas[q.id] || { t: null, tras: null, ses: null };
+        return { pregunta: q.id, texto: q.texto, tipo: q.tipo, valor: v, ...(q.unidad ? { unidad: q.unidad } : {}),
+          ...(q.tipo === 'opcion' ? { rotulo: texto(q, v) } : {}), tras_simular: d.tras, t: d.t, sesion: d.ses };
+      }),
+    }));
+    const sesiones = [...new Set([m.abiertaS, ...pasos.flatMap((p) => [p.sesion, ...p.respuestas.map((r) => r.sesion)])].filter((s) => s !== null))];
+    return {
+      formato: 1, tipo: 'respuestas_mision', app: 'TecnoBloques',
+      version_tb: TB_VERSION || 'desconocida', version_tc: (window.TecnoCircuito && TecnoCircuito.VERSION) || 'ninguno',
+      equipo: registroEventos.activo() ? registroEventos.equipo() : null, sesiones,
+      tarea: { id: ej.id, nombre: ej.nombre }, abierta: m.abierta, terminada: m.terminada, simulo: m.simulo, pasos,
+    };
+  }
+  /** «Descargar respuestas»: con la misma descargar() de «Descargar .ino», que abre el cuadro de guardar (D3). */
+  function descargarRespuestas(id) {
+    const e = leer(), ej = tarea(id), m = e.misiones[id];
+    if (!ej || !m || m.paso < ej.mision.length) { pintar(true); return; } // ya no es la misión terminada de este equipo
+    const doc = archivoRespuestas(ej, m);
+    const d = new Date(), dos = (v) => String(v).padStart(2, '0');
+    const fecha = `${d.getFullYear()}${dos(d.getMonth() + 1)}${dos(d.getDate())}-${dos(d.getHours())}${dos(d.getMinutes())}`;
+    const quien = doc.equipo === null ? 'sin-equipo' : codigoParaArchivo(doc.equipo); // limpio como en el registro
+    descargar(`respuestas-${quien}-${ej.id}-${fecha}.json`, JSON.stringify(doc, null, 2) + '\n', 'application/json');
+    mostrarToast('Elijan dónde guardar sus respuestas.');
   }
 
   /* Con la ventana angosta (con zoom al 200 %, por ejemplo), 300 px no dejan a los espacios sus 320 px cada uno: el panel
@@ -2387,7 +2440,8 @@ const misiones = (() => {
     alAbrirEjemplo(ej) {
       if (!montado || !ej || typeof ej.id !== 'string' || !tarea(ej.id)) return;
       const e = leer();
-      if (!e.misiones[ej.id]) e.misiones[ej.id] = { paso: 0, respuestas: {}, simulo: false };
+      if (!e.misiones[ej.id]) e.misiones[ej.id] = { paso: 0, respuestas: {}, simulo: false, marcas: {}, pasosT: ej.mision.map(() => null), pasosS: ej.mision.map(() => null),
+        abierta: Date.now(), abiertaS: sesionAhora(), terminada: null };
       e.actual = ej.id;
       guardar(e);
       registrarEditor('mision_abierta', { id: ej.id });
@@ -2395,11 +2449,12 @@ const misiones = (() => {
     },
     /** Cuando la simulación arranca de verdad (`simular`, después de `sim.iniciar()`): desde ahí, las respuestas de la
      * misión abierta llegan «tras simular». Pulsar no basta: si no compila, se detiene o se abre otro proyecto mientras
-     * se prepara, no se vio nada (r1, F01). Una vez marcada, la marca queda. No bloquea Simular (D3). */
+     * se prepara, no se vio nada (r1, F01). Una vez marcada, la marca queda. No bloquea Simular (D3). Una misión
+     * terminada no cambia: su archivo dice lo que pasó durante la misión (r1 de EST-004, F02). */
     alSimular() {
       if (!montado) return;
-      const e = leer(), m = e.actual && e.misiones[e.actual];
-      if (m && !m.simulo) { m.simulo = true; guardar(e); }
+      const e = leer(), ej = tarea(e.actual), m = ej && e.misiones[e.actual];
+      if (m && !m.simulo && m.paso < ej.mision.length) { m.simulo = true; guardar(e); }
     },
     /** Cambió el equipo (o se encendió o apagó el registro): se ve la misión de quien trabaja ahora (E7). */
     alCambiarEquipo() { if (montado && equipo() !== clave) { clave = equipo(); pintar(false); } },

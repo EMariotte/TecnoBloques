@@ -506,6 +506,11 @@ textarea.mision-entrada { resize: vertical; }
   #principal.modo-a #divisor { display: none; }
   body.con-misiones #app, body.con-misiones.mision-plegada #app { grid-template-columns: minmax(0, 1fr); }
   .misiones { grid-column: 1; grid-row: auto; border-left: 0; border-top: 1px solid var(--line); }
+  /* La página termina en el panel de misiones, y el aviso del equipo va fijo abajo a la izquierda (hasta unos 61 px del
+     borde con dos renglones): el final del panel y lo que recibe el foco quedan por encima del aviso (r1 de EST-004, F03).
+     Solo con el panel: C0 no cambia. */
+  body.con-misiones:has(> #avisoRegistro:not([hidden])) .misiones { padding-bottom: 72px; }
+  html:has(> body.con-misiones > #avisoRegistro:not([hidden])) { scroll-padding-bottom: 72px; }
   .acciones { margin-left: 0; }
   #nombreProyecto { width: 9em; }
 }

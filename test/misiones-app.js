@@ -5,6 +5,9 @@
 // volver donde iba al reabrir, la misión de cada equipo, el plegado, el teclado, el contraste, el zoom y «reducir movimiento».
 // La r1 (COD-20261111-001) suma F01 («tras simular» desde que la simulación arranca, no desde el clic), F02 (un número
 // que se vuelve Infinity no pasa) y F03 (el resumen muestra el texto tal cual).
+// EST-004 suma «Descargar respuestas» (E1–E8 de DISENO-RESPUESTAS-JSON.md), y su r1 (COD-20261111-006): F01, cada paso y
+// cada respuesta dicen su sesión del registro, también tras reabrir, retomar o alternar equipos; F02, simular después de
+// terminar no cambia la entrega; F03, el aviso del equipo no tapa el botón a 1366 px con zoom al 200 %.
 // Uso: npm run test:misiones   (arma con --simulador-local)
 'use strict';
 const { _electron: electron } = require('playwright-core');
@@ -444,6 +447,310 @@ function revisar(condicion, texto) {
   const problemasR1 = deMision().flatMap((l) => revisarEvento(l).map((x) => `${l.tipo}: ${x}`));
   revisar(!problemasR1.length, `r1: todas las líneas mision_* siguen cumpliendo el esquema${problemasR1.length ? ': ' + problemasR1.slice(0, 3).join(' | ') : ''}`);
 
+  // ---- EST-004 (DISENO-RESPUESTAS-JSON.md, E1–E8): al terminar, «Descargar respuestas» guarda un JSON con lo respondido.
+  // La descarga real abre el cuadro de guardar de Windows (la misma descargar() de «Descargar .ino»): aquí se reemplaza
+  // por una que anota el nombre y el contenido, para leerlos.
+  const { revisarRespuestas } = require(path.join(RAIZ, '..', 'TecnoCircuito', 'prototipo', 'pruebas', 'contrato_respuestas.js'));
+  await win.evaluate(() => { window.__descargas = []; descargar = (nombre, contenido, tipo) => { window.__descargas.push({ nombre, contenido, tipo }); }; });
+  const descargarAhora = () => win.evaluate(() => {
+    const b = $('misionDescargar');
+    if (!b) return null;
+    window.__descargas = [];
+    b.click();
+    return window.__descargas.pop() || { vacio: true };
+  });
+  const botonDescargar = () => win.evaluate(() => { const b = $('misionDescargar'); return b ? b.textContent : null; });
+  const leerArchivo = (d) => { try { return JSON.parse(d.contenido); } catch (e) { return null; } };
+  // Cerrar X1 o Y1 de punta a punta; `simular` lo hace en el paso 2, antes de responder «¿Acertaste?»
+  async function terminarMision({ simular = false, primero = '11', vuelta = '3', final = '4', porque = 'Ahora son cuatro pasos. Uno más.' } = {}) {
+    const durante = [];
+    durante.push(await botonDescargar());
+    await win.fill('#mision0q0', primero); await win.fill('#mision0q1', vuelta); await seguir(win);
+    durante.push(await botonDescargar());
+    if (simular) { await simularBarra(); await arranco(); await win.evaluate(() => detenerSimulacion()); }
+    await win.locator('#mision1q0o0').check(); await seguir(win);
+    await seguir(win); await seguir(win); // organizar y cambiar: «Listo»
+    durante.push(await botonDescargar());
+    await win.fill('#mision4q0', final); await win.fill('#mision4q1', porque); await win.locator('#mision4q2o1').check();
+    await seguir(win);
+    return durante;
+  }
+
+  // E1: el botón aparece solo al terminar
+  n = await nuevaX1('D1');
+  const antesDeTerminar = await terminarMision({ simular: true });
+  const rotulo = await botonDescargar();
+  revisar(antesDeTerminar.every((x) => x === null) && rotulo === 'Descargar respuestas',
+    `E1 (EST-004): «Descargar respuestas» no está durante los pasos (${JSON.stringify(antesDeTerminar)}) y aparece al terminar («${rotulo}»)`);
+  // E2: el archivo cumple el esquema y dice lo mismo que el registro
+  let bajada = await descargarAhora();
+  let archivo = bajada && leerArchivo(bajada);
+  // Por equipo y no por posición: el registro se lee archivo por archivo en orden alfabético, y el de D1 (nuevo) queda
+  // antes que los de F1–F7, así que cortar por cantidad de líneas lo dejaría fuera
+  const delRegistro = deMision().filter((l) => l.equipo === 'D1' && l.tipo === 'mision_respuesta');
+  const enArchivo = archivo ? archivo.pasos.flatMap((q) => q.respuestas) : [];
+  const malArchivo = archivo ? revisarRespuestas(archivo) : ['no hubo archivo'];
+  const sesionD1 = await win.evaluate(() => registroEventos.sesion());
+  revisar(!!archivo && !malArchivo.length, `E2 (EST-004): el archivo cumple respuestas.schema.json${malArchivo.length ? ': ' + malArchivo.slice(0, 3).join(' | ') : ''}`);
+  const sesionesDe = (doc) => (doc && Array.isArray(doc.sesiones) ? doc.sesiones.length : -1);
+  const listaDe = (doc) => (doc && Array.isArray(doc.sesiones) ? doc.sesiones : []);
+  const todoEn = (doc, s) => doc.pasos.every((q) => q.sesion === s && q.respuestas.every((x) => x.sesion === s));
+  revisar(!!archivo && archivo.equipo === 'D1' && !Object.hasOwn(archivo, 'sesion') && JSON.stringify(archivo.sesiones) === JSON.stringify([sesionD1]) && todoEn(archivo, sesionD1)
+    && archivo.tarea.id === 'estudio_x1' && archivo.simulo === true && archivo.pasos.length === 5
+    && JSON.stringify(archivo.pasos.map((q) => q.respuestas.map((x) => x.pregunta))) === JSON.stringify([['primero', 'duracion'], ['acierto'], [], [], ['duracion_nueva', 'porque', 'dificultad']])
+    && archivo.abierta <= archivo.pasos[0].t && archivo.pasos[4].t <= archivo.terminada && archivo.pasos.every((q, i) => q.paso === i + 1 && Number.isInteger(q.t)),
+    `E2 (EST-004): equipo, sus sesiones (la de cada paso y respuesta), tarea, los cinco pasos en orden con sus preguntas y sus horas (${archivo ? JSON.stringify(archivo.pasos.map((q) => q.respuestas.map((x) => x.pregunta))) : 'sin archivo'})`);
+  const iguales = delRegistro.length === 6 && delRegistro.length === enArchivo.length && delRegistro.every((l) => {
+    const x = enArchivo.find((y) => y.pregunta === l.datos.pregunta);
+    return x && x.valor === l.datos.valor && x.tras_simular === l.datos.tras_simular && Math.abs(x.t - l.t) < 1000 && x.sesion === l.sesion;
+  });
+  revisar(iguales, `E2 (EST-004): las 6 respuestas, con el mismo valor, «tras simular», hora y sesión que su mision_respuesta del registro (registro: ${delRegistro.length}; archivo: ${enArchivo.map((x) => `${x.pregunta}:${x.tras_simular}`).join(', ')})`);
+  const opcion = enArchivo.find((x) => x.pregunta === 'acierto'), numero = enArchivo.find((x) => x.pregunta === 'duracion');
+  revisar(opcion && opcion.rotulo === 'Sí' && opcion.texto === '¿Acertaste?' && numero && numero.unidad === 's' && bajada.tipo === 'application/json',
+    `E2 (EST-004): las opciones con su rótulo, los números con su unidad, el texto de cada pregunta y el tipo application/json (${bajada && bajada.tipo})`);
+  // E3: el nombre del archivo
+  const hoy = new Date(), dos = (v) => String(v).padStart(2, '0');
+  const fecha = `${hoy.getFullYear()}${dos(hoy.getMonth() + 1)}${dos(hoy.getDate())}`;
+  revisar(!!bajada && new RegExp(`^respuestas-D1-estudio_x1-${fecha}-\\d{4}\\.json$`).test(bajada.nombre), `E3 (EST-004): el nombre lleva el equipo, la tarea y la fecha (${bajada && bajada.nombre})`);
+  await serEquipo(win, 'Ñandú 7/b');
+  await abrirTarea(win, 'X1 · Luces en secuencia');
+  await terminarMision();
+  bajada = await descargarAhora();
+  revisar(!!bajada && /^respuestas-Nandu_7_b-estudio_x1-\d{8}-\d{4}\.json$/.test(bajada.nombre) && leerArchivo(bajada).equipo === 'Ñandú 7/b',
+    `E3 (EST-004): un código con tilde y barra se limpia en el nombre como en el registro y va tal cual adentro (${bajada && bajada.nombre})`);
+  // E4 y E5: el archivo no dice la variante: en A sale igual que en B
+  await serEquipo(win, 'D1');
+  await abrirTarea(win, 'X1 · Luces en secuencia');
+  const enB = await descargarAhora();
+  await win.evaluate(() => aplicarVariante('A'));
+  await pausa(win, 500);
+  await abrirTarea(win, 'X1 · Luces en secuencia');
+  const enA = await descargarAhora();
+  const sinVariante = (d) => !!d && !/variante|"A"|"B"/.test(d.contenido);
+  // Con la r1, ni la sesión cambia: el archivo dice las de las respuestas, no la del momento de descargar
+  const mismoDoc = (a, b) => !!a && !!b && !!leerArchivo(a) && a.contenido === b.contenido;
+  revisar(sinVariante(enB) && sinVariante(enA) && mismoDoc(enA, enB), 'E4/E5 (EST-004): el archivo no menciona la variante; descargado en A es idéntico al de B');
+  await win.evaluate(() => aplicarVariante('B'));
+  await pausa(win, 500);
+  // E8: teclado, foco y contraste con la misión terminada
+  await abrirTarea(win, 'X1 · Luces en secuencia');
+  const bordeBoton = await win.evaluate(() => { const b = $('misionDescargar'); return b ? b.classList.contains('mision-accion') && !b.classList.contains('primario') : null; });
+  revisar(bordeBoton === true, `E8 (EST-004): con la misión terminada está «Descargar respuestas», con el estilo de «Seguir» y no como botón principal (${bordeBoton})`);
+  await revisarPanel('terminada, claro (EST-004)');
+  await win.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
+  await pausa(win, 200);
+  await revisarPanel('terminada, oscuro (EST-004)');
+  await win.evaluate(() => document.documentElement.removeAttribute('data-theme'));
+  await tamano(app, win, 1366, 768);
+  await revisarPanel('terminada, 1366 × 768 (EST-004)');
+  await tamano(app, win, 1536, 864);
+
+  // ---- r1 de EST-004, F03 (COD-20261111-006): el aviso del equipo (fijo abajo a la izquierda) no tapa «Descargar
+  // respuestas». Con 1366 px y zoom al 200 % la ventana mide 684 px: el panel va al final de la página, bajo los espacios.
+  // Se lleva el botón a la vista de tres formas (bajar hasta el final, scrollIntoView y el foco con el teclado) y en cada
+  // una el centro debe ser el botón y su caja no debe cruzar la del aviso; al final, un clic de Playwright descarga.
+  async function descargaLibre(etiqueta, conAviso) {
+    // Entre 761 y 960 px el panel empieza plegado: se despliega, como lo haría el equipo
+    if (await win.evaluate(() => $('misiones').classList.contains('plegada'))) { await win.locator('#plegarMision').click(); await pausa(win, 400); }
+    const formas = [];
+    for (const forma of ['final', 'scrollIntoView', 'foco']) {
+      formas.push(await win.evaluate((f) => {
+        const b = $('misionDescargar');
+        if (!b) return { forma: f, sinBoton: true };
+        // «final»: la página y el panel, cada uno hasta abajo (el panel tiene su propio desplazamiento en las ventanas anchas)
+        const hasta = (fin) => { for (let x = b.parentElement; x; x = x.parentElement) x.scrollTop = fin ? x.scrollHeight : 0; const s = document.scrollingElement; s.scrollTop = fin ? s.scrollHeight : 0; };
+        hasta(f === 'final');
+        if (f === 'scrollIntoView') b.scrollIntoView({ block: 'end' });
+        if (f === 'foco') { b.blur(); b.focus(); }
+        const q = b.getBoundingClientRect(), a = $('avisoRegistro'), qa = a.hidden ? null : a.getBoundingClientRect();
+        const centro = document.elementFromPoint(q.left + q.width / 2, q.top + q.height / 2);
+        const cruza = !!qa && q.left < qa.right && qa.left < q.right && q.top < qa.bottom && qa.top < q.bottom;
+        return { forma: f, centro: centro === b || b.contains(centro), cruza, visible: q.top >= 0 && q.bottom <= innerHeight + 0.5, aviso: !!qa,
+          caja: [q.top, q.bottom].map((v) => Math.round(v * 10) / 10), avisoCaja: qa && [qa.top, qa.bottom].map((v) => Math.round(v * 10) / 10), alto: innerHeight };
+      }, forma));
+    }
+    const intento = await win.evaluate(() => { window.__descargas = []; return true; });
+    const clic = await win.locator('#misionDescargar').click({ timeout: 4000 }).then(() => true, () => false);
+    const bajo = clic && intento && await win.evaluate(() => window.__descargas.length === 1);
+    const ventana = await win.evaluate(() => innerWidth);
+    revisar(formas.every((f) => f.centro && !f.cruza && f.visible && f.aviso === conAviso) && bajo,
+      `F03 (r1 de EST-004) ${etiqueta} (${ventana} px): el botón se ve entero, el aviso ${conAviso ? 'no lo tapa' : 'no está'} y el clic descarga (${JSON.stringify(formas.map((f) => [f.forma, f.centro, f.cruza, f.visible, f.caja, f.avisoCaja, f.alto]))}; clic: ${bajo})`);
+  }
+  // El tamaño se comprueba (ancho en px de CSS = ancho de la ventana / zoom) y se reintenta: a veces Windows no lo aplica
+  // a la primera, y entonces la prueba mediría otra ventana. Devuelve los intentos, o 0 si no se logró.
+  // Si Windows la minimizó (su tamaño sale [0, 0] y no cambia), se restaura antes, y se cuenta
+  let restauradas = 0;
+  const conZoom = async (ancho, alto, factor) => {
+    for (let i = 1; i <= 4; i++) {
+      if (await app.evaluate(({ BrowserWindow }) => { const v = BrowserWindow.getAllWindows()[0]; if (!v.isMinimized()) return false; v.restore(); v.show(); return true; })) { restauradas++; await pausa(win, 500); }
+      await tamano(app, win, ancho, alto);
+      await app.evaluate(({ BrowserWindow }, z) => BrowserWindow.getAllWindows()[0].webContents.setZoomFactor(z), factor);
+      await pausa(win, 800);
+      // Con la escala de Windows al 125 %, 1366 px quedan en 1368 (píxeles físicos enteros): hasta 2 px de diferencia
+      if (Math.abs(await win.evaluate(() => innerWidth) - Math.floor(ancho / factor)) <= 2) return i;
+    }
+    const v = await app.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows(); return w.map((x) => ({ cont: x.getContentSize(), min: x.getMinimumSize(), max: x.isMaximized(), full: x.isFullScreen(), zoom: x.webContents.getZoomFactor() })); });
+    console.log(`      ventana tras 4 intentos: ${JSON.stringify(v)}; innerWidth ${await win.evaluate(() => innerWidth)}`);
+    return 0;
+  };
+  const tieneAviso = await win.evaluate(() => !$('avisoRegistro').hidden);
+  for (const [ancho, alto, factor, tema] of [[1366, 768, 2, 'claro'], [1366, 768, 2, 'oscuro'], [1536, 864, 2, 'claro'], [1366, 768, 1, 'claro'], [1536, 864, 1, 'oscuro']]) {
+    await win.evaluate((t) => { if (t === 'oscuro') document.documentElement.setAttribute('data-theme', 'dark'); else document.documentElement.removeAttribute('data-theme'); }, tema);
+    const intentos = await conZoom(ancho, alto, factor);
+    revisar(intentos > 0, `F03 (r1 de EST-004): la ventana queda en ${ancho} × ${alto} con zoom ${factor * 100} % (${Math.floor(ancho / factor)} px de CSS; intentos: ${intentos || 'no se logró'})`);
+    await descargaLibre(`${ancho} × ${alto}, zoom ${factor * 100} %, ${tema}, con registro`, tieneAviso);
+  }
+  await win.evaluate(() => document.documentElement.removeAttribute('data-theme'));
+  await conZoom(1536, 864, 1);
+  // E6: una misión terminada antes de EST-004 (solo valores, sin horas ni «tras simular») también se descarga
+  await serEquipo(win, 'D2');
+  await win.evaluate(() => {
+    const g = (leerLocal(CLAVE_PREF) || {}).misiones || {};
+    const equipos = { ...(g.equipos || {}), 'e:D2': { actual: 'estudio_y1', misiones: { estudio_y1: { paso: 5, simulo: true,
+      respuestas: { primero: 11, duracion: 5, acierto: 'no', duracion_nueva: 6, porque: 'Se agregó el amarillo.', dificultad: 3 } } } } };
+    guardarPreferencias({ misiones: { ...g, equipos } });
+    misiones.aplicar('C0'); misiones.aplicar('B');
+  });
+  bajada = await descargarAhora();
+  archivo = bajada && leerArchivo(bajada);
+  const todasNull = archivo && archivo.abierta === null && archivo.terminada === null && Array.isArray(archivo.sesiones) && archivo.sesiones.length === 0
+    && archivo.pasos.every((q) => q.t === null && q.sesion === null && q.respuestas.every((x) => x.t === null && x.tras_simular === null && x.sesion === null));
+  const malViejo = archivo ? revisarRespuestas(archivo) : ['no hubo archivo'];
+  revisar(!!archivo && todasNull && !malViejo.length && archivo.pasos[4].respuestas.length === 3,
+    `E6 (EST-004): una misión guardada antes se descarga con horas, «tras simular» y sesiones en null, sin inventarlas, y cumple el esquema${malViejo.length ? ': ' + malViejo.slice(0, 2).join(' | ') : ''}`);
+  // Lo guardado por la entrega de EST-004 antes de la r1 (horas y «tras simular», sin sesión): las horas se conservan y
+  // la sesión va en null, porque no se sabe
+  await serEquipo(win, 'D3');
+  await win.evaluate(() => {
+    const g = (leerLocal(CLAVE_PREF) || {}).misiones || {}, t = 1764168250000;
+    const marcas = Object.fromEntries(['primero', 'duracion', 'acierto', 'duracion_nueva', 'porque', 'dificultad'].map((q) => [q, { t, tras: false }]));
+    const equipos = { ...(g.equipos || {}), 'e:D3': { actual: 'estudio_x1', misiones: { estudio_x1: { paso: 5, simulo: false, abierta: t - 1000, terminada: t, pasosT: [t, t, t, t, t], marcas,
+      respuestas: { primero: 11, duracion: 3, acierto: 'si', duracion_nueva: 4, porque: 'Uno más.', dificultad: 2 } } } } };
+    guardarPreferencias({ misiones: { ...g, equipos } });
+    misiones.aplicar('C0'); misiones.aplicar('B');
+  });
+  bajada = await descargarAhora();
+  archivo = bajada && leerArchivo(bajada);
+  const malSinSesion = archivo ? revisarRespuestas(archivo) : ['no hubo archivo'];
+  revisar(!!archivo && !malSinSesion.length && sesionesDe(archivo) === 0 && archivo.pasos.every((q) => q.t === 1764168250000 && q.sesion === null && q.respuestas.every((x) => x.t === 1764168250000 && x.sesion === null)),
+    `F01 (r1 de EST-004): lo guardado antes de la r1 conserva sus horas y sale con la sesión en null${malSinSesion.length ? ': ' + malSinSesion.slice(0, 2).join(' | ') : ''}`);
+
+  // ---- r1 de EST-004, F02 (COD-20261111-006): lo que pasa después de terminar no cambia la entrega
+  const SINSIM = { primero: '12', vuelta: '3', final: '4', porque: 'Terminada sin simular.' };
+  n = await nuevaX1('G1');
+  await terminarMision(SINSIM);
+  const g1 = await descargarAhora();
+  const g1doc = g1 && leerArchivo(g1);
+  // Simular de verdad con la misión terminada abierta
+  await simularBarra();
+  const arrancoG1 = await arranco();
+  await win.evaluate(() => detenerSimulacion());
+  const g1b = await descargarAhora();
+  revisar(!!g1doc && g1doc.simulo === false && arrancoG1 && !!g1b && g1b.contenido === g1.contenido,
+    `F02 (r1 de EST-004): terminada sin simular, una simulación después (arrancó: ${arrancoG1}) no la cambia: simulo sigue en ${g1b && leerArchivo(g1b) && leerArchivo(g1b).simulo} y el archivo es idéntico`);
+  // Reabrir la misión cerrada desde Ejemplos y simular otra vez; y un error de compilación con ella abierta
+  await abrirTarea(win, 'X1 · Luces en secuencia');
+  await simularBarra();
+  const arrancoG1c = await arranco();
+  await win.evaluate(() => detenerSimulacion());
+  await win.evaluate((c) => entrarModoTexto(c, ''), ERRONEO);
+  await simularBarra();
+  const falloG1 = await fallaCompilando();
+  await win.evaluate(() => salirModoTexto(true));
+  const g1c = await descargarAhora();
+  revisar(arrancoG1c && falloG1 && !!g1c && g1c.contenido === g1.contenido,
+    `F02 (r1 de EST-004): reabierta desde Ejemplos, otra simulación y un error de compilación tampoco la cambian (arrancó: ${arrancoG1c}, error: ${falloG1})`);
+  // Con otra misión abierta del mismo equipo, simular marca esa y no la terminada
+  await abrirTarea(win, 'Y1 · Semáforo');
+  await simularBarra();
+  const arrancoY1 = await arranco();
+  await win.evaluate(() => detenerSimulacion());
+  const marcadas = await win.evaluate(() => { const m = ((leerLocal(CLAVE_PREF) || {}).misiones.equipos['e:G1'] || {}).misiones || {}; return [m.estudio_y1 && m.estudio_y1.simulo, m.estudio_x1 && m.estudio_x1.simulo]; });
+  revisar(arrancoY1 && marcadas[0] === true && marcadas[1] === false, `F02 (r1 de EST-004): simular con Y1 abierta marca Y1 y deja X1 terminada como estaba (Y1, X1: ${JSON.stringify(marcadas)})`);
+  // Al alternar equipos y volver, sigue igual
+  await serEquipo(win, 'G2');
+  await simularBarra();
+  await arranco();
+  await win.evaluate(() => detenerSimulacion());
+  await serEquipo(win, 'G1');
+  await abrirTarea(win, 'X1 · Luces en secuencia');
+  const g1d = await descargarAhora();
+  revisar(!!g1d && g1d.contenido === g1.contenido, 'F02 (r1 de EST-004): otro equipo simula y, de vuelta G1, su X1 terminada sale idéntica');
+
+  // ---- r1 de EST-004, F01 (COD-20261111-006): cada paso y cada respuesta dicen la sesión del registro en que se
+  // respondieron; arriba, `sesiones` las lista en orden (la de abrir primero). Se compara cada una con su evento.
+  const delEquipo = (eq) => deMision().filter((l) => l.equipo === eq && l.datos && l.datos.id === 'estudio_x1').sort((a, b) => a.t - b.t);
+  function cuadra(doc, eq) {
+    if (!doc) return 'sin archivo';
+    const ev = delEquipo(eq), malos = [];
+    for (const q of doc.pasos) {
+      if (!ev.some((l) => l.tipo === 'mision_paso' && l.datos.paso === q.paso && l.sesion === q.sesion)) malos.push(`paso ${q.paso} en ${q.sesion}`);
+      for (const x of q.respuestas) {
+        if (x.sesion !== q.sesion) malos.push(`${x.pregunta} no va en la sesión de su paso`);
+        if (!ev.some((l) => l.tipo === 'mision_respuesta' && l.datos.pregunta === x.pregunta && l.sesion === x.sesion && l.datos.valor === x.valor && Math.abs(l.t - x.t) < 1000)) malos.push(`${x.pregunta} sin su evento en ${x.sesion}`);
+      }
+    }
+    const abierta = ev.find((l) => l.tipo === 'mision_abierta');
+    const esperadas = [...new Set([abierta && abierta.sesion, ...doc.pasos.map((q) => q.sesion)].filter(Boolean))];
+    if (JSON.stringify(doc.sesiones) !== JSON.stringify(esperadas)) malos.push(`sesiones ${JSON.stringify(doc.sesiones)} y no ${JSON.stringify(esperadas)}`);
+    const mal = revisarRespuestas(doc);
+    return malos.concat(mal).join(' | ');
+  }
+  const restoX1 = async () => {
+    await win.locator('#mision1q0o0').check(); await seguir(win);
+    await seguir(win); await seguir(win);
+    await win.fill('#mision4q0', '4'); await win.fill('#mision4q1', 'Retomada.'); await win.locator('#mision4q2o1').check();
+    await seguir(win);
+  };
+  const ponerDescargar = () => win.evaluate(() => { window.__descargas = []; descargar = (nombre, contenido, tipo) => { window.__descargas.push({ nombre, contenido, tipo }); }; });
+  async function reabrir(eq) {
+    await app.close();
+    await new Promise((r) => setTimeout(r, 500));
+    ({ app, win } = await abrir());
+    await esperar(win, () => !$('modal').hidden, 8000);
+    await serEquipo(win, eq);
+    await ponerDescargar();
+  }
+  // 1. Alternar equipos a mitad de la misión: el paso 1 queda en la primera sesión y el resto en la de la vuelta
+  await nuevaX1('H3');
+  await predecir();
+  const sH3a = await win.evaluate(() => registroEventos.sesion());
+  await serEquipo(win, 'H4');
+  await serEquipo(win, 'H3');
+  const sH3b = await win.evaluate(() => registroEventos.sesion());
+  await restoX1();
+  let h = await descargarAhora();
+  let hdoc = h && leerArchivo(h);
+  let malH = cuadra(hdoc, 'H3');
+  revisar(!malH && sH3a !== sH3b && JSON.stringify(hdoc.sesiones) === JSON.stringify([sH3a, sH3b]) && hdoc.pasos[0].sesion === sH3a && hdoc.pasos.slice(1).every((q) => q.sesion === sH3b),
+    `F01 (r1 de EST-004): con otro equipo en medio, el paso 1 dice la primera sesión y los demás la segunda, cada una como su evento (${malH || sesionesDe(hdoc) + ' sesiones'})`);
+  // Descargar dos veces da el mismo archivo
+  const h2 = await descargarAhora();
+  revisar(!!h && !!h2 && h.contenido === h2.contenido, 'F01 (r1 de EST-004): descargar otra vez da el mismo archivo');
+  // 2. Una misión entera en una sesión, descargada; cerrar la app, abrirla y descargar: el mismo archivo
+  await nuevaX1('H1');
+  await terminarMision();
+  const h1 = await descargarAhora();
+  const h1doc = h1 && leerArchivo(h1);
+  const malH1 = cuadra(h1doc, 'H1');
+  revisar(!malH1 && sesionesDe(h1doc) === 1, `F01 (r1 de EST-004): la misión de H1, en una sola sesión, cuadra con el registro (${malH1 || 'una sesión'})`);
+  // 3. H2 responde el paso 1, se cierra la app y termina en la siguiente
+  await nuevaX1('H2');
+  await predecir();
+  await reabrir('H1');
+  const sNueva = await win.evaluate(() => registroEventos.sesion());
+  const h1r = await descargarAhora();
+  revisar(!!h1r && !!h1 && h1r.contenido === h1.contenido && listaDe(leerArchivo(h1r)).length > 0 && !listaDe(leerArchivo(h1r)).includes(sNueva),
+    `F01 (r1 de EST-004): tras cerrar y abrir la app, la misión terminada de H1 sale idéntica, con su sesión y no la nueva (${h1r ? listaDe(leerArchivo(h1r)).join(', ') : 'sin archivo'})`);
+  await serEquipo(win, 'H2');
+  const pH2 = await panel(win);
+  await restoX1();
+  h = await descargarAhora();
+  hdoc = h && leerArchivo(h);
+  malH = cuadra(hdoc, 'H2');
+  revisar(pH2.avance === 'Paso 2 de 5' && !malH && sesionesDe(hdoc) === 2 && hdoc.pasos[0].sesion === listaDe(hdoc)[0] && hdoc.pasos.slice(1).every((q) => q.sesion === listaDe(hdoc)[1]),
+    `F01 (r1 de EST-004): retomada tras reabrir (${pH2.avance}), cada respuesta dice su sesión: dos en la primera y cinco en la segunda (${malH || sesionesDe(hdoc) + ' sesiones'})`);
+
   // ---- E2 y E11. En C0 no hay panel, ni en el DOM, y abrir X1 por código no abre ninguna misión
   const antesC0 = deMision().length;
   await win.evaluate(() => aplicarVariante('C0'));
@@ -453,6 +760,30 @@ function revisar(condicion, texto) {
   const c0 = await win.evaluate(() => ({ nodo: !!document.querySelector('.misiones, #misiones'), clase: document.body.className, columnas: getComputedStyle($('app')).gridTemplateColumns.split(' ').length }));
   revisar(!c0.nodo && !/con-misiones|mision-plegada/.test(c0.clase) && c0.columnas === 1, `E2/E11: en C0 no hay panel ni sus clases, y #app tiene una sola columna (${JSON.stringify(c0)})`);
   revisar(deMision().length === antesC0, 'E2: abrir X1 en C0 no registra ninguna misión');
+
+  // ---- EST-004, E7: con el registro apagado (sin código de equipo), el archivo sale con equipo y sesión en null
+  await win.evaluate(() => aplicarVariante('B'));
+  await pausa(win, 400);
+  await win.evaluate(async () => {
+    await enFilaDeEquipo(async () => {
+      await cerrarTrabajoDelEquipo(); registroEventos.terminar();
+      const r = await escritorio.registro.instructor({ accion: 'activar', pin: '2468', activo: false });
+      registroEncendido = !!r.activo;
+    });
+    pintarAvisoRegistro();
+  });
+  await abrirTarea(win, 'Y1 · Semáforo');
+  await terminarMision({ vuelta: '5', final: '6', porque: 'Se agregó el amarillo al final.' });
+  bajada = await descargarAhora();
+  archivo = bajada && leerArchivo(bajada);
+  const malSin = archivo ? revisarRespuestas(archivo) : ['no hubo archivo'];
+  revisar(!!archivo && archivo.equipo === null && Array.isArray(archivo.sesiones) && archivo.sesiones.length === 0 && todoEn(archivo, null) && !malSin.length && /^respuestas-sin-equipo-estudio_y1-\d{8}-\d{4}\.json$/.test(bajada.nombre),
+    `E7 (EST-004): sin registro, equipo en null, sin sesiones y cada sesión en null, cumple el esquema y el nombre dice «sin-equipo» (${bajada && bajada.nombre})${malSin.length ? ': ' + malSin.slice(0, 2).join(' | ') : ''}`);
+  // F03 sin registro: no hay aviso y el botón sigue libre a 1366 px con zoom al 200 %
+  const intentosSin = await conZoom(1366, 768, 2);
+  revisar(intentosSin > 0, `F03 (r1 de EST-004): sin registro, la ventana queda en 1366 × 768 con zoom 200 % (intentos: ${intentosSin || 'no se logró'}; ventanas minimizadas restauradas en F03: ${restauradas})`);
+  await descargaLibre('1366 × 768, zoom 200 %, claro, sin registro', false);
+  await conZoom(1536, 864, 1);
   await app.close();
 
   revisar(errores.length === 0, `sin errores en la página${errores.length ? ': ' + errores.slice(0, 3).join(' | ') : ''}`);
