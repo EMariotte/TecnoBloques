@@ -361,7 +361,8 @@ const PROGRAMA_X = 'void setup() { pinMode(2, INPUT_PULLUP); pinMode(13, OUTPUT)
       await win.locator('#intercambiar' + s).click({ timeout: 3000 }); await pausa(win, 300);
       pasos.push((await disp(win)).izq === d0.izq);
       await win.locator('#ampliar' + s).click({ timeout: 3000 }); await pausa(win, 300);
-      pasos.push(await win.evaluate((s) => $('ampliar' + s).textContent === 'Reducir' && $('lado' + s).getBoundingClientRect().width > innerWidth - 2, s));
+      // Ampliado ocupa el área de los espacios (#principal): toda la ventana, o la ventana menos el panel de misiones (EST-003)
+      pasos.push(await win.evaluate((s) => $('ampliar' + s).textContent === 'Reducir' && $('lado' + s).getBoundingClientRect().width > $('principal').getBoundingClientRect().width - 2, s));
       await win.locator('#ampliar' + s).click({ timeout: 3000 }); await pausa(win, 300);
       pasos.push(Math.abs(await win.evaluate((s) => $('lado' + s).getBoundingClientRect().width, s) - ancho0) <= 1);
     } catch (e) { pasos.push('clic: ' + e.message.split('\n')[0]); }

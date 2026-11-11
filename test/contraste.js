@@ -37,7 +37,7 @@ const PAREJAS = [
   ['accent-ink', 'accent', 4.5, 'botón principal (.btn.primario) y opción elegida (.segmentado)'],
   ['accent', 'accent-soft', 4.5, 'estado serial conectado (.estado-serial.on)'],
   ['accent', 'code-bg', 4.5, 'mensajes enviados del monitor y del simulador (.enviado)'],
-  ['accent', 'panel', 4.5, 'texto verde sobre el panel (firma de TecnoCircuito)'],
+  ['accent', 'panel', 4.5, 'texto verde sobre el panel (firma de TecnoCircuito y «Seguir» del panel de misiones, .mision-accion)'],
   ['accent', 'bg', 3, 'foco (:focus-visible) y bordes en hover sobre el fondo'],
   ['accent', 'panel', 3, 'foco, divisor y puntos sobre el panel'],
   ['accent', 'panel-2', 3, 'foco y bordes sobre el panel secundario']

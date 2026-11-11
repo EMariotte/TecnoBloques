@@ -1,0 +1,462 @@
+// Prueba de punta a punta del panel de misiones (EST-003; diseño y ejemplos E1–E11 en
+// TecnoSuite/EstrategíaTecno/DISENO-MISIONES.md). Con la variante A o B, la tarea del estudio abre su misión en una
+// columna a la derecha, la misma en las dos variantes; en C0 no hay panel. Comprueba los pasos, lo obligatorio, que las
+// predicciones quedan fijas, los eventos mision_* en el registro (contra contrato/evento.schema.json de TecnoCircuito),
+// volver donde iba al reabrir, la misión de cada equipo, el plegado, el teclado, el contraste, el zoom y «reducir movimiento».
+// La r1 (COD-20261111-001) suma F01 («tras simular» desde que la simulación arranca, no desde el clic), F02 (un número
+// que se vuelve Infinity no pasa) y F03 (el resumen muestra el texto tal cual).
+// Uso: npm run test:misiones   (arma con --simulador-local)
+'use strict';
+const { _electron: electron } = require('playwright-core');
+const path = require('path');
+const fs = require('fs');
+const os = require('os');
+
+const RAIZ = path.join(__dirname, '..');
+const SALIDA = path.join(__dirname, 'salida');
+const REVISOR = path.join(RAIZ, '..', 'TecnoCircuito', 'prototipo', 'pruebas', 'contrato_eventos.js');
+fs.mkdirSync(SALIDA, { recursive: true });
+let fallos = 0;
+function revisar(condicion, texto) {
+  console.log((condicion ? 'OK    ' : 'FALLA ') + texto);
+  if (!condicion) fallos++;
+}
+
+(async () => {
+  const env = { ...Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'ELECTRON_RUN_AS_NODE')), TB_HERRAMIENTAS: 'instructor' };
+  const datos = path.join(os.tmpdir(), 'tecnobloques-prueba-misiones-app');
+  if (path.dirname(path.resolve(datos)) !== path.resolve(os.tmpdir())) throw new Error('Ruta temporal inesperada');
+  fs.rmSync(datos, { recursive: true, force: true });
+  fs.mkdirSync(datos, { recursive: true });
+  fs.writeFileSync(path.join(datos, 'estudio-config.json'), JSON.stringify({ formato: 1, variante: 'B' }));
+  const registros = path.join(datos, 'registros');
+  const leerRegistro = () => (fs.existsSync(registros) ? fs.readdirSync(registros).filter((f) => f.endsWith('.jsonl')) : [])
+    .flatMap((f) => fs.readFileSync(path.join(registros, f), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)));
+  const deMision = () => leerRegistro().filter((l) => /^mision_/.test(l.tipo));
+  const errores = [];
+  const pausa = (win, ms) => win.waitForTimeout(ms);
+  const esperar = (win, condicion, ms = 40000) => win.waitForFunction(condicion, null, { timeout: ms, polling: 200 }).then(() => true, () => false);
+  async function tamano(app, win, ancho, alto) {
+    await app.evaluate(({ BrowserWindow }, [w, h]) => { const v = BrowserWindow.getAllWindows()[0]; v.unmaximize(); v.setContentSize(w, h); }, [ancho, alto]);
+    await pausa(win, 500);
+  }
+  async function abrir() {
+    const app = await electron.launch({ args: [RAIZ, `--user-data-dir=${datos}`, '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', '--disable-background-timer-throttling'], cwd: RAIZ, env });
+    const win = await app.firstWindow();
+    win.on('pageerror', (e) => errores.push(String(e)));
+    win.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) errores.push(m.text()); });
+    await win.waitForLoadState('load');
+    await tamano(app, win, 1536, 864);
+    await pausa(win, 1500);
+    return { app, win };
+  }
+  // El equipo confirma su código, como en el registro de siempre (cierra el pedido del código si estaba abierto)
+  const serEquipo = (win, codigo) => win.evaluate(async (c) => {
+    if (!$('modal').hidden) cerrarModal(false);
+    confirmarEquipo(c);
+    document.querySelector('#modalAcciones .primario').click();
+    await cambioDeEquipo;
+    await new Promise((r) => setTimeout(r, 300));
+  }, codigo);
+  async function abrirTarea(win, nombre) {
+    await win.locator('#btnEjemplos').click();
+    await pausa(win, 200);
+    await win.locator('#listaEjemplos button', { hasText: nombre }).click();
+    await pausa(win, 300);
+    await win.locator('#modalAcciones button', { hasText: 'Abrir ejemplo' }).click();
+    await pausa(win, 900);
+  }
+  const panel = (win) => win.evaluate(() => {
+    const a = $('misiones');
+    if (!a) return null;
+    const r = a.getBoundingClientRect(), t = $('misionTitulo'), av = $('misionAvance'), h3 = $('misionPasoTitulo');
+    return { caja: [r.x, r.y, r.width, r.height].map(Math.round), titulo: t ? t.textContent : null, avance: av ? av.textContent : null,
+      paso: h3 ? h3.textContent : null, hechos: $('misionCuerpo').querySelector('.mision-hechos') ? $('misionCuerpo').querySelector('.mision-hechos').textContent : '',
+      foco: document.activeElement ? document.activeElement.id : null, plegada: a.classList.contains('plegada') };
+  });
+  const seguir = (win) => win.locator('#misionSeguir').click().then(() => pausa(win, 250));
+
+  // ---- Preparación: el registro encendido (PIN del instructor) y el equipo A7
+  let { app, win } = await abrir();
+  await win.evaluate(async () => {
+    await escritorio.registro.instructor({ accion: 'crear-pin', pin: '2468' });
+    const r = await escritorio.registro.instructor({ accion: 'activar', pin: '2468', activo: true });
+    registroEncendido = !!r.activo;
+  });
+  await serEquipo(win, 'A7');
+  revisar(await win.evaluate(() => registroEventos.equipo()) === 'A7', 'preparación: el registro está encendido y trabaja el equipo A7');
+
+  // ---- Sin misión abierta: el panel conserva su marco y su título, con el siguiente paso (DISENO, estado vacío)
+  let p = await panel(win);
+  revisar(p && p.titulo === 'Ninguna misión abierta', `estado vacío: «${p && p.titulo}», con la frase para abrir la tarea`);
+
+  // ---- E1 (B). Abrir X1: su misión a la derecha, en el paso 1
+  await abrirTarea(win, 'X1 · Luces en secuencia');
+  p = await panel(win);
+  const cajaB = p.caja;
+  revisar(p.titulo === 'X1 · Luces en secuencia' && p.avance === 'Paso 1 de 5' && p.paso === 'Predecir', `E1: en B, la misión de X1 en el paso 1 (${p.avance}, «${p.paso}»)`);
+  const lugar = await win.evaluate(() => {
+    const a = $('misiones').getBoundingClientRect(), f = $('franjaActividad').getBoundingClientRect(), pr = $('principal').getBoundingClientRect(), b = document.querySelector('.barra').getBoundingClientRect();
+    return { aLaDerecha: Math.abs(a.right - innerWidth) < 1, bajoLaBarra: Math.abs(a.top - b.bottom) < 1, franjaAlLado: f.right <= a.left + 0.5, espaciosAlLado: pr.right <= a.left + 0.5, ancho: Math.round(a.width) };
+  });
+  revisar(Object.values(lugar).every((v) => v === true || v === 300), `E1: en B, una columna de 300 px a la derecha, bajo la barra; la franja y los espacios a su lado (${JSON.stringify(lugar)})`);
+  await win.screenshot({ path: path.join(SALIDA, 'misiones_1_paso1.png') });
+
+  // ---- E5. Lo obligatorio: sin responder no se sigue, y cada campo dice qué falta
+  await seguir(win);
+  let f = await win.evaluate(() => ['mision0q0', 'mision0q1'].map((id) => {
+    const c = $(id), notas = (c.getAttribute('aria-describedby') || '').split(' ').map((x) => $(x)).filter(Boolean);
+    return { invalido: c.getAttribute('aria-invalid') === 'true', nota: notas.map((n) => n.textContent).join(' ') };
+  }));
+  p = await panel(win);
+  revisar(p.avance === 'Paso 1 de 5' && f.every((x) => x.invalido && /Escribe un número/.test(x.nota)) && p.foco === 'mision0q0' && await win.evaluate(() => $('misionAviso').textContent === 'Faltan 2 respuestas.'),
+    `E5: sin respuestas sigue en el paso 1; los dos campos dicen qué falta por aria-describedby y el foco va al primero (${JSON.stringify(f)})`);
+  await win.fill('#mision0q0', 'once');
+  await win.fill('#mision0q1', '3');
+  await seguir(win);
+  f = await win.evaluate(() => $('mision0q0Error').textContent);
+  revisar((await panel(win)).avance === 'Paso 1 de 5' && /solo un número/.test(f), `E5: un número mal escrito no pasa («${f}»)`);
+
+  // ---- E3. Responder y seguir: lo predicho queda fijo y va al registro antes de simular
+  await win.fill('#mision0q0', '11');
+  await win.fill('#mision0q1', '3');
+  await seguir(win);
+  p = await panel(win);
+  revisar(p.avance === 'Paso 2 de 5' && p.paso === 'Simular' && /11/.test(p.hechos) && /3 s/.test(p.hechos) && p.foco === 'misionPasoTitulo',
+    `E3: pasa al paso 2; el paso 1 queda cerrado con lo predicho («${p.hechos.trim()}») y el foco va al título del paso`);
+  revisar(await win.evaluate(() => !$('mision0q0')), 'E3 (D4): lo predicho ya no se puede cambiar: el campo no existe');
+  let ev = deMision();
+  const resp = (pregunta) => ev.find((l) => l.tipo === 'mision_respuesta' && l.datos.pregunta === pregunta);
+  revisar(ev.some((l) => l.tipo === 'mision_abierta' && l.datos.id === 'estudio_x1') && resp('primero') && resp('primero').datos.valor === 11
+    && resp('primero').datos.tras_simular === false && resp('duracion').datos.valor === 3 && ev.some((l) => l.tipo === 'mision_paso' && l.datos.paso === 1),
+    `E3: el registro tiene mision_abierta, las dos respuestas (11 y 3, tras_simular: false) y mision_paso 1 (${ev.map((l) => l.tipo).join(', ')})`);
+
+  // ---- E4. Simular (no se bloquea, D3) y responder: la respuesta llega «tras simular»
+  await win.locator('#btnSimularBarra').click();
+  await esperar(win, () => simulador.sim && simulador.sim.medidas().msSimulados > 300);
+  await win.locator('#mision1q0o0').check();
+  await seguir(win);
+  ev = deMision();
+  revisar(resp('acierto') && resp('acierto').datos.valor === 'si' && resp('acierto').datos.tras_simular === true, 'E4: después de simular, «¿Acertaste?» va al registro con tras_simular: true');
+  await win.evaluate(() => detenerSimulacion());
+  // Los pasos sin pregunta se cierran con «Listo»
+  revisar(await win.evaluate(() => $('misionSeguir').textContent) === 'Listo', 'organizar la pantalla: un paso sin preguntas se cierra con «Listo»');
+  await seguir(win);
+  await seguir(win);
+  p = await panel(win);
+  revisar(p.avance === 'Paso 5 de 5' && await win.evaluate(() => $('misionSeguir').textContent) === 'Terminar misión', `el último paso se cierra con «Terminar misión» (${p.avance})`);
+  // El texto: hasta 200 caracteres (el campo no deja escribir más) y el aviso de no escribir nombres
+  await win.fill('#mision4q0', '4');
+  await win.fill('#mision4q1', 'Porque ahora son cuatro pasos de un segundo: añadí el del pin 12 al final. ' + 'ñ'.repeat(200));
+  const texto = await win.evaluate(() => ({ largo: $('mision4q1').value.length, ayuda: $('mision4q1Ayuda').textContent }));
+  revisar(texto.largo === 200 && /No escribas nombres/.test(texto.ayuda), `el texto se corta en 200 caracteres y el campo avisa «${texto.ayuda}»`);
+  await win.locator('#mision4q2o1').check();
+  await seguir(win);
+  p = await panel(win);
+  ev = deMision();
+  const lineas = leerRegistro();
+  const { revisarEvento } = require(REVISOR);
+  const problemas = lineas.filter((l) => /^mision_/.test(l.tipo)).flatMap((l) => revisarEvento(l).map((x) => `${l.tipo}: ${x}`));
+  revisar(p.avance === 'Misión terminada' && ev.some((l) => l.tipo === 'mision_terminada' && l.datos.id === 'estudio_x1') && resp('porque').datos.valor.length === 200
+    && resp('dificultad').datos.valor === 2 && !resp('comentario'),
+    `terminar: «${p.avance}»; mision_terminada, el texto de 200 caracteres, la dificultad 2 y sin comentario (era opcional)`);
+  revisar(!problemas.length, `las ${ev.length} líneas mision_* cumplen contrato/evento.schema.json${problemas.length ? ': ' + problemas.slice(0, 3).join(' | ') : ''}`);
+
+  // ---- E1 (A). La misma columna, del mismo tamaño, en A
+  await win.evaluate(() => aplicarVariante('A'));
+  await pausa(win, 500);
+  await abrirTarea(win, 'X1 · Luces en secuencia');
+  p = await panel(win);
+  revisar(JSON.stringify(p.caja) === JSON.stringify(cajaB) && p.titulo === 'X1 · Luces en secuencia' && p.avance === 'Misión terminada',
+    `E1: en A, el mismo panel en el mismo lugar (${p.caja} = ${cajaB}); X1 sigue terminada`);
+  await win.evaluate(() => aplicarVariante('B'));
+  await pausa(win, 500);
+
+  // ---- E6. A mitad de Y1, cerrar la app y abrirla: vuelve en el mismo paso
+  await abrirTarea(win, 'Y1 · Semáforo');
+  await win.fill('#mision0q0', '11');
+  await win.fill('#mision0q1', '5');
+  await seguir(win);
+  await app.close();
+  await new Promise((r) => setTimeout(r, 500));
+  ({ app, win } = await abrir());
+  await esperar(win, () => !$('modal').hidden, 8000); // al abrir, la app pide el código del equipo
+  await serEquipo(win, 'A7');
+  p = await panel(win);
+  revisar(p.titulo === 'Y1 · Semáforo' && p.avance === 'Paso 2 de 5' && /5 s/.test(p.hechos), `E6: al abrir otra vez, Y1 vuelve en el paso 2 con lo respondido («${p.hechos.trim()}»)`);
+
+  // ---- E7. Otro equipo ve su misión, no la de A7; al volver A7, la suya
+  await serEquipo(win, 'B9');
+  p = await panel(win);
+  revisar(p.titulo === 'Ninguna misión abierta', `E7: el equipo B9 no ve la misión de A7 («${p.titulo}»)`);
+  await serEquipo(win, 'A7');
+  p = await panel(win);
+  revisar(p.titulo === 'Y1 · Semáforo' && p.avance === 'Paso 2 de 5', 'E7: de vuelta A7, su Y1 en el paso 2');
+
+  // ---- Lo guardado no se cree: basura en las preferencias no rompe el panel ni inventa misiones
+  for (const basura of [null, 'x', [], { equipos: { 'e:A7': { actual: 'constructor', misiones: { constructor: { paso: 1 }, estudio_x1: { paso: 99, respuestas: { primero: 'once', duracion: [3] } } } } } }]) {
+    await win.evaluate((b) => { guardarPreferencias({ misiones: b }); misiones.aplicar('C0'); misiones.aplicar('B'); }, basura);
+    p = await panel(win);
+    revisar(p && p.titulo === 'Ninguna misión abierta', `lo guardado roto (${JSON.stringify(basura).slice(0, 60)}) deja el panel vacío, sin error`);
+  }
+  await win.evaluate(() => cargarEjemplo(EJEMPLOS.find((e) => e.id === 'estudio_x1')));
+  await pausa(win, 600);
+  p = await panel(win);
+  revisar(p.avance === 'Paso 1 de 5' && !p.hechos, `con lo guardado roto, X1 empieza de nuevo en el paso 1, sin respuestas inventadas (${p.avance})`);
+
+  // ---- E8. Plegar: una pestaña de 44 px; los espacios ganan el ancho; sigue plegada al pasar a A
+  const anchoAntes = await win.evaluate(() => Math.round($('principal').getBoundingClientRect().width));
+  await win.locator('#plegarMision').click();
+  await pausa(win, 500);
+  let pl = await win.evaluate(() => ({ ancho: Math.round($('misiones').getBoundingClientRect().width), principal: Math.round($('principal').getBoundingClientRect().width),
+    oculto: $('misionCuerpo').hidden, expandido: $('plegarMision').getAttribute('aria-expanded'), texto: $('plegarMision').textContent }));
+  revisar(pl.ancho === 44 && pl.principal > anchoAntes + 200 && pl.oculto && pl.expandido === 'false' && pl.texto === 'Misión', `E8: plegada mide 44 px y los espacios crecen de ${anchoAntes} a ${pl.principal} px (${JSON.stringify(pl)})`);
+  await win.evaluate(() => aplicarVariante('A'));
+  await pausa(win, 500);
+  pl = await win.evaluate(() => ({ ancho: Math.round($('misiones').getBoundingClientRect().width), plegada: $('misiones').classList.contains('plegada') }));
+  revisar(pl.ancho === 44 && pl.plegada, 'E8: al pasar a A sigue plegada');
+  await win.locator('#plegarMision').click();
+  await pausa(win, 400);
+  revisar(await win.evaluate(() => Math.round($('misiones').getBoundingClientRect().width)) === 300 && await win.evaluate(() => document.activeElement.id) === 'plegarMision',
+    'E8: desplegar vuelve a 300 px y el foco sigue en el botón');
+  await win.evaluate(() => aplicarVariante('B'));
+  await pausa(win, 400);
+
+  // ---- E9. 1366 × 768: teclado, foco visible, contraste y nada fuera de la ventana; zoom al 200 %
+  async function revisarPanel(etiqueta) {
+    // Con Tab desde el último control de los espacios se llega a los del panel, en orden y con el foco visible
+    const ids = await win.evaluate(() => [...$('misiones').querySelectorAll('button, input, textarea')].filter((n) => n.offsetParent !== null).map((n) => n.id));
+    await win.evaluate(() => $('btnAcerca').focus());
+    const vistos = [];
+    for (let i = 0; i < 70 && vistos.filter((v) => ids.includes(v.id)).length < ids.length; i++) {
+      await win.keyboard.press('Tab');
+      vistos.push(await win.evaluate(() => {
+        const a = document.activeElement, cs = getComputedStyle(a), r = a.getBoundingClientRect();
+        return { id: a.id, foco: cs.outlineStyle !== 'none' && parseFloat(cs.outlineWidth) * devicePixelRatio >= 2, dentro: r.left >= 0 && r.right <= innerWidth + 0.5 };
+      }));
+    }
+    const delPanel = vistos.filter((v) => ids.includes(v.id));
+    revisar(ids.every((id) => delPanel.some((v) => v.id === id)) && delPanel.every((v) => v.foco && v.dentro),
+      `E9 ${etiqueta}: con Tab se llega a los ${ids.length} controles del panel, con el foco visible y dentro de la ventana`);
+    const c = await win.evaluate(() => {
+      const rgb = (x) => (x.match(/[\d.]+/g) || []).slice(0, 3).map(Number);
+      const lum = (x) => { const [r, g, b] = rgb(x).map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+      const fondo = (n) => { for (let x = n; x; x = x.parentElement) { const k = getComputedStyle(x).backgroundColor; if (!/rgba\(0, 0, 0, 0\)|transparent/.test(k)) return k; } return 'rgb(255,255,255)'; };
+      const razon = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+      const textos = [...$('misiones').querySelectorAll('h2, h3, p, label, legend, span, strong, b, button')].filter((n) => n.offsetParent !== null && n.textContent.trim() && [...n.childNodes].some((k) => k.nodeType === 3 && k.textContent.trim()));
+      const bordes = [...$('misiones').querySelectorAll('input[type="text"], textarea, .mision-accion')].filter((n) => n.offsetParent !== null).map((n) => razon(getComputedStyle(n).borderTopColor, fondo(n.parentElement)));
+      return { texto: Math.min(...textos.map((n) => razon(getComputedStyle(n).color, fondo(n)))), n: textos.length, borde: bordes.length ? Math.min(...bordes) : 99, nb: bordes.length };
+    });
+    revisar(c.n >= 4 && c.texto >= 4.5 && c.borde >= 3, `E9 ${etiqueta}: contraste de ${c.n} textos ≥ 4,5:1 (mínimo ${c.texto.toFixed(2)}) y de ${c.nb} bordes de controles ≥ 3:1 (mínimo ${c.borde.toFixed(2)})`);
+  }
+  await revisarPanel('1536 × 864, claro');
+  await win.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
+  await pausa(win, 200);
+  await revisarPanel('1536 × 864, oscuro');
+  await win.evaluate(() => document.documentElement.removeAttribute('data-theme'));
+  await tamano(app, win, 1366, 768);
+  await revisarPanel('1366 × 768');
+  const espacios = await win.evaluate(() => ['ladoIzq', 'ladoDer'].map((id) => Math.round($(id).getBoundingClientRect().width)));
+  revisar(espacios.every((w) => w >= 320), `E9 1366 × 768: con el panel, los dos espacios siguen con 320 px o más (${espacios.join(' y ')} px)`);
+  await win.screenshot({ path: path.join(SALIDA, 'misiones_2_1366.png') });
+  await tamano(app, win, 1536, 864);
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].webContents.setZoomFactor(2));
+  await pausa(win, 800);
+  // Con zoom al 200 % la ventana mide 768 px: el panel se pliega y los espacios conservan sus 320 px o más
+  const zoom = () => win.evaluate(() => {
+    const a = $('misiones'), r = a.getBoundingClientRect();
+    return { ancho: Math.round(r.width), plegada: a.classList.contains('plegada'), flotante: a.classList.contains('flotante'), ventana: innerWidth,
+      espacios: ['ladoIzq', 'ladoDer'].map((id) => Math.round($(id).getBoundingClientRect().width)), pref: (leerLocal(CLAVE_PREF) || {}).misiones.plegada,
+      fuera: [...a.querySelectorAll('button, input, textarea')].filter((n) => n.offsetParent !== null).filter((n) => { const q = n.getBoundingClientRect(); return q.right > innerWidth + 0.5 || q.left < r.left - 0.5; }).map((n) => n.id),
+      encima: (() => { const b = $('misionSeguir'); if (!b) return null; b.scrollIntoView({ block: 'nearest' }); const q = b.getBoundingClientRect(); const e = document.elementFromPoint(q.left + q.width / 2, q.top + q.height / 2); return e === b || b.contains(e); })() };
+  });
+  let z = await zoom();
+  revisar(z.ventana <= 960 && z.plegada && z.ancho === 44 && z.espacios.every((w) => w >= 320), `E9 zoom 200 % (${z.ventana} px): el panel se pliega y los espacios conservan su ancho (${z.espacios.join(' y ')} px)`);
+  const espaciosPlegado = z.espacios;
+  await win.locator('#plegarMision').click();
+  await pausa(win, 500);
+  z = await zoom();
+  revisar(!z.plegada && z.flotante && z.ancho === 300 && JSON.stringify(z.espacios) === JSON.stringify(espaciosPlegado) && z.fuera.length === 0 && z.encima === true && z.pref === false,
+    `E9 zoom 200 %: desplegado, el panel flota encima (300 px), los espacios no cambian, sus controles se ven y responden, y la preferencia no cambia (${JSON.stringify(z)})`);
+  await win.locator('#mision0q0').focus();
+  await win.keyboard.press('Escape');
+  await pausa(win, 300);
+  z = await zoom();
+  revisar(z.plegada && await win.evaluate(() => document.activeElement.id) === 'plegarMision', 'E9 zoom 200 %: Escape lo pliega y el foco vuelve al botón');
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].webContents.setZoomFactor(1));
+  await pausa(win, 400);
+
+  // ---- E10. «Reducir movimiento»: presionar un botón del panel no lo escala (sin la reducción, sí)
+  for (const [modo, espera] of [['no-preference', 'matrix(0.97, 0, 0, 0.97, 0, 0)'], ['reduce', 'none']]) {
+    await win.emulateMedia({ reducedMotion: modo });
+    await pausa(win, 300);
+    const b = await win.locator('#plegarMision').boundingBox();
+    let t = null, intentos = 0;
+    while (intentos < (modo === 'reduce' ? 1 : 3) && t !== espera) {
+      intentos++;
+      await win.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+      await win.mouse.down();
+      if (modo === 'reduce') await pausa(win, 400);
+      else await win.waitForFunction((e) => getComputedStyle($('plegarMision')).transform === e, espera, { timeout: 600, polling: 50 }).catch(() => {});
+      t = await win.evaluate(() => getComputedStyle($('plegarMision')).transform);
+      await win.mouse.move(2, 2);
+      await win.mouse.up();
+    }
+    revisar(t === espera, `E10: presionar «Plegar» con «reducir movimiento» ${modo === 'reduce' ? 'activo' : 'apagado'} da ${t} (intentos: ${intentos})`);
+  }
+  await win.emulateMedia({ reducedMotion: null });
+
+  // ---- r1, F01 (COD-20261111-001): «tras simular» cuenta desde que la simulación arranca de verdad, no desde el clic.
+  // Cada caso, con un equipo nuevo, así su X1 empieza sin haber simulado.
+  const ERRONEO = 'void setup() { ERROR_SINTETICO; }\nvoid loop() {}';
+  const respuestasDesde = (n) => deMision().slice(n).filter((l) => l.tipo === 'mision_respuesta');
+  const predecir = async () => { await win.fill('#mision0q0', '11'); await win.fill('#mision0q1', '3'); await seguir(win); };
+  const simularBarra = () => win.locator('#btnSimularBarra').click();
+  const arranco = () => esperar(win, () => !!simulador.sim && simulador.sim.medidas().msSimulados > 300);
+  const preparado = () => esperar(win, () => !simulador.compilando, 60000);
+  const fallaCompilando = async () => {
+    const ok = await esperar(win, () => !simulador.compilando && !$('modal').hidden, 60000);
+    const sin = await win.evaluate(() => !simulador.sim);
+    await win.evaluate(() => cerrarModal(false));
+    await pausa(win, 200);
+    return ok && sin;
+  };
+  async function nuevaX1(equipo) {
+    await serEquipo(win, equipo);
+    await abrirTarea(win, 'X1 · Luces en secuencia');
+    return deMision().length;
+  }
+  const todasFalsas = (r) => r.length === 2 && r.every((l) => l.datos.tras_simular === false);
+  const todasCiertas = (r) => r.length === 2 && r.every((l) => l.datos.tras_simular === true);
+  const vistas = (r) => JSON.stringify(r.map((l) => [l.datos.pregunta, l.datos.tras_simular]));
+
+  // 1. Simular con un error del compilador real: no hubo simulación, la predicción no es «tras simular»
+  let n = await nuevaX1('F1');
+  await win.evaluate((c) => entrarModoTexto(c, ''), ERRONEO);
+  await simularBarra();
+  const fallo1 = await fallaCompilando();
+  await predecir();
+  let r = respuestasDesde(n);
+  revisar(fallo1 && todasFalsas(r), `F01: tras un error de compilación, sin simulación, la predicción va con tras_simular: false (${vistas(r)})`);
+  await win.evaluate(() => salirModoTexto(true));
+
+  // 2. Responder mientras se prepara: la simulación todavía no arrancó
+  n = await nuevaX1('F2');
+  await simularBarra();
+  const preparando = await win.evaluate(() => {
+    const c = simulador.compilando && !simulador.sim;
+    $('mision0q0').value = '11'; $('mision0q1').value = '3';
+    $('misionForm').requestSubmit();
+    return c;
+  });
+  const arranco2 = await arranco();
+  r = respuestasDesde(n);
+  await win.locator('#mision1q0o0').check();
+  await seguir(win);
+  const despues2 = respuestasDesde(n).filter((l) => l.datos.pregunta === 'acierto');
+  revisar(preparando && todasFalsas(r) && arranco2 && despues2.length === 1 && despues2[0].datos.tras_simular === true,
+    `F01: respondida mientras se preparaba, la predicción va con false; la del paso 2, ya simulando, con true (preparando: ${preparando}, ${vistas(r)}, ${vistas(despues2)})`);
+  await win.evaluate(() => detenerSimulacion());
+
+  // 3. Detener mientras se prepara: no hubo simulación
+  n = await nuevaX1('F3');
+  await simularBarra();
+  const detenida = await win.evaluate(() => { const c = simulador.compilando; detenerSimulacion(); return c; });
+  await preparado();
+  await pausa(win, 300);
+  const sin3 = await win.evaluate(() => !simulador.sim);
+  await predecir();
+  r = respuestasDesde(n);
+  revisar(detenida && sin3 && todasFalsas(r), `F01: detenida mientras se preparaba, la predicción va con false (${vistas(r)})`);
+
+  // 4. Abrir otro proyecto (la misma tarea otra vez) mientras se prepara: esa simulación ya no vale
+  n = await nuevaX1('F4');
+  await simularBarra();
+  const cambiada = await win.evaluate(() => { const c = simulador.compilando; cargarEjemplo(EJEMPLOS.find((e) => e.id === 'estudio_x1')); return c; });
+  await preparado();
+  await pausa(win, 600);
+  const sin4 = await win.evaluate(() => !simulador.sim);
+  await predecir();
+  r = respuestasDesde(n);
+  revisar(cambiada && sin4 && todasFalsas(r), `F01: con otro proyecto abierto mientras se preparaba, la predicción va con false (${vistas(r)})`);
+
+  // 5. Simular bien antes de responder: la predicción sí es «tras simular»
+  n = await nuevaX1('F5');
+  await simularBarra();
+  const arranco5 = await arranco();
+  await win.evaluate(() => detenerSimulacion());
+  await predecir();
+  r = respuestasDesde(n);
+  revisar(arranco5 && todasCiertas(r), `F01 (control): con una simulación que arrancó antes, la predicción va con true (${vistas(r)})`);
+
+  // 6. Una simulación que arrancó y después un intento fallido: sigue siendo «tras simular»
+  n = await nuevaX1('F6');
+  await simularBarra();
+  const arranco6 = await arranco();
+  await win.evaluate(() => detenerSimulacion());
+  await win.evaluate((c) => entrarModoTexto(c, ''), ERRONEO);
+  await simularBarra();
+  const fallo6 = await fallaCompilando();
+  await predecir();
+  r = respuestasDesde(n);
+  revisar(arranco6 && fallo6 && todasCiertas(r), `F01: una simulación que arrancó y después un error de compilación: la predicción sigue con true (${vistas(r)})`);
+  await win.evaluate(() => salirModoTexto(true));
+
+  // ---- r1, F02: un número que no cabe (Infinity) no pasa, no se registra y el paso no avanza
+  n = await nuevaX1('F7');
+  await win.fill('#mision0q0', '9'.repeat(309));
+  await win.fill('#mision0q1', '3');
+  await seguir(win);
+  const grande = await win.evaluate(() => {
+    const c = $('mision0q0');
+    return c ? { invalido: c.getAttribute('aria-invalid') === 'true', nota: $('mision0q0Error').textContent, foco: document.activeElement.id } : { avanzo: true };
+  });
+  p = await panel(win);
+  const deMas = respuestasDesde(n);
+  revisar(p.avance === 'Paso 1 de 5' && grande.invalido && grande.nota && grande.foco === 'mision0q0' && deMas.length === 0 && !deMision().slice(n).some((l) => l.tipo === 'mision_paso'),
+    `F02: 309 nueves no pasan: sigue en el paso 1, el campo lo dice («${grande.nota || ''}») y no se registra nada (${p.avance}; ${JSON.stringify(deMas.map((l) => l.datos.valor))})`);
+  // Los números que caben siguen pasando: negativos y con coma decimal, sin corregir la predicción
+  const n2 = deMision().length;
+  if (!grande.avanzo) {
+    await win.fill('#mision0q0', '-2,5');
+    await win.fill('#mision0q1', '1000000');
+    await seguir(win);
+  }
+  r = respuestasDesde(n2);
+  p = await panel(win);
+  revisar(p.avance === 'Paso 2 de 5' && r.length === 2 && r[0].datos.valor === -2.5 && r[1].datos.valor === 1000000 && /-2,5/.test(p.hechos),
+    `F02: -2,5 y 1000000 pasan tal cual (${JSON.stringify(r.map((l) => l.datos.valor))}; «${p.hechos.trim()}»)`);
+
+  // ---- r1, F03: el resumen muestra el texto confirmado tal cual; la coma decimal es solo de los números
+  await win.locator('#mision1q0o0').check();
+  await seguir(win);
+  await seguir(win); // organizar: «Listo»
+  await seguir(win); // cambiar: «Listo»
+  const EXPLICACION = 'Primera frase. Segunda frase. Son 4.5 s; ñandú «x» & <b>3.0</b>.';
+  await win.fill('#mision4q0', '4,5');
+  await win.fill('#mision4q1', EXPLICACION);
+  await win.locator('#mision4q2o1').check();
+  await seguir(win);
+  const resumen = await win.evaluate(() => [...document.querySelectorAll('.mision-hechos .mision-dicho strong')].map((s) => s.textContent));
+  r = respuestasDesde(n).filter((l) => l.datos.pregunta === 'porque');
+  revisar(resumen.includes(EXPLICACION) && resumen.includes('4,5 s') && r.length === 1 && r[0].datos.valor === EXPLICACION && await win.evaluate(() => !document.querySelector('.mision-hechos b b, .mision-dicho strong b')),
+    `F03: el resumen muestra la explicación tal cual y el número con coma (${JSON.stringify(resumen.slice(-3))})`);
+  const problemasR1 = deMision().flatMap((l) => revisarEvento(l).map((x) => `${l.tipo}: ${x}`));
+  revisar(!problemasR1.length, `r1: todas las líneas mision_* siguen cumpliendo el esquema${problemasR1.length ? ': ' + problemasR1.slice(0, 3).join(' | ') : ''}`);
+
+  // ---- E2 y E11. En C0 no hay panel, ni en el DOM, y abrir X1 por código no abre ninguna misión
+  const antesC0 = deMision().length;
+  await win.evaluate(() => aplicarVariante('C0'));
+  await pausa(win, 400);
+  await win.evaluate(() => cargarEjemplo(EJEMPLOS.find((e) => e.id === 'estudio_x1')));
+  await pausa(win, 600);
+  const c0 = await win.evaluate(() => ({ nodo: !!document.querySelector('.misiones, #misiones'), clase: document.body.className, columnas: getComputedStyle($('app')).gridTemplateColumns.split(' ').length }));
+  revisar(!c0.nodo && !/con-misiones|mision-plegada/.test(c0.clase) && c0.columnas === 1, `E2/E11: en C0 no hay panel ni sus clases, y #app tiene una sola columna (${JSON.stringify(c0)})`);
+  revisar(deMision().length === antesC0, 'E2: abrir X1 en C0 no registra ninguna misión');
+  await app.close();
+
+  revisar(errores.length === 0, `sin errores en la página${errores.length ? ': ' + errores.slice(0, 3).join(' | ') : ''}`);
+  fs.rmSync(datos, { recursive: true, force: true });
+  console.log(`\n${fallos ? fallos + ' FALLAS' : 'Todo bien'} · capturas en test/salida/misiones_*.png`);
+  process.exit(fallos ? 1 : 0);
+})().catch((e) => { console.error(e); process.exit(1); });

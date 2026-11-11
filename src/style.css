@@ -421,6 +421,61 @@ body.modo-b #app { grid-template-rows: auto auto 1fr; }
 .franja-actividad b { color: var(--ink); font-size: 14px; }
 #volverActividad { margin-left: auto; }
 #volverActividad[hidden] { display: none; }
+/* Misiones (EST-003): una columna a la derecha, la misma en A y en B. La barra la cruza entera; la franja de B y los
+   espacios quedan a su lado, así el panel ocupa el mismo rectángulo en las dos variantes. Plegada, una pestaña de 44 px. */
+body.con-misiones #app { grid-template-columns: minmax(0, 1fr) 300px; }
+body.con-misiones.mision-plegada #app { grid-template-columns: minmax(0, 1fr) 44px; }
+body.con-misiones #app > .barra { grid-column: 1 / -1; }
+body.con-misiones #app > #franjaActividad, body.con-misiones #app > #principal { grid-column: 1; }
+.misiones { box-sizing: border-box; grid-column: 2; grid-row: 2 / -1; min-height: 0; overflow-y: auto; background: var(--panel); border-left: 1px solid var(--line); }
+.mision-cabeza { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 12px; min-height: 36px; border-bottom: 1px solid var(--line); }
+.rotulo-mision { color: var(--muted); font-size: 13px; }
+.misiones.plegada .mision-cabeza { padding: 6px 4px; border-bottom: 0; justify-content: center; }
+.misiones.plegada .rotulo-mision { display: none; }
+.misiones.plegada #plegarMision { writing-mode: vertical-rl; padding: 11px 5px; }
+.mision-cuerpo { display: flex; flex-direction: column; gap: 12px; padding: 12px; font-size: 15px; line-height: 1.5; }
+.mision-cuerpo[hidden] { display: none; }
+.mision-cuerpo h2 { margin: 0; font-size: 18px; line-height: 1.3; text-wrap: balance; }
+.mision-cuerpo h3 { margin: 0; font-size: 16px; }
+.mision-cuerpo h3:focus { outline: none; }
+.mision-cuerpo h3:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.mision-texto { margin: 0; text-wrap: pretty; }
+.mision-avance { margin: -8px 0 0; color: var(--muted); font-size: 13px; }
+.mision-hechos { margin: 0; padding-left: 20px; display: grid; gap: 8px; font-size: 14px; color: var(--muted); }
+.mision-hechos b { display: block; color: var(--ink); }
+.mision-dicho { display: block; }
+.mision-dicho strong { color: var(--ink); }
+.mision-paso { display: flex; flex-direction: column; gap: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.mision-campo { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0; border: 0; min-width: 0; }
+.mision-campo > label, .mision-campo legend { padding: 0; font-weight: 700; }
+/* El borde de los campos con var(--muted): 3:1 o más sobre el panel, en los dos temas (DISENO, contraste de controles) */
+.mision-entrada { font-size: 16px; padding: 6px 8px; border: 1px solid var(--muted); border-radius: 6px; background: var(--panel); color: var(--ink); box-sizing: border-box; width: 100%; }
+textarea.mision-entrada { resize: vertical; }
+.mision-con-unidad { display: flex; align-items: center; gap: 6px; }
+.mision-numero { width: 7em; }
+.mision-opciones { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.mision-opcion { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; cursor: pointer; }
+.mision-opcion input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
+.mision-ayuda { margin: 0; color: var(--muted); font-size: 13px; }
+.mision-error { margin: 0; color: var(--danger); font-size: 14px; }
+.mision-error:empty { display: none; }
+/* «Seguir» no es botón principal: el de la barra («Subir a la placa») ya lo es, y DISENO pide uno solo a la vista. Va
+   con borde y texto del acento (5,3:1 sobre el panel claro). */
+.mision-accion { align-self: flex-start; padding: 8px 16px; border-color: var(--accent); background: var(--panel); color: var(--accent); font-weight: 700; }
+.mision-entrada[aria-invalid="true"] { border-color: var(--danger); }
+/* Ventana angosta (con zoom al 200 %, por ejemplo): el panel es una pestaña y, desplegado, se abre encima del espacio
+   derecho, con sombra porque flota, sin quitarles ancho a los espacios */
+@media (min-width: 761px) and (max-width: 960px) {
+  body.con-misiones #app, body.con-misiones.mision-plegada #app { grid-template-columns: minmax(0, 1fr) 44px; }
+  .misiones.flotante { width: 300px; justify-self: end; position: relative; z-index: 40; box-shadow: var(--shadow); }
+}
+.misiones .btn { transition: transform 120ms cubic-bezier(0.23, 1, 0.32, 1); }
+@media (prefers-reduced-motion: no-preference) {
+  .misiones .btn:not([disabled]):active { transform: scale(.97); }
+}
+@media not ((hover: hover) and (pointer: fine)) {
+  .misiones .btn:hover { border-color: var(--line); }
+}
 /* El estado de la simulación en la barra, cuando el circuito no se ve (r1, F02). Un programa anterior se dice con
    palabras y, además, con el color de aviso. */
 .estado-sim-barra { font-size: 13px; padding: 3px 10px; border-radius: 99px; border: 1px solid var(--line); background: var(--panel-2); color: var(--muted); white-space: nowrap; }
@@ -449,6 +504,8 @@ body.modo-b #app { grid-template-rows: auto auto 1fr; }
   #principal.modo-a { grid-template-columns: minmax(0, 1fr); grid-template-rows: 62vh 62vh; }
   #principal.modo-a.con-ampliado { grid-template-rows: 62vh; }
   #principal.modo-a #divisor { display: none; }
+  body.con-misiones #app, body.con-misiones.mision-plegada #app { grid-template-columns: minmax(0, 1fr); }
+  .misiones { grid-column: 1; grid-row: auto; border-left: 0; border-top: 1px solid var(--line); }
   .acciones { margin-left: 0; }
   #nombreProyecto { width: 9em; }
 }

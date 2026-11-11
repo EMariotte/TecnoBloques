@@ -1382,7 +1382,49 @@ const TAREAS_ESTUDIO = (() => {
   // sube más alto y llega al LED de más a la derecha)
   const tresLeds = (colores) => montaje(led(1, 3, 'D11', colores[0], -8), led(2, 10, 'D12', colores[1], -16), led(3, 17, 'D13', colores[2], -24),
     { cables: [tierra(2)] });
-  return [
+
+  /* Las misiones (EST-003, DISENO-MISIONES.md): los pasos de la hoja del aprendiz, uno a la vez, con sus preguntas. Tipos:
+   * número (con su unidad), opción y texto corto (hasta 200 caracteres). Un paso sin preguntas se cierra con «Listo». En
+   * cada par, las preguntas tienen el mismo nombre (`id`), así se comparan en el registro. */
+  const preg = (id, texto, tipo, extra) => ({ id, texto, tipo, ...extra });
+  const ACIERTO = preg('acierto', '¿Acertaste?', 'opcion', { opciones: [['si', 'Sí'], ['no', 'No']] });
+  const DIFICULTAD = preg('dificultad', '¿Qué tan difícil fue?', 'opcion',
+    { opciones: [[1, '1 · muy fácil'], [2, '2'], [3, '3'], [4, '4'], [5, '5 · muy difícil']] });
+  const COMENTARIO = preg('comentario', 'Comentario', 'texto', { opcional: true });
+  const medida = (predecir, simular, organizar, cambiar, final) => [
+    { titulo: 'Predecir', texto: 'Antes de simular, lee el programa.', preguntas: predecir },
+    { titulo: 'Simular', texto: simular, preguntas: [ACIERTO] },
+    { titulo: 'Organizar la pantalla', texto: organizar },
+    { titulo: 'Cambiar el programa', texto: cambiar },
+    { titulo: 'Para terminar', preguntas: [...final, DIFICULTAD, COMENTARIO] }];
+  const cierre = (probar, reto) => [
+    { titulo: 'Probar', texto: probar }, { titulo: 'Reto', texto: reto }, { titulo: 'Para terminar', preguntas: [COMENTARIO] }];
+  const VER_LEDS = 'Haz que el circuito ocupe toda la pantalla para ver bien los LED. Después vuelve a ver el programa y el circuito juntos.';
+  const VER_PERILLA = 'Haz que el circuito ocupe toda la pantalla y gira la perilla. Después vuelve a ver el programa y el circuito juntos.';
+  const PRIMERO = preg('primero', '¿Qué pin se enciende primero?', 'numero');
+  const MISIONES = {
+    estudio_x1: medida([PRIMERO, preg('duracion', '¿Cuántos segundos tarda una vuelta completa?', 'numero', { unidad: 's' })],
+      'Simula y mira el circuito.', VER_LEDS,
+      'La luz tiene que ir y volver: 11, 12, 13, 12, y otra vez 11. Cambia el programa y simula para comprobarlo.',
+      [preg('duracion_nueva', '¿Cuántos segundos tarda ahora una vuelta?', 'numero', { unidad: 's' }), preg('porque', '¿Por qué?', 'texto')]),
+    estudio_y1: medida([PRIMERO, preg('duracion', '¿Cuántos segundos dura un ciclo completo?', 'numero', { unidad: 's' })],
+      'Simula y mira el circuito.', VER_LEDS,
+      'El amarillo también tiene que avisar antes del verde: verde, amarillo, rojo, amarillo, y otra vez verde. Cambia el programa y simula para comprobarlo.',
+      [preg('duracion_nueva', '¿Cuántos segundos dura ahora un ciclo?', 'numero', { unidad: 's' }), preg('porque', '¿Por qué?', 'texto')]),
+    estudio_x2: medida([preg('mitad', 'Con la perilla en la mitad, ¿qué número recibe el LED?', 'numero'), preg('maximo', '¿Y con la perilla al máximo?', 'numero')],
+      'Simula y gira la perilla en el circuito.', VER_PERILLA,
+      'Tiene que funcionar al revés: con la perilla al mínimo, el LED brilla al máximo. Cambia el programa y simula para comprobarlo.',
+      [preg('porque', '¿Qué cambiaste y por qué funciona?', 'texto')]),
+    estudio_y2: medida([preg('mitad', 'Con la perilla en la mitad, ¿a qué ángulo va el servo?', 'numero', { unidad: '°' }),
+      preg('maximo', '¿Y con la perilla al máximo?', 'numero', { unidad: '°' })],
+      'Simula y gira la perilla en el circuito.', VER_PERILLA,
+      'Tiene que funcionar al revés: con la perilla al mínimo, el servo va a 180°. Cambia el programa y simula para comprobarlo.',
+      [preg('porque', '¿Qué cambiaste y por qué funciona?', 'texto')]),
+    estudio_cierre1: cierre('Simula y mantén presionado el botón del circuito con el mouse. Mira qué hace el LED.',
+      'Haz que el LED se apague mientras presionas el botón, y se encienda cuando lo sueltas.'),
+    estudio_cierre2: cierre('Simula y gira la perilla. Mira qué pasa con el motor.', 'Haz que el motor gire hacia atrás.'),
+  };
+  const lista = [
     // Sesión 1 · Explorador. El cambio de X1 y Y1 es el mismo: copiar el grupo del medio (D12) al final
     tarea('estudio_x1', 'X1 · Luces en secuencia', 'Tres LED se encienden uno tras otro. Predice el orden y el tiempo, simula y cambia el recorrido.',
       luces([[11, 1], [12, 1], [13, 1]]), tresLeds(['rojo', 'rojo', 'rojo']), luces([[11, 1], [12, 1], [13, 1], [12, 1]])),
@@ -1429,6 +1471,8 @@ const TAREAS_ESTUDIO = (() => {
           { de: 'shield1.A0_V', a: 'pot1.VCC', color: 'rojo' }],
       }, motor('BACKWARD')),
   ];
+  for (const t of lista) t.mision = MISIONES[t.id];
+  return lista;
 })();
 const EJEMPLOS = [
   {
@@ -1593,6 +1637,7 @@ function cargarEjemplo(ej) {
   programarActualizacion();
   if (ej.texto) entrarModoTexto(ej.texto, ''); // ejemplo escrito en C++ (los de validación)
   panelesA.alAbrirEjemplo(ej); // en B, una tarea del estudio pone la disposición de su actividad (I4, D2)
+  misiones.alAbrirEjemplo(ej); // y, con A o B, abre su misión (EST-003)
   registrarEditor('ejemplo_cargado', { id: ej.id });
 }
 /** Un botón del menú Ejemplos: pregunta antes de reemplazar el programa. */
@@ -2108,7 +2153,238 @@ function enFilaDeEquipo(operacion) {
   return hecha;
 }
 
+/* ---- Misiones (EST-003, TecnoSuite/EstrategíaTecno/DISENO-MISIONES.md) ----
+ * Con la variante A o B del instructor, una columna a la derecha muestra la misión de la tarea del estudio abierta: los
+ * pasos de su hoja, uno a la vez, con sus preguntas. Es idéntica en A y en B (el mismo rectángulo: la franja de B queda
+ * a su lado) y en C0 no existe, ni en el DOM. No corrige ni da pistas (las pistas siguen en tarjetas, D5).
+ * Cada respuesta va al registro del equipo (mision_*, CONTRATO 6.1) y queda en el PC, por equipo, para volver donde iba.
+ * Lo guardado no se cree: se limpia al leerlo, como la disposición de B (r1 de I4). */
+const misiones = (() => {
+  const LIMITE = 200; // caracteres de un texto (D2 y el esquema del registro)
+  let montado = false, clave = null;
+  const tareas = () => EJEMPLOS.filter((e) => e.grupo === 'estudio' && Array.isArray(e.mision));
+  const tarea = (id) => (typeof id === 'string' ? tareas().find((e) => e.id === id) || null : null);
+  const preguntas = (ej) => ej.mision.flatMap((p) => p.preguntas || []);
+  // El dueño de lo guardado: el equipo del registro, o «sin registro». Con prefijo, así ningún código es «__proto__».
+  const equipo = () => 'e:' + ((registroEventos.activo() && registroEventos.equipo()) || '');
+  const objeto = (x) => !!x && typeof x === 'object' && !Array.isArray(x);
+  const propio = (o, k) => objeto(o) && Object.hasOwn(o, k);
+  function valida(q, v) {
+    if (q.tipo === 'numero') return typeof v === 'number' && Number.isFinite(v);
+    if (q.tipo === 'opcion') return q.opciones.some(([valor]) => valor === v);
+    return typeof v === 'string' && v.length > 0 && v.length <= LIMITE;
+  }
+  function todo() { const g = (leerLocal(CLAVE_PREF) || {}).misiones; return objeto(g) ? g : {}; }
+  const plegada = () => todo().plegada === true;
+  /** Lo del equipo actual: solo misiones que existen, el paso en su rango y respuestas del tipo de su pregunta. */
+  function leer() {
+    const g = todo(), e = propio(g.equipos, equipo()) ? g.equipos[equipo()] : null, r = { actual: null, misiones: {} };
+    if (!objeto(e)) return r;
+    for (const ej of tareas()) {
+      const m = propio(e.misiones, ej.id) ? e.misiones[ej.id] : null;
+      if (!objeto(m)) continue;
+      const respuestas = {};
+      for (const q of preguntas(ej)) if (propio(m.respuestas, q.id) && valida(q, m.respuestas[q.id])) respuestas[q.id] = m.respuestas[q.id];
+      const paso = Number.isInteger(m.paso) && m.paso >= 0 && m.paso <= ej.mision.length ? m.paso : 0;
+      r.misiones[ej.id] = { paso, respuestas, simulo: m.simulo === true };
+    }
+    if (typeof e.actual === 'string' && Object.hasOwn(r.misiones, e.actual)) r.actual = e.actual;
+    return r;
+  }
+  function guardar(e, pleg = plegada()) {
+    const g = todo(), equipos = objeto(g.equipos) ? { ...g.equipos } : {};
+    if (e) equipos[equipo()] = e;
+    guardarPreferencias({ misiones: { equipos, plegada: pleg } });
+  }
+  // Cómo se ve lo respondido: la opción con su rótulo, el número con coma decimal y su unidad, el texto tal cual (r1, F03)
+  const texto = (q, v) => (q.tipo === 'opcion' ? q.opciones.find(([valor]) => valor === v)[1]
+    : q.tipo === 'numero' ? String(v).replace('.', ',') + (q.unidad ? ' ' + q.unidad : '') : String(v));
+
+  /** Un campo de una pregunta: su nodo, cómo se lee y cómo dice lo que falta (con aria-describedby, E5). */
+  function campo(q, id, valor) {
+    const errorId = id + 'Error', nota = el('p', { class: 'mision-error', id: errorId });
+    const opcional = q.opcional ? ' (opcional)' : '';
+    let nodo, control, leerValor;
+    if (q.tipo === 'opcion') {
+      const radios = q.opciones.map(([v, rotulo], k) => {
+        const r = el('input', { type: 'radio', name: id, id: `${id}o${k}`, 'aria-describedby': errorId });
+        r.checked = valor === v;
+        return { r, v, nodo: el('label', { class: 'mision-opcion', for: `${id}o${k}` }, r, ' ', rotulo) };
+      });
+      nodo = el('fieldset', { class: 'mision-campo' }, el('legend', null, q.texto + opcional), el('div', { class: 'mision-opciones' }, radios.map((x) => x.nodo)), nota);
+      leerValor = () => { const x = radios.find((y) => y.r.checked); return x ? { valor: x.v } : { vacio: true }; };
+      return { q, nodo, enfocar: () => (radios.find((y) => y.r.checked) || radios[0]).r.focus(), leer: leerValor, marcar: (msg) => marcar(radios.map((x) => x.r), nota, msg) };
+    }
+    if (q.tipo === 'numero') {
+      control = el('input', { type: 'text', inputmode: 'decimal', id, class: 'mision-entrada mision-numero', autocomplete: 'off', 'aria-describedby': errorId });
+      if (valor !== undefined) control.value = String(valor).replace('.', ',');
+      nodo = el('div', { class: 'mision-campo' }, el('label', { for: id }, q.texto + opcional), el('div', { class: 'mision-con-unidad' }, control, q.unidad ? el('span', { 'aria-hidden': 'true' }, q.unidad) : null), nota);
+      if (q.unidad) control.setAttribute('aria-label', `${q.texto} (en ${q.unidad === 's' ? 'segundos' : 'grados'})`);
+      leerValor = () => {
+        const t = control.value.trim();
+        if (!t) return { vacio: true };
+        if (!/^-?\d+([.,]\d+)?$/.test(t)) return { error: 'Escribe solo un número, como 3 o 2,5.' };
+        // Uno con cientos de cifras se vuelve Infinity: no se registra ni se avanza (el registro pide un número, r1, F02)
+        const n = Number(t.replace(',', '.'));
+        return Number.isFinite(n) ? { valor: n } : { error: 'Ese número es demasiado largo. Escribe uno más corto.' };
+      };
+    } else {
+      const ayudaId = id + 'Ayuda';
+      control = el('textarea', { id, class: 'mision-entrada', rows: '3', maxlength: String(LIMITE), 'aria-describedby': `${ayudaId} ${errorId}` });
+      if (valor !== undefined) control.value = valor;
+      nodo = el('div', { class: 'mision-campo' }, el('label', { for: id }, q.texto + opcional), control,
+        el('p', { class: 'mision-ayuda', id: ayudaId }, `Hasta ${LIMITE} caracteres. No escribas nombres.`), nota);
+      leerValor = () => { const t = control.value.trim(); return t ? { valor: t.slice(0, LIMITE) } : { vacio: true }; };
+    }
+    return { q, nodo, enfocar: () => control.focus(), leer: leerValor, marcar: (msg) => marcar([control], nota, msg) };
+  }
+  function marcar(controles, nota, msg) {
+    nota.textContent = msg || '';
+    for (const c of controles) { if (msg) c.setAttribute('aria-invalid', 'true'); else c.removeAttribute('aria-invalid'); }
+  }
+
+  function pintar(enfocar) {
+    if (!montado) return;
+    const cuerpo = $('misionCuerpo'), e = leer(), ej = tarea(e.actual);
+    cuerpo.replaceChildren();
+    if (!ej) {
+      cuerpo.append(el('h2', { id: 'misionTitulo' }, 'Ninguna misión abierta'),
+        el('p', { class: 'mision-texto' }, 'Abre tu tarea en Ejemplos, en «Estudio A/B», y aquí aparece su misión.'));
+      return;
+    }
+    const m = e.misiones[ej.id], total = ej.mision.length;
+    cuerpo.append(el('h2', { id: 'misionTitulo' }, ej.nombre),
+      el('p', { class: 'mision-avance', id: 'misionAvance' }, m.paso >= total ? 'Misión terminada' : `Paso ${m.paso + 1} de ${total}`));
+    // Los pasos hechos, cerrados, con lo respondido (las predicciones ya no se cambian, D4)
+    if (m.paso > 0) {
+      cuerpo.append(el('ol', { class: 'mision-hechos', 'aria-label': 'Pasos hechos' }, ej.mision.slice(0, m.paso).map((p) => {
+        const dichas = (p.preguntas || []).filter((q) => Object.hasOwn(m.respuestas, q.id));
+        return el('li', null, el('b', null, p.titulo),
+          dichas.length ? dichas.map((q) => el('span', { class: 'mision-dicho' }, `${q.texto} `, el('strong', null, texto(q, m.respuestas[q.id])))) : el('span', { class: 'mision-dicho' }, 'Listo'));
+      })));
+    }
+    if (m.paso >= total) {
+      cuerpo.append(el('p', { class: 'mision-texto', role: 'status' }, 'Terminaron la misión. Avisen al facilitador.'));
+      if (enfocar) { $('misionTitulo').setAttribute('tabindex', '-1'); $('misionTitulo').focus(); }
+      return;
+    }
+    const i = m.paso, p = ej.mision[i], ultimo = i === total - 1;
+    const campos = (p.preguntas || []).map((q, k) => campo(q, `mision${i}q${k}`, m.respuestas[q.id]));
+    const aviso = el('p', { class: 'mision-error', id: 'misionAviso', role: 'alert' });
+    const accion = ultimo ? 'Terminar misión' : campos.length ? 'Seguir' : 'Listo';
+    const form = el('form', { id: 'misionForm', class: 'mision-paso', novalidate: '' },
+      el('h3', { id: 'misionPasoTitulo', tabindex: '-1' }, p.titulo),
+      p.texto ? el('p', { class: 'mision-texto' }, p.texto) : null,
+      campos.map((c) => c.nodo), aviso,
+      el('button', { type: 'submit', class: 'btn mision-accion', id: 'misionSeguir' }, accion));
+    form.addEventListener('submit', (ev) => { ev.preventDefault(); seguir(ej.id, i, campos, aviso); });
+    cuerpo.append(form);
+    if (enfocar) $('misionPasoTitulo').focus();
+  }
+
+  /** «Seguir», «Listo» o «Terminar misión»: revisa lo obligatorio, registra las respuestas y el paso, y pasa al siguiente. */
+  function seguir(id, i, campos, aviso) {
+    const e = leer(), ej = tarea(id), m = e.misiones[id];
+    if (!ej || !m || m.paso !== i || e.actual !== id) { pintar(true); return; } // otro cambio llegó antes (otro equipo, otra misión)
+    const leidas = campos.map((c) => c.leer());
+    let faltan = 0, primero = null;
+    campos.forEach((c, k) => {
+      const r = leidas[k];
+      const msg = r.error || (r.vacio && !c.q.opcional ? (c.q.tipo === 'numero' ? 'Escribe un número.' : c.q.tipo === 'opcion' ? 'Elige una opción.' : 'Escribe tu respuesta.') : '');
+      c.marcar(msg);
+      if (msg) { faltan++; primero = primero || c; }
+    });
+    if (faltan) { aviso.textContent = faltan === 1 ? 'Falta una respuesta.' : `Faltan ${faltan} respuestas.`; primero.enfocar(); return; }
+    const paso = i + 1;
+    campos.forEach((c, k) => {
+      if (leidas[k].vacio) return;
+      m.respuestas[c.q.id] = leidas[k].valor;
+      registrarEditor('mision_respuesta', { id, paso, pregunta: c.q.id, valor: leidas[k].valor, tras_simular: m.simulo });
+    });
+    registrarEditor('mision_paso', { id, paso });
+    m.paso = paso;
+    if (paso === ej.mision.length) registrarEditor('mision_terminada', { id });
+    guardar(e);
+    pintar(true);
+  }
+
+  /* Con la ventana angosta (con zoom al 200 %, por ejemplo), 300 px no dejan a los espacios sus 320 px cada uno: el panel
+   * se pliega y, desplegado, se abre encima del espacio derecho sin quitarles ancho. Eso no se guarda como preferencia. */
+  const ESTRECHO = '(min-width: 761px) and (max-width: 960px)';
+  let abiertaEstrecha = false, medio = null;
+  const estrecho = () => matchMedia(ESTRECHO).matches;
+  const alCambiarAncho = () => { abiertaEstrecha = false; ponerPlegada(); };
+  function ponerPlegada() {
+    const a = $('misiones'), b = $('plegarMision'), v = estrecho() ? !abiertaEstrecha : plegada();
+    a.classList.toggle('plegada', v);
+    a.classList.toggle('flotante', estrecho() && !v);
+    document.body.classList.toggle('mision-plegada', v);
+    $('misionCuerpo').hidden = v;
+    b.textContent = v ? 'Misión' : 'Plegar';
+    b.setAttribute('aria-expanded', String(!v));
+    b.setAttribute('aria-label', v ? 'Mostrar la misión' : 'Plegar la misión');
+    window.dispatchEvent(new Event('resize')); // los espacios y los bloques toman el ancho nuevo
+  }
+  function montar() {
+    if (montado) return;
+    montado = true;
+    const boton = el('button', { type: 'button', class: 'btn', id: 'plegarMision', 'aria-controls': 'misionCuerpo' });
+    boton.addEventListener('click', () => {
+      if (estrecho()) abiertaEstrecha = !abiertaEstrecha; else guardar(null, !plegada());
+      ponerPlegada();
+      boton.focus();
+    });
+    $('app').append(el('aside', { id: 'misiones', class: 'misiones', 'aria-label': 'Misión' },
+      el('div', { class: 'mision-cabeza' }, el('span', { class: 'rotulo-mision' }, 'Misión'), boton),
+      el('div', { id: 'misionCuerpo', class: 'mision-cuerpo' })));
+    // Encima del espacio, Escape lo pliega y el foco vuelve al botón
+    $('misiones').addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && abiertaEstrecha && estrecho()) { abiertaEstrecha = false; ponerPlegada(); boton.focus(); } });
+    document.body.classList.add('con-misiones');
+    clave = equipo();
+    abiertaEstrecha = false;
+    medio = matchMedia(ESTRECHO);
+    medio.addEventListener('change', alCambiarAncho);
+    ponerPlegada();
+    pintar(false);
+  }
+  function desmontar() {
+    if (!montado) return;
+    montado = false;
+    if (medio) medio.removeEventListener('change', alCambiarAncho);
+    $('misiones').remove();
+    document.body.classList.remove('con-misiones', 'mision-plegada');
+    window.dispatchEvent(new Event('resize'));
+  }
+
+  return {
+    activo: () => montado,
+    /** Con la variante A o B, el panel; con C0, nada (aplicarVariante). */
+    aplicar(v) { if (v === 'A' || v === 'B') montar(); else desmontar(); },
+    /** Al abrir un ejemplo (cargarEjemplo): una tarea del estudio abre su misión, donde iba. Otro ejemplo no cambia nada. */
+    alAbrirEjemplo(ej) {
+      if (!montado || !ej || typeof ej.id !== 'string' || !tarea(ej.id)) return;
+      const e = leer();
+      if (!e.misiones[ej.id]) e.misiones[ej.id] = { paso: 0, respuestas: {}, simulo: false };
+      e.actual = ej.id;
+      guardar(e);
+      registrarEditor('mision_abierta', { id: ej.id });
+      pintar(false);
+    },
+    /** Cuando la simulación arranca de verdad (`simular`, después de `sim.iniciar()`): desde ahí, las respuestas de la
+     * misión abierta llegan «tras simular». Pulsar no basta: si no compila, se detiene o se abre otro proyecto mientras
+     * se prepara, no se vio nada (r1, F01). Una vez marcada, la marca queda. No bloquea Simular (D3). */
+    alSimular() {
+      if (!montado) return;
+      const e = leer(), m = e.actual && e.misiones[e.actual];
+      if (m && !m.simulo) { m.simulo = true; guardar(e); }
+    },
+    /** Cambió el equipo (o se encendió o apagó el registro): se ve la misión de quien trabaja ahora (E7). */
+    alCambiarEquipo() { if (montado && equipo() !== clave) { clave = equipo(); pintar(false); } },
+  };
+})();
+
 function pintarAvisoRegistro() {
+  misiones.alCambiarEquipo(); // se pinta al cambiar de equipo o encender el registro: la misión es de quien trabaja (EST-003)
   const a = $('avisoRegistro');
   const perdidos = registroEventos.activo() ? descartesDelEquipo() : null;
   const n = perdidos ? perdidos.cantidad : 0;
@@ -2536,6 +2812,7 @@ function aplicarVariante(v) {
   document.body.dataset.variante = varianteEstudio;
   ponerEjemplosEstudio(varianteEstudio !== 'C0');
   panelesA.aplicar(varianteEstudio);
+  misiones.aplicar(varianteEstudio); // el panel de misiones, solo con A o B (EST-003)
 }
 async function iniciarEstudio() {
   if (!escritorio || !escritorio.estudio) { aplicarVariante('C0'); return; }
@@ -2750,6 +3027,7 @@ async function simular() {
     modal({ titulo: ex.titulo, cuerpo: ex.cuerpo.concat([el('details', { class: 'subir-detalle' }, el('summary', null, 'Ver el mensaje completo'), el('pre', null, r.salida || ''))]) });
     return;
   }
+  let arranco = false;
   try {
     const sim = TecnoCircuito.crearSimulador({ lienzo: simulador.lienzo, placa: placaActual, hex: r.hex, modo: 'realista', alEvento: registrarEventoSim });
     registroSerial.continuar('simulador'); // simular de nuevo: el tiempo del registro sigue, no vuelve a 0
@@ -2768,10 +3046,14 @@ async function simular() {
     lineaEspecial('Simulación: aquí sale lo que imprime el programa simulado, y lo que envíes le llega a él.', 'sistema');
     sim.iniciar();
     ejecucion.iniciada(corrida.turno);
+    arranco = true;
   } catch (e) {
     ejecucion.cancelar('error');
     modal({ titulo: 'No se pudo simular', cuerpo: [el('p', null, e.message)] });
   }
+  // Arrancó: desde aquí, las respuestas de la misión llegan «tras simular» (EST-003, r1 de F01). Fuera del try, así
+  // nada de la misión puede cancelar una simulación que ya corre.
+  if (arranco) misiones.alSimular();
   uiSimulador();
 }
 /** Monitor pequeño de la pestaña Circuito: así se ve el circuito y se escribe al programa a la vez. */
