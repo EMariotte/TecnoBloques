@@ -23,7 +23,82 @@ function revisar(condicion, texto) {
 const ACTIVIDAD = { izq: 'bloques', der: 'circuito', proporcion: 0.5, ampliado: null };
 const esActividad = (d) => d && d.izq === ACTIVIDAD.izq && d.der === ACTIVIDAD.der && d.ampliado === null && Math.abs(d.proporcion - 0.5) < 0.006;
 
+/** Revisa el trazado de los cables de un montaje: cada tramo, horizontal o vertical (con esquinas), y ningún tramo de un
+ *  cable cruza o pisa a uno de otro cable. Que dos cables solo compartan una punta (el mismo pin) no cuenta. Devuelve
+ *  lo que no cumple, en palabras. `cables`: [{ cable, puntos: [[x, y], …] }], en coordenadas del lienzo. */
+function revisarTrazado(cables, tol = 0.6) {
+  const problemas = [];
+  const tramos = [];
+  for (const c of cables) {
+    for (let k = 0; k + 1 < c.puntos.length; k++) {
+      const [a, b] = [c.puntos[k], c.puntos[k + 1]];
+      const h = Math.abs(a[1] - b[1]) <= tol, v = Math.abs(a[0] - b[0]) <= tol;
+      if (h && v) continue; // un tramo sin largo
+      if (!h && !v) { problemas.push(`${c.cable} va en diagonal de (${a.map(Math.round)}) a (${b.map(Math.round)})`); continue; }
+      tramos.push({ cable: c.cable, h, fijo: h ? a[1] : a[0], desde: Math.min(h ? a[0] : a[1], h ? b[0] : b[1]), hasta: Math.max(h ? a[0] : a[1], h ? b[0] : b[1]),
+        // Las puntas del cable (sus pines) que caen en este tramo: el primero lleva la inicial y el último, la final; un
+        // cable de un solo tramo lleva las dos (r1 de F01: antes perdía la final y el resultado dependía del sentido)
+        puntas: [a, b], extremo: [...(k === 0 ? [a] : []), ...(k + 2 === c.puntos.length ? [b] : [])] });
+    }
+  }
+  const dentro = (x, s, conBorde) => (conBorde ? x >= s.desde - tol && x <= s.hasta + tol : x > s.desde + tol && x < s.hasta - tol);
+  const mismoPunto = (p, q) => Math.abs(p[0] - q[0]) <= tol && Math.abs(p[1] - q[1]) <= tol;
+  for (let i = 0; i < tramos.length; i++) {
+    for (let j = i + 1; j < tramos.length; j++) {
+      const s = tramos[i], t = tramos[j];
+      if (s.cable === t.cable) continue;
+      if (s.h === t.h) {
+        // Paralelos sobre la misma línea: se pisan si comparten un trozo con largo
+        if (Math.abs(s.fijo - t.fijo) <= tol && Math.min(s.hasta, t.hasta) - Math.max(s.desde, t.desde) > tol) problemas.push(`${s.cable} pisa a ${t.cable}`);
+        continue;
+      }
+      const [hz, vt] = s.h ? [s, t] : [t, s];
+      const p = [vt.fijo, hz.fijo];
+      if (!dentro(vt.fijo, hz, true) || !dentro(hz.fijo, vt, true)) continue;
+      // Tocarse solo en la punta de los dos cables (el mismo pin) está bien; cualquier otro contacto es un cruce
+      if ([...s.extremo].some((q) => mismoPunto(q, p)) && [...t.extremo].some((q) => mismoPunto(q, p))) continue;
+      problemas.push(`${s.cable} cruza a ${t.cable} en (${p.map(Math.round)})`);
+    }
+  }
+  return problemas;
+}
+
+/** Controles de geometría conocida para `revisarTrazado()` (r1 de F01, COD-20261111-004): el resultado depende del
+ *  dibujo, no del sentido en que se anotó cada cable. Se corren al empezar la suite, o solos con
+ *  `node test/actividad-app.js --trazado`. */
+function controlesTrazado() {
+  const L = (cable, ...puntos) => ({ cable, puntos });
+  const invertido = (c) => ({ cable: c.cable.split('>').reverse().join('>'), puntos: [...c.puntos].reverse() });
+  const p1 = L('p1>comun', [0, 0], [10, 0]), p2 = L('comun>p2', [10, 0], [10, 10]);
+  const casos = [
+    ['dos cables de un tramo comparten el pin: el final de uno es el inicio del otro', [p1, p2], 0],
+    ['lo mismo, con el primer cable anotado al revés', [invertido(p1), p2], 0],
+    ['lo mismo, con el segundo cable anotado al revés', [p1, invertido(p2)], 0],
+    ['lo mismo, con los dos al revés', [invertido(p1), invertido(p2)], 0],
+    ['el pin común es el final de los dos', [p1, L('p2>comun', [10, 10], [10, 0])], 0],
+    ['cables con dobleces que llegan al mismo pin', [L('a>comun', [0, 0], [5, 0], [5, 10]), L('b>comun', [10, 20], [10, 10], [5, 10])], 0],
+    ['un cable en diagonal', [L('d1>d2', [0, 0], [10, 10])], 1],
+    ['un cruce en el medio de los dos', [L('h1>h2', [0, 5], [10, 5]), L('v1>v2', [5, 0], [5, 10])], 1],
+    ['una T: la punta de uno en el medio del otro', [L('h1>h2', [0, 5], [10, 5]), L('v1>v2', [5, 5], [5, 10])], 1],
+    ['lo mismo, con el cable de la T al revés', [L('h1>h2', [0, 5], [10, 5]), L('v2>v1', [5, 10], [5, 5])], 1],
+    ['la punta de uno sobre el doblez de otro', [L('a1>a2', [0, 0], [10, 0], [10, 10]), L('b1>b2', [10, 0], [20, 0])], 1],
+    ['dos cables que se pisan en la misma línea', [L('s1>s2', [0, 0], [10, 0]), L('t1>t2', [5, 0], [15, 0])], 1],
+  ];
+  return casos.map(([nombre, cables, esperados]) => {
+    const p = revisarTrazado(cables);
+    return { nombre, ok: esperados ? p.length >= esperados : p.length === 0, visto: p };
+  });
+}
+
+if (process.argv.includes('--trazado')) {
+  for (const c of controlesTrazado()) revisar(c.ok, `trazado: ${c.nombre} (${c.visto.length ? c.visto.join(' | ') : 'sin problemas'})`);
+  console.log(`\n${fallos ? fallos + ' FALLAS' : 'Todo bien'} · solo los controles de la medida del trazado`);
+  process.exit(fallos ? 1 : 0);
+}
+
 (async () => {
+  // La medida del trazado, contra geometría conocida, antes de usarla con los montajes
+  for (const c of controlesTrazado()) revisar(c.ok, `trazado: ${c.nombre} (${c.visto.length ? c.visto.join(' | ') : 'sin problemas'})`);
   const env = { ...Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'ELECTRON_RUN_AS_NODE')), TB_HERRAMIENTAS: 'instructor' };
   const datos = path.join(os.tmpdir(), 'tecnobloques-prueba-actividad-app');
   if (path.dirname(path.resolve(datos)) !== path.resolve(os.tmpdir())) throw new Error('Ruta temporal inesperada');
@@ -404,6 +479,17 @@ const esActividad = (d) => d && d.izq === ACTIVIDAD.izq && d.der === ACTIVIDAD.d
     await abrirTarea(win, t);
     const np = await win.evaluate(() => ({ nivel: nivelActual, piezas: simulador.lienzo.circuito().componentes.map((c) => c.tipo).sort().join() }));
     revisar(np.nivel === NIVEL[t] && np.piezas === PIEZAS[t] && esActividad(await disp(win)), `I5 E2: «${t}» abre en el nivel ${np.nivel} con su montaje (${np.piezas}), en «Programar y probar»`);
+    // Los cables, como se enseña (Efraín, 10 y 11 nov): con esquinas (solo tramos horizontales y verticales) y sin
+    // cruzarse ni pisarse. Los tramos salen de lo dibujado: las puntas de cada cable (sus pines) y sus dobleces.
+    const tramos = await win.evaluate(() => {
+      const raiz = [...document.querySelectorAll('*')].find((n) => n.shadowRoot && n.shadowRoot.querySelector('path[data-i]')).shadowRoot;
+      return simulador.lienzo.circuito().cables.map((cab, i) => {
+        const puntas = [...raiz.querySelector(`path[data-i="${i}"]`).parentNode.querySelectorAll('circle')].slice(0, 2).map((k) => [+k.getAttribute('cx'), +k.getAttribute('cy')]);
+        return { cable: `${cab.de}>${cab.a}`, puntos: [puntas[0], ...(cab.puntos || []), puntas[1]] };
+      });
+    });
+    const trazado = revisarTrazado(tramos);
+    revisar(!trazado.length, `I5: «${t}», ${tramos.length} cables con esquinas y sin cruces${trazado.length ? ': ' + trazado.slice(0, 4).join(' | ') + (trazado.length > 4 ? ` (y ${trazado.length - 4} más)` : '') : ''}`);
   }
   const simular = async () => { await win.locator('#btnSimularBarra').click(); await esperar(win, () => simulador.sim && simulador.sim.medidas().msSimulados > 300); };
   const conSolucion = (id) => win.evaluate((i) => { detenerSimulacion(); cargarXML(EJEMPLOS.find((e) => e.id === i).solucion); actualizar(); }, id);

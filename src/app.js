@@ -1424,6 +1424,41 @@ const TAREAS_ESTUDIO = (() => {
       'Haz que el LED se apague mientras presionas el botón, y se encienda cuando lo sueltas.'),
     estudio_cierre2: cierre('Simula y gira la perilla. Mira qué pasa con el motor.', 'Haz que el motor gire hacia atrás.'),
   };
+  /* El montaje del cierre 2 con cables en esquina y sin cruces (Efraín, 11 nov). Medidas en el lienzo, con la shield en
+   * (0, 0): sus pines salen de la vista medida (TC `piezas/vistas/shield_l293d.js`, mm × 3,7795) y los del motor y la
+   * batería, de su dibujo.
+   * - El motor, a la izquierda: sus dos cables llegan a M1 en «escalera»; el de abajo dobla antes (más a la izquierda).
+   * - La batería, abajo: sus cables salen a la derecha y suben a EXT_PWR; el de abajo sube más alto y llega más a la derecha.
+   * - El potenciómetro va en una media protoboard a la derecha de la shield, como en X2 (patas en f4, f6 y f8, puentes a
+   *   los rieles). En el header A0 el orden es +5, Gnd, A0 (la señal en un extremo) y en el potenciómetro la señal va en
+   *   el medio: sueltos, un cable tendría que cruzar. Con la protoboard, los tres bajan del header (A0 recto; Gnd y +5
+   *   primero a la izquierda, para no pasar sobre otro pin), van por debajo de la shield y suben, anidados: el de más a
+   *   la izquierda baja más y llega más a la derecha (A0 a j6, Gnd al riel − en la 10, +5 al riel + en la 12). */
+  const montajeShield = () => {
+    const P = { tipo: 'media', x: 300, y: 15 };
+    const d = (v) => Math.round(v * 10) / 10; // a décimas, sin restos de la suma en coma flotante
+    const cx = (c) => d(P.x + 14.4 + (c - 1) * 9.6), fy = (f) => d(P.y + FILA[f]);
+    const A0 = { V: 155.5, G: 167, S: 178.6, x: 202 }; // el header A0 de la shield
+    const MOTOR = { x: -420, y: -62 }, ma = d(MOTOR.y + 127.2), mb = d(MOTOR.y + 136.8), mx = MOTOR.x + 368; // pines A y B del motor
+    return {
+      formato: 1, placa: 'uno', protoboard: { ...P },
+      componentes: [
+        { id: 'shield1', tipo: 'shield_l293d', x: 0, y: 0, rot: 0, props: { puentePWR: true } },
+        { id: 'motor1', tipo: 'motor_tt', x: MOTOR.x, y: MOTOR.y, rot: 0, props: { vista: 'rueda', lado: 'izquierdo' } },
+        { id: 'bateria1', tipo: 'bateria_lipo', x: -260, y: 280, rot: 0, props: { carga: 'llena' } },
+        { id: 'pot1', tipo: 'potenciometro', x: cx(4) - 14.4, y: fy('f') - 91.2, rot: 0, props: { ohmios: 10000, posicion: 0.5, modelo: '16mm' },
+          en: { GND: hueco('f', 4), SIG: hueco('f', 6), VCC: hueco('f', 8) } }],
+      cables: [
+        { de: 'motor1.A', a: 'shield1.M1A', color: 'rojo', puntos: [[mx + 32, ma], [mx + 32, 87.6]] },
+        { de: 'motor1.B', a: 'shield1.M1B', color: 'negro', puntos: [[mx + 16, mb], [mx + 16, 106.7]] },
+        { de: 'bateria1.POS', a: 'shield1.EXT_POS', color: 'rojo', puntos: [[115, 320], [115, 240], [78.2, 240]] },
+        { de: 'bateria1.NEG', a: 'shield1.EXT_GND', color: 'negro', puntos: [[135, 329.6], [135, 225], [97.2, 225]] },
+        { de: hueco('j', 4), a: hueco('i-', 4), color: 'negro' }, { de: hueco('j', 8), a: hueco('i+', 8), color: 'rojo' },
+        { de: 'shield1.A0_S', a: hueco('j', 6), color: 'verde', puntos: [[A0.x, 211.2], [cx(6), 211.2]] },
+        { de: 'shield1.A0_G', a: hueco('i-', 10), color: 'negro', puntos: [[A0.x - 9.6, A0.G], [A0.x - 9.6, 220.8], [cx(10), 220.8]] },
+        { de: 'shield1.A0_V', a: hueco('i+', 12), color: 'rojo', puntos: [[A0.x - 19.2, A0.V], [A0.x - 19.2, 230.4], [cx(12), 230.4]] }],
+    };
+  };
   const lista = [
     // Sesión 1 · Explorador. El cambio de X1 y Y1 es el mismo: copiar el grupo del medio (D12) al final
     tarea('estudio_x1', 'X1 · Luces en secuencia', 'Tres LED se encienden uno tras otro. Predice el orden y el tiempo, simula y cambia el recorrido.',
@@ -1457,19 +1492,7 @@ const TAREAS_ESTUDIO = (() => {
       }), servo(180, 0)),
     // Cierre 2 (sin medir): el carro de TecnoCircuito con un solo motor, y el potenciómetro en el header A0 de la shield
     tarea('estudio_cierre2', 'Cierre 2 · Motor con la shield L293D', 'El potenciómetro cambia la velocidad del motor. Reto: que gire hacia atrás.',
-      motor('FORWARD'), {
-        formato: 1, placa: 'uno', protoboard: null,
-        componentes: [
-          { id: 'shield1', tipo: 'shield_l293d', x: 0, y: 0, rot: 0, props: { puentePWR: true } },
-          { id: 'motor1', tipo: 'motor_tt', x: -388, y: -62, rot: 0, props: { vista: 'rueda', lado: 'izquierdo' } },
-          { id: 'bateria1', tipo: 'bateria_lipo', x: -260, y: 280, rot: 0, props: { carga: 'llena' } },
-          { id: 'pot1', tipo: 'potenciometro', x: 260, y: 260, rot: 0, props: { ohmios: 10000, posicion: 0.5, modelo: '16mm' } }],
-        cables: [
-          { de: 'motor1.A', a: 'shield1.M1A', color: 'rojo' }, { de: 'motor1.B', a: 'shield1.M1B', color: 'negro' },
-          { de: 'bateria1.POS', a: 'shield1.EXT_POS', color: 'rojo' }, { de: 'bateria1.NEG', a: 'shield1.EXT_GND', color: 'negro' },
-          { de: 'shield1.A0_G', a: 'pot1.GND', color: 'negro' }, { de: 'shield1.A0_S', a: 'pot1.SIG', color: 'verde' },
-          { de: 'shield1.A0_V', a: 'pot1.VCC', color: 'rojo' }],
-      }, motor('BACKWARD')),
+      motor('FORWARD'), montajeShield(), motor('BACKWARD')),
   ];
   for (const t of lista) t.mision = MISIONES[t.id];
   return lista;

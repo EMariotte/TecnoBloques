@@ -1641,3 +1641,21 @@ Codex devolvió el panel de misiones por tres defectos que reprodujo. Cada uno q
 - **F02 (baja):** 309 nueves pasaban la forma de número y se volvían `Infinity`; el registro escribía `valor: null` (fuera del esquema) y el paso avanzaba. Ahora un número no finito es un error del campo («Ese número es demasiado largo…»): no se registra ni se avanza. Negativos, coma decimal y números grandes que caben siguen pasando tal cual.
 - **F03 (baja):** el resumen cambiaba el primer punto de cualquier respuesta por una coma, también en las explicaciones. Ahora la coma decimal es solo de los números; el texto se muestra tal cual.
 - La suite suma seis casos de F01 (error de compilación, respuesta mientras se prepara, detener y otro proyecto mientras se prepara, y dos controles con una simulación que arrancó), dos de F02, uno de F03 y el esquema de todas las líneas `mision_*`.
+
+## 2026-11-11 — EST-002: el cierre 2 con cables en esquina y sin cruces
+
+Efraín probó las seis tareas del estudio en la app el 11 nov: las simulaciones son correctas. Pidió que el cierre 2 (motor con la shield L293D) también vaya con cables en esquina y sin cruces, como los demás montajes, porque así se enseña.
+
+- `src/app.js`: el montaje del cierre 2 sale de `montajeShield()`, dentro de `TAREAS_ESTUDIO`.
+  - **Motor:** a la izquierda (se corrió 32 px). Sus dos cables llegan a M1 en escalera: el de abajo dobla antes.
+  - **Batería:** sus cables salen a la derecha y suben a EXT_PWR; el de abajo sube más alto y llega más a la derecha.
+  - **Potenciómetro:** pasa a una media protoboard a la derecha de la shield, como en X2 (patas en f4, f6 y f8, con puentes a los rieles). En el header A0 el orden es +5, Gnd, A0, con la señal en un extremo, y en el potenciómetro la señal va en el medio: sueltos, un cable tenía que cruzar. Ahora los tres bajan del header (A0 recto; Gnd y +5 primero a la izquierda, para no pasar sobre otro pin), van por debajo de la shield y suben anidados: A0 a j6, Gnd al riel − en la 10 y +5 al riel + en la 12.
+  - Las medidas salen de la vista medida de la shield (TC `piezas/vistas/shield_l293d.js`, mm × 3,7795) y de una sonda que lee las puntas de los cables dibujados. El programa, la solución y las piezas no cambian; el motor gira igual (217 RPM y −217 en el reto).
+- `test/actividad-app.js`: `revisarTrazado()` revisa en las seis tareas que cada tramo de cable sea horizontal o vertical y que ningún cable cruce o pise a otro (compartir solo el pin de la punta está bien). Antes del cambio fallaba solo el cierre 2, con sus siete cables en diagonal; las otras cinco ya cumplían.
+
+## 2026-11-11 — EST-002, r1 del cierre 2: la medida del trazado (COD-20261111-004)
+
+Codex dio por bueno el montaje del cierre 2 y devolvió la medida nueva por F01 (baja): en un cable de un solo tramo, `revisarTrazado()` guardaba solo la punta inicial como pin y perdía la final. Dos cables que comparten un pin daban un cruce falso según el sentido en que se anotó cada uno.
+
+- `test/actividad-app.js`: cada tramo lleva como `extremo` las puntas del cable que caen en él (el primero, la inicial; el último, la final; un cable de un solo tramo, las dos). `controlesTrazado()` revisa la medida contra doce dibujos de geometría conocida: el pin común en los cuatro sentidos posibles y con dobleces (no son cruces), y la diagonal, el cruce, la T en los dos sentidos, la punta sobre el doblez de otro y el solape (sí lo son). Corren al empezar la suite, o solos con `node test/actividad-app.js --trazado`. Antes: 8 OK y 4 falsos positivos; después, 12/12.
+- El montaje (`src/app.js`) no cambia.
