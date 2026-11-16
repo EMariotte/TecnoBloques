@@ -59,9 +59,9 @@ function el(tag, props, ...hijos) {
   return e;
 }
 let toastTimer = null;
-function mostrarToast(msg) {
+function mostrarToast(msg, ms = 3200) {
   const t = $('toast'); t.textContent = msg; t.hidden = false;
-  clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, 3200);
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, ms);
 }
 let modalCancelar = null;
 // Cada vez que una pantalla se abre o se cierra cambia el turno (EST-002, r1 de I2, F02). Una acción que espera una
@@ -111,14 +111,52 @@ async function copiarTexto(t) {
   try { await navigator.clipboard.writeText(t); mostrarToast('Copiado al portapapeles'); return true; }
   catch (e) { return false; }
 }
-function descargar(nombre, contenido, tipo) {
+/* Descargas (AUD-31). En la app de escritorio, Windows pregunta dónde guardar y el proceso principal avisa cómo terminó:
+ * «Se guardó …» si se escribió; si no se pudo escribir, el aviso va donde se pidió la descarga, con «Reintentar».
+ * `donde` es esa pantalla (por su turno, la que estaba abierta al pulsar) o {junto: id} para ponerlo después de un botón,
+ * como «Descargar respuestas». Cancelar el cuadro de guardar no es un fallo. En el navegador, su barra de descargas avisa. */
+const descargasPendientes = [];
+function descargar(nombre, contenido, tipo, donde) {
   try {
     const url = URL.createObjectURL(new Blob([contenido], { type: tipo || 'text/plain' }));
     const a = el('a', { href: url, download: nombre });
     document.body.append(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 5000);
+    if (window.tbEscritorio && window.tbEscritorio.alDescarga) {
+      descargasPendientes.push({ url, nombre, contenido, tipo, donde: donde || ($('modal').hidden ? null : { turno: turnoModal }) });
+      if (descargasPendientes.length > 20) descargasPendientes.shift();
+    }
   } catch (e) { /* el visor puede bloquear descargas */ }
 }
+/** Dónde va el aviso de una descarga: su pantalla si sigue abierta, o el lugar junto al botón si sigue a la vista. */
+function lugarDescarga(donde) {
+  if (!donde) return null;
+  if (donde.turno !== undefined) return donde.turno === turnoModal && !$('modal').hidden ? { caja: $('modalCuerpo') } : null;
+  const b = donde.junto && $(donde.junto);
+  return b && b.isConnected && b.offsetParent !== null ? { despues: b } : null;
+}
+function avisosDescarga(lugar) {
+  const caja = lugar.caja || lugar.despues.parentElement;
+  return [...caja.querySelectorAll(':scope > .aviso-descarga')];
+}
+function alTerminarDescarga(d) {
+  // Por su dirección blob:, única por descarga; el nombre no sirve: Chromium cambia CON, aux o LPT1 (F01 de la r1)
+  const i = descargasPendientes.findIndex((p) => p.url === d.url);
+  if (i < 0) return;
+  const p = descargasPendientes.splice(i, 1)[0];
+  if (d.estado === 'cancelled') return;
+  const archivo = d.archivo || d.nombre;
+  const lugar = lugarDescarga(p.donde);
+  if (lugar) avisosDescarga(lugar).forEach((n) => n.remove());
+  if (d.estado === 'completed') { mostrarToast(`Se guardó ${archivo}.`); return; }
+  const texto = `No se pudo guardar ${archivo}. Puede estar abierto en otro programa o la memoria USB está llena. Prueba en otra carpeta.`;
+  if (!lugar) { mostrarToast(texto, 8000); return; }
+  const aviso = el('div', { class: 'aviso-descarga', role: 'alert' }, el('p', null, texto),
+    el('button', { type: 'button', class: 'btn', onclick: () => descargar(p.nombre, p.contenido, p.tipo, p.donde) }, 'Reintentar'));
+  if (lugar.caja) lugar.caja.append(aviso); else lugar.despues.after(aviso);
+  aviso.scrollIntoView({ block: 'nearest' }); // el panel de la misión o la pantalla pueden tenerlo fuera de la vista
+}
+if (window.tbEscritorio && window.tbEscritorio.alDescarga) window.tbEscritorio.alDescarga(alTerminarDescarga);
 function modalExportar(titulo, nombreArchivo, contenido, tipo, explicacion) {
   const ta = el('textarea', { readonly: 'readonly', 'aria-label': 'Contenido' }); ta.value = contenido;
   modal({
@@ -2398,7 +2436,7 @@ const misiones = (() => {
     const d = new Date(), dos = (v) => String(v).padStart(2, '0');
     const fecha = `${d.getFullYear()}${dos(d.getMonth() + 1)}${dos(d.getDate())}-${dos(d.getHours())}${dos(d.getMinutes())}`;
     const quien = doc.equipo === null ? 'sin-equipo' : codigoParaArchivo(doc.equipo); // limpio como en el registro
-    descargar(`respuestas-${quien}-${ej.id}-${fecha}.json`, JSON.stringify(doc, null, 2) + '\n', 'application/json');
+    descargar(`respuestas-${quien}-${ej.id}-${fecha}.json`, JSON.stringify(doc, null, 2) + '\n', 'application/json', { junto: 'misionDescargar' });
     mostrarToast('Elijan dónde guardar sus respuestas.');
   }
 

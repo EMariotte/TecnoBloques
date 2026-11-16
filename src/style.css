@@ -334,11 +334,15 @@ details.subir-detalle pre { max-height: 220px; overflow: auto; font-family: var(
 #modalCuerpo .fila-lib span { flex: 1; }
 #modalCuerpo .muted { color: var(--muted); font-size: 13px; }
 #modalCuerpo .error { color: var(--danger); font-size: 13px; }
+/* «No se pudo guardar …» con «Reintentar», dentro de la pantalla que descargó o junto a «Descargar respuestas» (AUD-31) */
+.aviso-descarga { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 10px 0 0; font-size: 14px; min-width: 0; }
+/* Un nombre de archivo largo y sin espacios se parte dentro del aviso, sin ensanchar la pantalla (F02 de AUD-31) */
+#modalCuerpo .aviso-descarga p, .aviso-descarga p { margin: 0; flex: 1 1 220px; min-width: 0; overflow-wrap: anywhere; color: var(--danger); }
 #modalAcciones { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
 
 #toast {
   position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 1100;
-  background: var(--ink); color: var(--bg); padding: 9px 16px; border-radius: 8px; box-shadow: var(--shadow); font-size: 13.5px; max-width: calc(100% - 32px);
+  background: var(--ink); color: var(--bg); padding: 9px 16px; border-radius: 8px; box-shadow: var(--shadow); font-size: 13.5px; max-width: calc(100% - 32px); overflow-wrap: anywhere;
 }
 #toast[hidden] { display: none; }
 #avisoActualizacion {

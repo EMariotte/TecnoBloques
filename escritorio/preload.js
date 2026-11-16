@@ -8,6 +8,8 @@ contextBridge.exposeInMainWorld('tbEscritorio', {
   preferirPuerto: (p) => ipcRenderer.invoke('tb:preferir-puerto', p),
   cancelar: () => ipcRenderer.invoke('tb:cancelar'),
   alActualizacion: (fn) => { ipcRenderer.on('tb:actualizacion', (_e, d) => fn(d)); },
+  /** fn({nombre, archivo, estado}): cómo terminó una descarga; estado = 'completed' | 'cancelled' | 'interrupted' (AUD-31) */
+  alDescarga: (fn) => { ipcRenderer.on('tb:descarga', (_e, d) => fn(d)); },
   /** datos = {codigo, fqbn, puerto, soloCompilar} → {ok, etapa, salida, memoria} */
   subir: (datos) => ipcRenderer.invoke('tb:subir', datos),
   /** datos = {codigo, fqbn} → {ok, etapa, salida, memoria, hex}: compila sin subir, para el simulador */

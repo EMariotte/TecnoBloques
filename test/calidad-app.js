@@ -220,7 +220,11 @@ const medidas = {};
       await esperar(win, () => true, 100);
       let d = null;
       for (let i = 0; i < 40 && !(d && d.estado); i++) { await pausa(win, 250); d = await app.evaluate(() => global.__descarga); }
-      const visto = await win.evaluate(() => ({ toast: $('toast').hidden ? null : $('toast').textContent, modal: $('modal').hidden ? null : $('modalTitulo').textContent, cuerpo: $('modal').hidden ? '' : $('modalCuerpo').textContent }));
+      await pausa(win, 500); // el aviso llega del proceso principal después del «done» (AUD-31)
+      const visto = await win.evaluate(() => ({
+        toast: $('toast').hidden ? null : $('toast').textContent, modal: $('modal').hidden ? null : $('modalTitulo').textContent, cuerpo: $('modal').hidden ? '' : $('modalCuerpo').textContent,
+        alerta: $('modal').hidden ? null : [...$('modalCuerpo').querySelectorAll('[role="alert"]')].map((n) => ({ texto: n.textContent, botones: [...n.querySelectorAll('button')].map((b) => b.textContent) }))[0] || null,
+      }));
       candado.kill();
       await pausa(win, 300);
       const intacto = fs.readFileSync(destino, 'utf8') === '{"app":"TecnoBloques","anterior":true}';
@@ -228,6 +232,9 @@ const medidas = {};
         `E3 (${variante}): la escritura falla (estado «${d && d.estado}») y el archivo anterior queda intacto`);
       const afirmaGuardado = /guardad|se guardó/i.test((visto.toast || '') + (visto.cuerpo || ''));
       revisar(!afirmaGuardado, `E3 (${variante}): la app no dice «guardado» (toast: ${JSON.stringify(visto.toast)}; pantalla: ${JSON.stringify(visto.modal)})`);
+      // AUD-31: el aprendiz se entera dentro de la pantalla, y puede volver a intentarlo
+      revisar(visto.modal === 'Guardar proyecto' && visto.alerta && /^No se pudo guardar .*\.tbq\.json\. .*Prueba en otra carpeta\./.test(visto.alerta.texto) && visto.alerta.botones.includes('Reintentar'),
+        `E3 (${variante}): «Guardar proyecto» avisa que no se pudo guardar, con «Reintentar» (AUD-31; ${JSON.stringify(visto.alerta)})`);
       console.log(`       E3 (${variante}): lo que ve el aprendiz tras el fallo: toast ${JSON.stringify(visto.toast)}, pantalla «${visto.modal}»`);
       medidas[`E3-${variante}`] = { descarga: d, visto };
       await cerrarModal(win);

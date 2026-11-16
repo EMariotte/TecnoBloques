@@ -72,6 +72,21 @@ function configurarSerial() {
   s.setDevicePermissionHandler((d) => d.deviceType === 'serial');
 }
 
+// Guardar, .ino, respuestas de la misión, CSV e imagen bajan como descargas y Windows pregunta dónde. En la app no hay
+// barra de descargas que avise si el archivo no se pudo escribir (en uso por otro programa, USB llena): la página recibe
+// cómo terminó cada una (AUD-31). `url` es la dirección blob: que creó la página y la identifica: Chromium puede cambiar
+// el nombre pedido (CON → _CON, F01 de la r1). `nombre` es el que propuso Chromium; `archivo`, el elegido en el cuadro.
+function configurarDescargas() {
+  session.defaultSession.on('will-download', (_e, item, wc) => {
+    const nombre = item.getFilename(), url = item.getURL();
+    item.once('done', (_ev, estado) => {
+      if (!wc || wc.isDestroyed()) return;
+      const ruta = item.getSavePath();
+      wc.send('tb:descarga', { url, nombre, archivo: ruta ? path.basename(ruta) : nombre, estado });
+    });
+  });
+}
+
 ipcMain.handle('tb:info', () => ({
   version: app.getVersion(), arduino: arduino.ubicacion ? arduino.ubicacion.origen : null, empaquetada: app.isPackaged
 }));
@@ -166,6 +181,7 @@ function buscarActualizacion() {
 
 app.whenReady().then(() => {
   configurarSerial();
+  configurarDescargas();
   crearVentana();
   setTimeout(buscarActualizacion, 5000);
 });
