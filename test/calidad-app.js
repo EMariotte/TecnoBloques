@@ -15,17 +15,25 @@
 //               simular, aunque el instructor haya dejado A: las capacidades vienen del entorno, no de la variante.
 // Sin modo, los cuatro. Necesita arduino-cli (como test:simulador). La variante la deja el instructor en
 // estudio-config.json; aquí se escribe antes de abrir la app.
-// Uso: npm run test:calidad [-- --fallos | --recursos | --aria] [--sin-cargador]
+// Medidas (AUD-33): cada corrida guarda calidad[-modos]-<fecha>-<pid>.json con su identidad (versión, HEAD, sha256 de
+// esta prueba y del HTML), los tiempos sin redondear y la evaluación de D3 (test/calidad-medidas.js). El JSON se escribe
+// al terminar cada fase (`fases`, `terminada`), así un aborto conserva lo hecho. También se escribe calidad[-modos].json,
+// como antes. --medidas <carpeta> cambia dónde; --abortar-tras <fase> termina con salida 3 después de esa fase (prueba).
+// Uso: npm run test:calidad [-- --fallos | --recursos | --aria] [--sin-cargador] [--medidas <carpeta>]
 'use strict';
 const { _electron: electron } = require('playwright-core');
 const { execSync, spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const { evaluarE6, texto, nombreArchivo, identidad } = require('./calidad-medidas');
 const RAIZ = path.join(__dirname, '..');
 const SALIDA = path.join(__dirname, 'salida');
 fs.mkdirSync(SALIDA, { recursive: true });
 const args = process.argv.slice(2);
+const argumento = (n) => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] : null; };
+const CARPETA_MEDIDAS = argumento('--medidas') || SALIDA;
+const ABORTAR_TRAS = argumento('--abortar-tras');
 const modos = ['--fallos', '--recursos', '--aria', '--web'].filter((m) => args.includes(m));
 const correr = (m) => !modos.length || modos.includes(m);
 let fallos = 0;
@@ -38,9 +46,20 @@ const ms = (x) => `${Math.round(x)} ms`;
 const mb = (x) => `${(x / 1048576).toFixed(1)} MB`;
 const TAREAS = ['estudio_x1', 'estudio_y1', 'estudio_x2', 'estudio_y2'];
 const ERRONEO = 'void setup() { ERROR_SINTETICO; }\nvoid loop() {}\n';
-const medidas = {};
+const medidas = { identidad: identidad({ raiz: RAIZ, modos, args }), fases: [], terminada: false };
+fs.mkdirSync(CARPETA_MEDIDAS, { recursive: true });
+const ARCHIVO_MEDIDAS = path.join(CARPETA_MEDIDAS, nombreArchivo(modos, new Date(), process.pid));
+const guardarMedidas = () => fs.writeFileSync(ARCHIVO_MEDIDAS, JSON.stringify(medidas, null, 1));
+// Al terminar una fase: se anota y se guarda; con --abortar-tras <fase>, la corrida se corta ahí a propósito
+function faseHecha(fase) {
+  medidas.fases.push(fase);
+  guardarMedidas();
+  if (ABORTAR_TRAS === fase) { console.log(`\nABORTADA a propósito tras la fase ${fase} (--abortar-tras); medidas en ${ARCHIVO_MEDIDAS}`); process.exit(3); }
+}
 
 (async () => {
+  console.log(`medidas: ${ARCHIVO_MEDIDAS}`);
+  guardarMedidas();
   const env = { ...Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'ELECTRON_RUN_AS_NODE')), TB_HERRAMIENTAS: 'instructor' };
   const datos = path.join(os.tmpdir(), 'tecnobloques-prueba-calidad-app');
   if (path.dirname(path.resolve(datos)) !== path.resolve(os.tmpdir())) throw new Error('Ruta temporal inesperada');
@@ -257,6 +276,7 @@ const medidas = {};
       revisar(vuelto.bloques === antes.bloques && vuelto.nombre === antes.nombre && vuelto.circuito === antes.circuito, `E3 (${variante}): al cerrar y abrir la app vuelve el mismo proyecto (${vuelto.nombre})`);
       await app.close();
     }
+    faseHecha('fallos');
   }
 
   // =====================================================================================================
@@ -275,7 +295,7 @@ const medidas = {};
         const { app, win } = await abrir(variante);
         if (variante === 'A') await armarA(win);
         await mantenerPantalla(app);
-        const abrirT = [], fotoT = [], compT = [];
+        const abrirT = [], abrirSincT = [], fotoT = [], compT = [];
         const ventanaE6 = [];
         for (let i = 0; i < 5; i++) {
           await detener(win);
@@ -288,6 +308,7 @@ const medidas = {};
             return { sincrono: t1 - t0, pintado: performance.now() - t0 };
           }, i % 2 ? 'estudio_y1' : 'estudio_x1');
           abrirT.push(ta.pintado);
+          abrirSincT.push(ta.sincrono);
           await pausa(win, 600);
           await win.evaluate(() => { window.__t0 = performance.now(); window.__vio = false; window.__tc = null; $('btnSimularBarra').click(); });
           const ok = await win.waitForFunction(() => {
@@ -314,7 +335,11 @@ const medidas = {};
         const mem = await heap(win);
         const ws = Math.max(...(await app.evaluate(({ app: a }) => a.getAppMetrics().filter((p) => p.type === 'Tab').map((p) => p.memory.workingSetSize * 1024))));
         const control = await controlMemoria(win, `E6 ${variante}`);
-        tiempos[variante] = { abrir: medianas(abrirT), foto: fotoT.length ? medianas(fotoT) : null, compilar: compT.length ? medianas(compT) : null, arranque: fotoT.length ? medianas(fotoT.map((f, k) => f - compT[k])) : null, heap: mem, ws, controlMemoria: control, ventana: ventanaE6, abrirTodas: abrirT.map(Math.round), fotoTodas: fotoT.map(Math.round), compilarTodas: compT.map(Math.round) };
+        tiempos[variante] = { abrir: medianas(abrirT), foto: fotoT.length ? medianas(fotoT) : null, compilar: compT.length ? medianas(compT) : null, arranque: fotoT.length ? medianas(fotoT.map((f, k) => f - compT[k])) : null, heap: mem, ws, controlMemoria: control, ventana: ventanaE6, abrirTodas: abrirT.map(Math.round), fotoTodas: fotoT.map(Math.round), compilarTodas: compT.map(Math.round),
+          // Sin redondear (AUD-33): de aquí se reconstruye cada comparación; «síncrono» es cargarEjemplo sin la espera de dos cuadros
+          abrirExactas: abrirT, abrirSincronoExactas: abrirSincT, fotoExactas: fotoT, compilarExactas: compT };
+        medidas.E6 = tiempos;
+        guardarMedidas();
         console.log(`${variante}: abrir ${ms(tiempos[variante].abrir)} · primera foto ${ms(tiempos[variante].foto)} (compilar ${ms(tiempos[variante].compilar)} + arranque ${ms(tiempos[variante].arranque)}) · heap ${mb(mem)} · working set ${mb(ws)} · corridas ${fotoT.length}/5`);
         revisar(fotoT.length === 5, `E6 (${variante}): las cinco simulaciones arrancaron`);
         const tapada = ventanaE6.filter((v) => !v.visible || v.minimizada || v.pagina !== 'visible' || v.alto < 600);
@@ -324,12 +349,14 @@ const medidas = {};
         await app.close();
       }
       medidas.E6 = tiempos;
-      for (const v of ['A', 'B']) {
-        const r = tiempos[v], c = tiempos.C0;
-        revisar(r.abrir <= c.abrir * 1.2, `E6 (${v}): abrir la tarea ${ms(r.abrir)} ≤ C0 ${ms(c.abrir)} + 20 % (D3; límite ${ms(c.abrir * 1.2)})`);
-        revisar(r.foto !== null && r.foto <= c.foto * 1.2, `E6 (${v}): primera foto ${ms(r.foto)} ≤ C0 ${ms(c.foto)} + 20 % (D3); sin compilar: ${ms(r.arranque)} frente a ${ms(c.arranque)}`);
-        revisar(dentroE6(r.heap, c.heap), `E6 (${v}): memoria tras un bloque ${mb(r.heap)} ≤ C0 ${mb(c.heap)} + 50 MB (D3); working set ${mb(r.ws)} frente a ${mb(c.ws)}`);
+      // D3 sin redondear (AUD-33): valor, límite y exceso o margen en el texto; la evaluación queda en el JSON
+      medidas.evaluacionE6 = evaluarE6(tiempos);
+      for (const e of medidas.evaluacionE6) {
+        const r = tiempos[e.variante], c = tiempos.C0;
+        const extra = e.medida === 'foto' ? `; sin compilar: ${ms(r.arranque)} frente a ${ms(c.arranque)}` : e.medida === 'memoria' ? `; working set ${mb(r.ws)} frente a ${mb(c.ws)}` : '';
+        revisar(e.cumple, texto(e) + extra);
       }
+      guardarMedidas();
 
       // ---- E5 (TEC-10). Veinte aperturas y cierres en A y en B: nada se acumula
       for (const variante of ['A', 'B']) {
@@ -371,6 +398,7 @@ const medidas = {};
         await app.close();
       }
     }
+    faseHecha('recursos');
   }
 
   // =====================================================================================================
@@ -410,6 +438,7 @@ const medidas = {};
       revisar(r.h1 <= 1, `E7 (${variante}): a lo sumo un h1 (${r.h1})`);
       await app.close();
     }
+    faseHecha('aria');
   }
 
   // =====================================================================================================
@@ -438,12 +467,21 @@ app.whenReady().then(() => { const w = new BrowserWindow({ width: 1536, height: 
     revisar(r.variante === 'C0' && r.lados === 0 && !r.panel && r.vistas, `TEC-17: la app es C0 aunque el instructor haya dejado A: sin espacios A/B ni panel de misiones (${JSON.stringify({ variante: r.variante, lados: r.lados, panel: r.panel })})`);
     revisar(r.simular.hidden || r.simular.disabled || !r.simular.ve, `TEC-17: «Simular» no se ofrece sin escritorio (${JSON.stringify(r.simular)})`);
     await app.close();
+    faseHecha('web');
   }
 
-  // Las medidas de esta corrida, con el nombre de sus modos (una corrida no pisa la de otro modo)
-  fs.writeFileSync(path.join(SALIDA, `calidad${modos.length ? '-' + modos.map((m) => m.slice(2)).join('-') : ''}.json`), JSON.stringify(medidas, null, 1));
   console.log('\nERRORES de página:', errores.length ? errores : 'ninguno');
   if (errores.length) fallos++;
+  // Fin: la corrida queda terminada en su archivo propio y, como antes, en calidad[-modos].json (lo pisa la siguiente)
+  Object.assign(medidas, { terminada: true, fallos, erroresPagina: errores, fin: new Date().toISOString() });
+  guardarMedidas();
+  fs.writeFileSync(path.join(SALIDA, `calidad${modos.length ? '-' + modos.map((m) => m.slice(2)).join('-') : ''}.json`), JSON.stringify(medidas, null, 1));
+  console.log(`medidas: ${ARCHIVO_MEDIDAS}`);
   console.log(fallos ? `\n${fallos} FALLA(S)` : '\nTODO BIEN');
   process.exit(fallos ? 1 : 0);
-})().catch((e) => { console.error(e); process.exit(1); });
+})().catch((e) => {
+  console.error(e);
+  // Un error inesperado también deja lo medido hasta ahí, con el error
+  try { Object.assign(medidas, { terminada: false, error: String(e && e.stack || e) }); guardarMedidas(); } catch (e2) { /* sin carpeta */ }
+  process.exit(1);
+});
