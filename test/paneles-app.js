@@ -496,17 +496,52 @@ const PROGRAMA_X = 'void setup() { pinMode(2, INPUT_PULLUP); pinMode(13, OUTPUT)
   revisar(dis.h1.length === 1 && dis.presion && dis.hover && /transform/.test(dis.transicion), `DISENO en A: un h1 («${dis.h1.join(' | ')}»), presión scale(.97) y hover solo con puntero fino (${JSON.stringify(dis)})`);
 
   // ---- r2, F03 (COD-20261109-002): con «reducir movimiento», los botones nuevos de A no se encogen al presionarlos; sin él, sí.
-  // Se presiona de verdad 180 ms y se lee el transform; se suelta fuera del botón, así no hace clic.
-  async function presion(selector) {
+  // Se presiona de verdad 180 ms y se suelta fuera del botón, así no hace clic.
+  // AUD-32: el transform se lee cuando terminan las transiciones del botón, no a los 180 ms. Si la página no procesa
+  // ningún estilo entre presionar y leer (hilo ocupado), la transición nace en la lectura y su primer valor es
+  // matrix(1, 0, 0, 1, 0, 0): leerlo así confundía un retraso del dibujo con una regla equivocada (121/1 en AUD-31 r1).
+  // Se exige además que el botón esté en :active, para no confundir «no se presionó» con «no se escala».
+  // r1, F01 (COD-20261118-001): esperar el final dejaba pasar una presión lenta (2 s aprobaba). La rapidez se comprueba
+  // aparte, con el botón presionado: la duración y la demora de la transición de `transform` que el estilo aplica (la
+  // entrada de la lista que le corresponde, o `all`) tienen que cumplir DISENO, «Un botón responde al presionarlo»:
+  // 100 a 160 ms, sin demora. Así se tolera el retraso del dibujo sin aceptar una animación configurada lenta. El tope
+  // de 3 s solo evita quedarse esperando.
+  const PRESION_MS = [100, 160];
+  async function presionar(selector, { bloquearMs = 0 } = {}) {
     const b = await win.locator(selector).boundingBox();
     await win.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
     await win.mouse.down();
-    await pausa(win, 180);
-    const t = await win.evaluate((s) => getComputedStyle(document.querySelector(s)).transform, selector);
+    if (bloquearMs) await win.evaluate((ms) => { const t = performance.now(); while (performance.now() - t < ms); }, bloquearMs);
+    else await pausa(win, 180);
+    const r = await win.evaluate((s) => {
+      const el = document.querySelector(s);
+      const activo = el.matches(':active');
+      const st = getComputedStyle(el);
+      const inmediato = st.transform;
+      const lista = (v) => v.split(',').map((x) => x.trim());
+      // r2, F03 (COD-20261118-002): sin redondear; 0.1s y 0.16s dan 100 y 160 exactos, y 160,4 ms o una demora de 0,4 ms
+      // ya no pasan por el redondeo. El redondeo queda solo en el texto.
+      const ms = (t) => (t.endsWith('ms') ? parseFloat(t) : parseFloat(t) * 1000);
+      const props = lista(st.transitionProperty), durs = lista(st.transitionDuration), dems = lista(st.transitionDelay);
+      // r2, F02: manda la última entrada que alcanza a transform, sea `transform` o `all` (en `transform, all` gana `all`);
+      // duración y demora se toman por ese mismo índice, con las listas repetidas como en CSS.
+      const i = Math.max(props.lastIndexOf('transform'), props.lastIndexOf('all'));
+      const ritmo = i < 0 ? null : { ms: ms(durs[i % durs.length]), demora: ms(dems[i % dems.length]) };
+      const fin = Promise.all(el.getAnimations().map((a) => a.finished)).then(() => getComputedStyle(el).transform);
+      return Promise.race([fin, new Promise((res) => setTimeout(() => res('transición sin terminar en 3 s'), 3000))])
+        .then((final) => ({ activo, inmediato, ritmo, final }));
+    }, selector);
     await win.mouse.move(2, 2);
     await win.mouse.up();
-    return t;
+    const ritmoBien = !!r.ritmo && r.ritmo.ms >= PRESION_MS[0] && r.ritmo.ms <= PRESION_MS[1] && r.ritmo.demora === 0;
+    const dec = (x) => Math.round(x * 10) / 10;
+    const ritmoTexto = r.ritmo ? `${dec(r.ritmo.ms)} ms con demora de ${dec(r.ritmo.demora)} ms` : 'sin transición de transform';
+    let valor = r.final;
+    if (!r.activo) valor = `sin :active (${r.final})`;
+    else if (r.final !== 'none' && !ritmoBien) valor = `${r.final}, pero la presión dura ${ritmoTexto} (DISENO: ${PRESION_MS.join('–')} ms, sin demora)`;
+    return { ...r, ritmoTexto, valor };
   }
+  const presion = async (selector) => (await presionar(selector)).valor;
   const ESCALA = 'matrix(0.97, 0, 0, 0.97, 0, 0)';
   await win.locator('#herrDer').selectOption('');
   await pausa(win, 300);
@@ -530,6 +565,50 @@ const PROGRAMA_X = 'void setup() { pinMode(2, INPUT_PULLUP); pinMode(13, OUTPUT)
     const t = await presion('#btnDetenerBarra');
     revisar(t === espera && await win.evaluate(() => !!simulador.sim), `F03, «reducir movimiento» ${modo === 'reduce' ? 'activo' : 'apagado'}: presionar «Detener» de la barra da ${espera === 'none' ? 'ninguna escala' : 'scale(.97)'} (${t}) y, soltado fuera, no detiene`);
   }
+  // Controles de la medida (AUD-32). 1) La condición de la falla: la página ocupada 200 ms justo después de presionar.
+  // La lectura inmediata debe dar matrix(1…) (así se sabe que el control la provoca) y la medida, scale(.97).
+  // Precondición: el botón vuelve al reposo antes de presionarlo (la vuelta dura 120 ms; aquí se esperan 300 ms).
+  await win.emulateMedia({ reducedMotion: 'no-preference' });
+  await pausa(win, 300);
+  const ocupada = await presionar('#btnDetenerBarra', { bloquearMs: 200 });
+  revisar(ocupada.inmediato === 'matrix(1, 0, 0, 1, 0, 0)' && ocupada.valor === ESCALA,
+    `AUD-32, control: con la página ocupada tras presionar, la lectura inmediata da ${ocupada.inmediato} y la medida, al terminar la transición, ${ocupada.valor} (presión de ${ocupada.ritmoTexto})`);
+  // 2) y 3) Una regla de movimiento equivocada se sigue detectando: escala con «reducir movimiento» y sin escala sin él.
+  const reglaMal = async (css, modo) => {
+    await win.evaluate((c) => { const e = document.createElement('style'); e.id = 'aud32-regla-mal'; e.textContent = c; document.head.append(e); }, css);
+    await win.emulateMedia({ reducedMotion: modo });
+    await pausa(win, 300);
+    const v = await presion('#btnDetenerBarra');
+    await win.evaluate(() => document.getElementById('aud32-regla-mal').remove());
+    return v;
+  };
+  const conReduce = await reglaMal('@media (prefers-reduced-motion: reduce) { #btnDetenerBarra:active { transform: scale(.97); } }', 'reduce');
+  // Con «reducir movimiento» la app quita todas las transiciones (style.css), así que esa escala llega sin animación y
+  // la medida la informa con su duración: se detecta porque no da none.
+  revisar(conReduce !== 'none' && conReduce.startsWith(ESCALA), `AUD-32, control negativo: una regla que escala con «reducir movimiento» se detecta (da ${conReduce}, no none)`);
+  const sinEscala = await reglaMal('#btnDetenerBarra:active { transform: none !important; }', 'no-preference');
+  revisar(sinEscala === 'none', `AUD-32, control negativo: una regla que quita la escala sin «reducir movimiento» se detecta (da ${sinEscala}, no scale(.97))`);
+  // 4) y 5) r1, F01: una presión lenta o con demora se detecta, aunque llegue a scale(.97). Solo cambia la presión; la vuelta
+  // al reposo conserva sus 120 ms.
+  const lenta = await reglaMal('#btnDetenerBarra:active { transition-duration: 2s !important; }', 'no-preference');
+  revisar(lenta !== ESCALA && /2000 ms con demora de 0 ms/.test(lenta), `AUD-32 r1, control negativo: una presión de 2 s se detecta (${lenta})`);
+  const demorada = await reglaMal('#btnDetenerBarra:active { transition-delay: .5s !important; }', 'no-preference');
+  revisar(demorada !== ESCALA && /demora de 500 ms/.test(demorada), `AUD-32 r1, control negativo: una presión con demora de 0,5 s se detecta (${demorada})`);
+  // r2, F02 y F03 (COD-20261118-002): una entrada `all` posterior manda sobre `transform`, y los valores se comparan sin
+  // redondear. Los límites exactos de DISENO (100 y 160 ms) se aceptan.
+  const ritmos = [
+    ['`transform, all` con 120 ms y 2 s', 'transition-property: transform, all !important; transition-duration: 120ms, 2s !important;', false],
+    ['`transform, all` con demora 0 s y 0,5 s', 'transition-property: transform, all !important; transition-duration: 120ms, 120ms !important; transition-delay: 0s, .5s !important;', false],
+    ['99,6 ms', 'transition-duration: 99.6ms !important;', false],
+    ['160,4 ms', 'transition-duration: 160.4ms !important;', false],
+    ['demora de 0,4 ms', 'transition-delay: 0.4ms !important;', false],
+    ['100 ms, el límite inferior', 'transition-duration: 100ms !important;', true],
+    ['160 ms, el límite superior', 'transition-duration: 160ms !important;', true]];
+  for (const [nombre, css, acepta] of ritmos) {
+    const v = await reglaMal(`#btnDetenerBarra:active { ${css} }`, 'no-preference');
+    revisar(acepta ? v === ESCALA : v !== ESCALA && v.startsWith(ESCALA), `AUD-32 r2, ${acepta ? 'control' : 'control negativo'}: una presión de ${nombre} ${acepta ? 'se acepta' : 'se detecta'} (${v})`);
+  }
+  revisar(await win.evaluate(() => !!simulador.sim && !document.getElementById('aud32-regla-mal')), 'AUD-32: tras los controles la simulación sigue y no queda ninguna regla de control');
   await win.emulateMedia({ reducedMotion: null });
   await win.evaluate(() => detenerSimulacion());
   await win.locator('#ampliarIzq').click();
